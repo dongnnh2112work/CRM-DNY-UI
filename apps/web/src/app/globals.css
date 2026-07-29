@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  /* Notion design system */
+  --nt-primary: #0075de;
+  --nt-primary-active: #005bab;
+  --nt-secondary: #213183;
+  --nt-on-primary: #ffffff;
+  --nt-canvas: #ffffff;
+  --nt-canvas-soft: #f6f5f4;
+  --nt-surface: #ffffff;
+  --nt-ink: #000000;
+  --nt-ink-secondary: #31302e;
+  --nt-ink-muted: #615d59;
+  --nt-ink-faint: #a39e98;
+  --nt-hairline: #e6e6e6;
+  --nt-accent-sky: #62aef0;
+  --nt-accent-purple: #d6b6f6;
+  --nt-accent-pink: #ff64c8;
+  --nt-accent-orange: #dd5b00;
+  --nt-accent-teal: #2a9d99;
+  --nt-accent-green: #1aae39;
+  --nt-radius-md: 8px;
+  --nt-radius-lg: 12px;
+  --nt-radius-full: 9999px;
+  --nt-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  --background: var(--nt-canvas-soft);
+  --foreground: var(--nt-ink-secondary);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-inter);
+  --color-primary: var(--nt-primary);
+  --color-canvas: var(--nt-canvas-soft);
+  --color-ink: var(--nt-ink);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--nt-canvas-soft);
+  color: var(--nt-ink-secondary);
+  font-family: var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--nt-primary);
+}
+
+.ph-card,
+.nt-card {
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-hairline);
+  border-radius: var(--nt-radius-lg);
+  box-shadow: var(--nt-shadow);
+}
+
+.ph-page-shell,
+.nt-page-shell {
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-hairline);
+  border-radius: var(--nt-radius-lg);
+  box-shadow: var(--nt-shadow);
+  overflow: hidden;
+  min-height: calc(100vh - 112px);
+}
