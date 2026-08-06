@@ -1,10 +1,9 @@
 "use client";
 
-import { Card, Tag, Typography } from "antd";
+import { Card, Tag, Typography, theme } from "antd";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import type { Order, OrderStage } from "@/lib/types";
 import { ORDER_STAGES } from "@/lib/types";
-import { ds } from "@/lib/design-tokens";
 import Link from "next/link";
 
 interface KanbanBoardProps {
@@ -13,6 +12,8 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
+  const { token } = theme.useToken();
+
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     if (result.source.droppableId === result.destination.droppableId) return;
@@ -35,9 +36,9 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                   style={{
                     minWidth: 260,
                     width: 260,
-                    background: snapshot.isDraggingOver ? ds.selected : ds.canvasSoft,
-                    border: `1px solid ${ds.hairline}`,
-                    borderRadius: ds.radius.lg,
+                    background: snapshot.isDraggingOver ? token.colorPrimaryBg : token.colorFillQuaternary,
+                    border: `1px solid ${token.colorBorder}`,
+                    borderRadius: token.borderRadiusLG,
                     padding: 8,
                     display: "flex",
                     flexDirection: "column",
@@ -64,16 +65,18 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                 <Card
                                   size="small"
                                   hoverable
+                                  styles={{
+                                    body: { background: token.colorBgElevated },
+                                  }}
                                   style={{
                                     cursor: "grab",
-                                    border: `1px solid ${ds.hairline}`,
-                                    borderRadius: ds.radius.md,
-                                    boxShadow: ds.shadow,
-                                    background: ds.surface,
+                                    border: `1px solid ${token.colorBorder}`,
+                                    borderRadius: token.borderRadius,
+                                    background: token.colorBgElevated,
                                   }}
                                 >
                                   <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
-                                    <Typography.Text strong style={{ fontSize: 13, color: ds.ink }}>
+                                    <Typography.Text strong style={{ fontSize: 13 }}>
                                       {order.orderNumber}
                                     </Typography.Text>
                                     {order.approvalStatus === "pending_review" && (
@@ -82,10 +85,10 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                       </Tag>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: 12, color: ds.inkMuted, marginTop: 4 }}>
+                                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
                                     {order.customerName}
                                   </div>
-                                  <div style={{ fontSize: 12, marginTop: 4, color: ds.inkSecondary }}>
+                                  <div style={{ fontSize: 12, marginTop: 4, color: token.colorText }}>
                                     {order.serviceName}
                                   </div>
                                   <div
@@ -96,14 +99,14 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                       fontSize: 12,
                                       alignItems: "center",
                                       gap: 4,
-                                      color: ds.inkSecondary,
+                                      color: token.colorTextSecondary,
                                     }}
                                   >
-                                    <span>{order.value.toLocaleString()} ₫</span>
+                                    <span>{order.value.toLocaleString("vi-VN")} ₫</span>
                                     <Tag style={{ fontSize: 11 }}>{order.assignedUserName}</Tag>
                                   </div>
                                   {(fileCount > 0 || order.reviewerName) && (
-                                    <div style={{ marginTop: 6, fontSize: 11, color: ds.inkFaint }}>
+                                    <div style={{ marginTop: 6, fontSize: 11, color: token.colorTextTertiary }}>
                                       {fileCount > 0 ? `${fileCount} file` : "Chưa có file"}
                                       {" · "}Người duyệt: {order.reviewerName}
                                     </div>

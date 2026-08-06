@@ -35,6 +35,7 @@ export const MOCK_ORDERS: Order[] = [
         uploadedAt: "2026-07-02",
       },
     ],
+    licenseAttachments: [],
     approvalStatus: "pending_review",
     pendingTransition: { toStage: "waiting_gov", requestId: "ar1" },
     approvalHistory: [
@@ -91,6 +92,7 @@ export const MOCK_ORDERS: Order[] = [
         uploadedAt: "2026-07-06",
       },
     ],
+    licenseAttachments: [],
     approvalStatus: "none",
     approvalHistory: [
       {
@@ -124,6 +126,7 @@ export const MOCK_ORDERS: Order[] = [
     reviewerId: "u2",
     reviewerName: "Tran Admin",
     attachments: [],
+    licenseAttachments: [],
     approvalStatus: "none",
     approvalHistory: [],
     createdAt: "2026-07-10",
@@ -155,6 +158,7 @@ export const MOCK_ORDERS: Order[] = [
         uploadedAt: "2026-06-28",
       },
     ],
+    licenseAttachments: [],
     approvalStatus: "approved",
     approvalHistory: [
       {
@@ -192,6 +196,7 @@ export const MOCK_ORDERS: Order[] = [
     reviewerId: "u2",
     reviewerName: "Tran Admin",
     attachments: [],
+    licenseAttachments: [],
     approvalStatus: "rejected",
     approvalHistory: [
       {
@@ -227,6 +232,7 @@ export const MOCK_ORDERS: Order[] = [
     reviewerId: "u2",
     reviewerName: "Tran Admin",
     attachments: [],
+    licenseAttachments: [],
     approvalStatus: "pending_review",
     pendingTransition: { toStage: "processing", requestId: "ar5" },
     approvalHistory: [

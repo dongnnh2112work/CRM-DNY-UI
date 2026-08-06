@@ -1,10 +1,9 @@
 "use client";
 
-import { Breadcrumb, Button, Input } from "antd";
+import { Breadcrumb, Button, Input, theme } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { ds } from "@/lib/design-tokens";
 
 export function PageHeader({
   breadcrumbs,
@@ -22,6 +21,7 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   const router = useRouter();
+  const { token } = theme.useToken();
   const items = breadcrumbs.map((b) => ({
     title: b.href ? <Link href={b.href}>{b.title}</Link> : b.title,
   }));
@@ -30,8 +30,8 @@ export function PageHeader({
     <div
       style={{
         padding: "12px 16px",
-        borderBottom: `1px solid ${ds.hairline}`,
-        background: ds.canvas,
+        borderBottom: `1px solid ${token.colorBorder}`,
+        background: token.colorBgContainer,
       }}
     >
       <Breadcrumb items={items} style={{ marginBottom: 8 }} />

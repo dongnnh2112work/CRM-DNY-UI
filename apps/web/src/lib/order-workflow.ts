@@ -33,7 +33,6 @@ export function isTransitionAllowed(order: Order, toStage: OrderStage): boolean 
   if (!requiresApprovalForTransition(order.stage, toStage)) {
     return order.approvalStatus !== "pending_review";
   }
-  // Allowed only when an approved pending transition matches the target
   if (
     order.approvalStatus === "approved" &&
     order.pendingTransition?.toStage === toStage
@@ -41,6 +40,23 @@ export function isTransitionAllowed(order: Order, toStage: OrderStage): boolean 
     return true;
   }
   return false;
+}
+
+/** Có file giấy phép final (tách khỏi hồ sơ làm việc) */
+export function hasLicenseDocument(order: Pick<Order, "licenseAttachments">): boolean {
+  return (order.licenseAttachments ?? []).some((a) => !a.deleted);
+}
+
+export function requiresLicenseForStage(toStage: OrderStage): boolean {
+  return toStage === "completed";
+}
+
+export function canMoveToCompleted(order: Pick<Order, "licenseAttachments">): boolean {
+  return hasLicenseDocument(order);
+}
+
+export function getLicenseBlockMessage(): string {
+  return "Chuyển sang Hoàn thành bắt buộc tải lên file giấy phép / văn bản được cấp phép ở ô upload riêng.";
 }
 
 export function getAttachmentType(filename: string): "pdf" | "word" | "excel" | "other" {

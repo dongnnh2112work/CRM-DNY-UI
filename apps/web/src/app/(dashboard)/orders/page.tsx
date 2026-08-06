@@ -7,15 +7,15 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { KanbanBoard } from "@/components/shared/kanban-board";
 import { PageHeader } from "@/components/shared/page-header";
-import { MOCK_ORDERS } from "@/lib/mock-orders";
 import { MOCK_USERS } from "@/lib/mock-users";
-import { isTransitionAllowed, requiresApprovalForTransition } from "@/lib/order-workflow";
+import { isTransitionAllowed, requiresApprovalForTransition, requiresLicenseForStage, canMoveToCompleted, getLicenseBlockMessage } from "@/lib/order-workflow";
+import { useOrders } from "@/lib/orders-store";
 import { APPROVAL_STATUS_LABELS, ORDER_STAGES, type Order, type OrderStage } from "@/lib/types";
 
 export default function OrdersPage() {
   const router = useRouter();
   const { message } = App.useApp();
-  const [orders, setOrders] = useState(MOCK_ORDERS);
+  const { orders, updateOrder } = useOrders();
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
   const [userFilter, setUserFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
@@ -43,29 +43,25 @@ export default function OrdersPage() {
       return false;
     }
 
-    if (requiresApprovalForTransition(order.stage, newStage) && !isTransitionAllowed(order, newStage)) {
-      message.warning(
-        "Đổi giai đoạn cần duyệt. Mở đơn → Duyệt & Phê duyệt → Gửi duyệt",
-      );
+    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
+      message.warning(getLicenseBlockMessage());
       return false;
     }
 
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              stage: newStage,
-              approvalStatus: "none",
-              pendingTransition: undefined,
-            }
-          : o,
-      ),
-    );
+    if (requiresApprovalForTransition(order.stage, newStage) && !isTransitionAllowed(order, newStage)) {
+      message.warning("Đổi giai đoạn cần duyệt. Mở đơn → Duyệt & Phê duyệt → Gửi duyệt");
+      return false;
+    }
+
+    updateOrder(orderId, {
+      stage: newStage,
+      approvalStatus: "none",
+      pendingTransition: undefined,
+    });
     return true;
   };
 
-  const months = [...new Set(MOCK_ORDERS.map((o) => o.month))].sort();
+  const months = [...new Set(orders.map((o) => o.month))].sort();
 
   const columns: TableColumnsType<Order> = [
     {
@@ -101,7 +97,7 @@ export default function OrdersPage() {
     {
       title: "Giá trị",
       dataIndex: "value",
-      render: (v: number) => `${v.toLocaleString()} ₫`,
+      render: (v: number) => `${v.toLocaleString("vi-VN")} ₫`,
     },
     { title: "Phụ trách", dataIndex: "assignedUserName" },
     {

@@ -1,12 +1,12 @@
 "use client";
 
 import { GoogleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
-import { Button, Divider, Form, Input, Typography } from "antd";
+import { Button, Divider, Form, Input, Typography, theme } from "antd";
 import { useRouter } from "next/navigation";
-import { ds } from "@/lib/design-tokens";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { token } = theme.useToken();
 
   return (
     <div
@@ -15,28 +15,25 @@ export default function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: ds.canvasSoft,
+        background: token.colorBgLayout,
         padding: 24,
       }}
     >
       <div
         style={{
           width: 400,
-          background: ds.surface,
-          border: `1px solid ${ds.hairline}`,
-          borderRadius: ds.radius.xl,
-          boxShadow: ds.shadow,
+          background: token.colorBgContainer,
+          border: `1px solid ${token.colorBorder}`,
+          borderRadius: token.borderRadiusLG,
+          boxShadow: token.boxShadow,
           padding: 32,
         }}
       >
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <Typography.Title
-            level={3}
-            style={{ margin: 0, color: ds.ink, fontWeight: 700, letterSpacing: "-0.5px" }}
-          >
+          <Typography.Title level={3} style={{ margin: 0, fontWeight: 700, letterSpacing: "-0.5px" }}>
             DNY CRM
           </Typography.Title>
-          <Typography.Text style={{ color: ds.inkMuted }}>Hệ thống quản lý dịch vụ pháp lý</Typography.Text>
+          <Typography.Text type="secondary">Hệ thống quản lý dịch vụ pháp lý</Typography.Text>
         </div>
 
         <Button
@@ -45,11 +42,8 @@ export default function LoginPage() {
           style={{
             marginBottom: 16,
             height: 40,
-            background: ds.surface,
-            borderColor: ds.hairline,
-            color: ds.ink,
             fontWeight: 500,
-            borderRadius: ds.radius.full,
+            borderRadius: 9999,
           }}
           icon={<GoogleOutlined />}
           onClick={() => router.push("/dashboard")}
@@ -57,17 +51,21 @@ export default function LoginPage() {
           Đăng nhập bằng Google
         </Button>
 
-        <Divider plain style={{ borderColor: ds.hairline, color: ds.inkFaint }}>
+        <Divider plain style={{ borderColor: token.colorBorder, color: token.colorTextTertiary }}>
           hoặc đăng nhập bằng email
         </Divider>
 
         <Form layout="vertical" onFinish={() => router.push("/dashboard")} requiredMark={false}>
           <Form.Item name="email" rules={[{ required: true, type: "email", message: "Vui lòng nhập email" }]}>
-            <Input prefix={<MailOutlined style={{ color: ds.inkFaint }} />} placeholder="Email" size="large" />
+            <Input
+              prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}
+              placeholder="Email"
+              size="large"
+            />
           </Form.Item>
           <Form.Item name="password" rules={[{ required: true, message: "Vui lòng nhập mật khẩu" }]}>
             <Input.Password
-              prefix={<LockOutlined style={{ color: ds.inkFaint }} />}
+              prefix={<LockOutlined style={{ color: token.colorTextTertiary }} />}
               placeholder="Mật khẩu"
               size="large"
             />

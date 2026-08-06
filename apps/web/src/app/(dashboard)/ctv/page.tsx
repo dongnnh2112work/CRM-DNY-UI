@@ -4,7 +4,8 @@ import { Button, Table, Tag, type TableColumnsType } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
-import { MOCK_CTVS } from "@/lib/mock-ctv";
+import { useCtvs } from "@/lib/ctvs-store";
+import { formatVndDisplay } from "@/lib/format-vnd";
 import type { Ctv, CtvStatus } from "@/lib/types";
 
 const CTV_STATUS_LABELS: Record<CtvStatus, string> = {
@@ -14,8 +15,9 @@ const CTV_STATUS_LABELS: Record<CtvStatus, string> = {
 
 export default function CtvPage() {
   const router = useRouter();
+  const { ctvs } = useCtvs();
   const [query, setQuery] = useState("");
-  const filtered = MOCK_CTVS.filter((c) =>
+  const filtered = ctvs.filter((c) =>
     [c.name, c.phone, c.email].some((f) => f.toLowerCase().includes(query.toLowerCase())),
   );
 
@@ -24,9 +26,27 @@ export default function CtvPage() {
     { title: "SĐT", dataIndex: "phone" },
     { title: "Email", dataIndex: "email" },
     { title: "Tổng đơn", dataIndex: "totalJobs" },
-    { title: "Hoa hồng", dataIndex: "totalCommission", render: (v: number) => `${v.toLocaleString()} ₫` },
-    { title: "Trạng thái", dataIndex: "status", render: (s: CtvStatus) => <Tag color={s === "active" ? "success" : "default"}>{CTV_STATUS_LABELS[s]}</Tag> },
-    { title: "Thao tác", key: "action", render: (_, r) => <Button size="small" onClick={() => router.push(`/ctv/${r.id}`)}>Chi tiết</Button> },
+    {
+      title: "Hoa hồng",
+      dataIndex: "totalCommission",
+      render: (v: number) => formatVndDisplay(v),
+    },
+    {
+      title: "Trạng thái",
+      dataIndex: "status",
+      render: (s: CtvStatus) => (
+        <Tag color={s === "active" ? "success" : "default"}>{CTV_STATUS_LABELS[s]}</Tag>
+      ),
+    },
+    {
+      title: "Thao tác",
+      key: "action",
+      render: (_, r) => (
+        <Button size="small" onClick={() => router.push(`/ctv/${r.id}`)}>
+          Chi tiết
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -36,6 +56,7 @@ export default function CtvPage() {
         searchPlaceholder="Tìm tên CTV, SĐT…"
         onSearch={setQuery}
         searchValue={query}
+        primaryAction={{ label: "+ CTV mới", href: "/ctv/new" }}
       />
       <div style={{ padding: 16 }}>
         <Table rowKey="id" columns={columns} dataSource={filtered} pagination={{ pageSize: 10 }} />

@@ -7,15 +7,14 @@ import { useState } from "react";
 import { DynamicTable } from "@/components/shared/dynamic-table";
 import { ExcelImportModal } from "@/components/shared/excel-import-modal";
 import { PageHeader } from "@/components/shared/page-header";
-import { CUSTOMER_FIELD_DEFS, MOCK_CUSTOMERS } from "@/lib/mock-customers";
+import { CUSTOMER_LOCKED_FIELD_KEYS, useCustomers } from "@/lib/customers-store";
 import type { Customer } from "@/lib/types";
 
 export default function CustomersPage() {
   const router = useRouter();
+  const { customers, fieldDefs, saveFieldDefs, addCustomers } = useCustomers();
   const [query, setQuery] = useState("");
   const [importOpen, setImportOpen] = useState(false);
-  const [fieldDefs, setFieldDefs] = useState(CUSTOMER_FIELD_DEFS);
-  const [customers, setCustomers] = useState(MOCK_CUSTOMERS);
 
   const filtered = customers.filter((c) =>
     [c.name, c.phone, c.email, c.company ?? ""].some((f) => f.toLowerCase().includes(query.toLowerCase())),
@@ -53,7 +52,8 @@ export default function CustomersPage() {
       </PageHeader>
       <DynamicTable<Customer>
         fieldDefs={fieldDefs}
-        onFieldDefsChange={setFieldDefs}
+        onFieldDefsChange={saveFieldDefs}
+        lockedFieldKeys={CUSTOMER_LOCKED_FIELD_KEYS}
         dataSource={filtered}
         rowKey="id"
         extra={actionCol}
@@ -64,7 +64,7 @@ export default function CustomersPage() {
         onClose={() => setImportOpen(false)}
         expectedColumns={["Name", "Phone", "Email", "Company", "Tax Code"]}
         onImport={(rows) => {
-          const newCustomers = rows.map((r, i) => ({
+          const newCustomers: Customer[] = rows.map((r, i) => ({
             id: `imported-${Date.now()}-${i}`,
             name: String(r.Name ?? r.name ?? ""),
             phone: String(r.Phone ?? r.phone ?? ""),
@@ -76,7 +76,7 @@ export default function CustomersPage() {
             createdAt: new Date().toISOString().slice(0, 10),
             customFields: {},
           }));
-          setCustomers((prev) => [...prev, ...newCustomers]);
+          addCustomers(newCustomers);
         }}
       />
     </>

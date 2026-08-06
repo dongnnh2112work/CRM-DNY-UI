@@ -16,12 +16,11 @@ import {
   UserOutlined,
   UsergroupAddOutlined,
 } from "@ant-design/icons";
+import { useAppConfig } from "@/components/providers/antd-provider";
 import { Avatar, Button, Input, Layout, Menu, Space, Typography, theme } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
-import { useAppConfig } from "@/components/providers/antd-provider";
-import { ds } from "@/lib/design-tokens";
 
 const { Header, Sider, Content } = Layout;
 
@@ -66,9 +65,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         onCollapse={setCollapsed}
         width={240}
         breakpoint="lg"
-        theme="light"
+        theme={isDark ? "dark" : "light"}
         style={{
-          background: isDark ? "#202020" : ds.canvas,
+          background: token.colorBgContainer,
           borderRight: `1px solid ${token.colorBorder}`,
         }}
       >
@@ -80,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             alignItems: "center",
             justifyContent: collapsed ? "center" : "flex-start",
             paddingInline: collapsed ? 0 : 12,
-            color: isDark ? "#fff" : ds.ink,
+            color: token.colorText,
             fontWeight: 700,
             fontSize: collapsed ? 14 : 16,
             letterSpacing: "-0.3px",
@@ -90,6 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <Menu
           mode="inline"
+          theme={isDark ? "dark" : "light"}
           selectedKeys={[selectedKey]}
           items={MENU_ITEMS}
           style={{
@@ -111,14 +111,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             alignItems: "center",
             gap: 12,
             borderBottom: `1px solid ${token.colorBorder}`,
-            background: isDark ? "#202020" : ds.canvas,
+            background: token.colorBgContainer,
           }}
         >
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
-            style={{ borderRadius: ds.radius.md }}
+            style={{ borderRadius: token.borderRadius }}
           />
           <Input.Search placeholder="Tìm kiếm…" allowClear style={{ maxWidth: 360, flex: 1 }} />
           <Space style={{ marginLeft: "auto" }}>
@@ -126,22 +126,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               type="text"
               icon={isDark ? <SunOutlined /> : <MoonOutlined />}
               onClick={() => setTheme(isDark ? "light" : "dark")}
-              style={{ borderRadius: ds.radius.md }}
+              style={{ borderRadius: token.borderRadius }}
             />
             <Avatar
               size="small"
               icon={<UserOutlined />}
-              style={{ background: "rgba(0,0,0,0.05)", color: ds.ink }}
+              style={{
+                background: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
+                color: token.colorText,
+              }}
             />
-            <Typography.Text style={{ color: isDark ? "#fff" : ds.inkSecondary, fontWeight: 500 }}>
+            <Typography.Text style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
               Quản trị
             </Typography.Text>
           </Space>
         </Header>
         <Content style={{ margin: 16 }}>
-          <div className="nt-page-shell" style={{ background: token.colorBgContainer, borderColor: token.colorBorder }}>
-            {children}
-          </div>
+          <div className="nt-page-shell">{children}</div>
         </Content>
       </Layout>
     </Layout>

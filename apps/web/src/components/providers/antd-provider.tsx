@@ -99,7 +99,7 @@ function buildTheme(mode: AppTheme) {
       },
       Input: {
         activeBorderColor: ds.primary,
-        hoverBorderColor: ds.hairline,
+        hoverBorderColor: isDark ? "#444444" : ds.hairline,
         activeShadow: `0 0 0 2px ${ds.focusRing}`,
         borderRadius: ds.radius.xs,
         paddingBlock: 6,
@@ -122,13 +122,14 @@ function buildTheme(mode: AppTheme) {
       },
       Tabs: {
         itemSelectedColor: ds.primary,
-        itemHoverColor: ds.inkSecondary,
+        itemHoverColor: isDark ? "#e8e6e3" : ds.inkSecondary,
         inkBarColor: ds.primary,
       },
       Breadcrumb: {
         linkColor: ds.primary,
-        itemColor: ds.inkMuted,
-        lastItemColor: ds.ink,
+        itemColor: isDark ? "#a39e98" : ds.inkMuted,
+        lastItemColor: isDark ? "#ffffff" : ds.ink,
+        separatorColor: isDark ? "#6f6b66" : ds.inkFaint,
       },
       Typography: {
         colorTextHeading: isDark ? "#ffffff" : ds.ink,
@@ -136,19 +137,29 @@ function buildTheme(mode: AppTheme) {
       },
       Modal: {
         borderRadiusLG: ds.radius.xl,
-        boxShadow: ds.shadow,
+        boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.25)" : ds.shadow,
       },
       Drawer: {
         colorBgElevated: isDark ? "#202020" : ds.surface,
       },
+      Descriptions: {
+        labelBg: isDark ? "#252525" : ds.canvasSoft,
+      },
       Segmented: {
-        itemSelectedBg: isDark ? "#333333" : ds.surface,
+        itemSelectedBg: isDark ? "#3a3a3a" : ds.surface,
         itemSelectedColor: isDark ? "#ffffff" : ds.ink,
+        itemColor: isDark ? "#a39e98" : ds.inkSecondary,
         trackBg: isDark ? "#252525" : ds.canvasSoft,
         borderRadius: ds.radius.md,
       },
     },
   };
+}
+
+function applyDocumentTheme(mode: AppTheme) {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.theme = mode;
+  document.documentElement.style.colorScheme = mode;
 }
 
 export function AntdProvider({ children }: { children: ReactNode }) {
@@ -157,9 +168,10 @@ export function AntdProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const savedLocale = localStorage.getItem("app_locale") as AppLocale | null;
-    const savedTheme = localStorage.getItem("app_theme") as AppTheme | null;
+    const savedTheme = (localStorage.getItem("app_theme") as AppTheme | null) ?? "light";
     if (savedLocale) setLocale(savedLocale);
-    if (savedTheme) setTheme(savedTheme);
+    setTheme(savedTheme);
+    applyDocumentTheme(savedTheme);
   }, []);
 
   const handleSetLocale = (l: AppLocale) => {
@@ -170,7 +182,7 @@ export function AntdProvider({ children }: { children: ReactNode }) {
   const handleSetTheme = (t: AppTheme) => {
     setTheme(t);
     localStorage.setItem("app_theme", t);
-    document.documentElement.style.colorScheme = t;
+    applyDocumentTheme(t);
   };
 
   return (

@@ -3,10 +3,11 @@
 import { Button, DatePicker, Form, Input, Select, Space, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
-import { MOCK_CUSTOMERS } from "@/lib/mock-customers";
+import { useCustomers } from "@/lib/customers-store";
 
 export default function ComposeEmailPage() {
   const router = useRouter();
+  const { customers } = useCustomers();
 
   return (
     <>
@@ -18,7 +19,7 @@ export default function ComposeEmailPage() {
             showSearch
             optionFilterProp="label"
             placeholder="Chọn khách hàng hoặc nhập email"
-            options={MOCK_CUSTOMERS.map((c) => ({ value: c.email, label: `${c.name} (${c.email})` }))}
+            options={customers.map((c) => ({ value: c.email, label: `${c.name} (${c.email})` }))}
           />
         </Form.Item>
         <Form.Item name="subject" label="Tiêu đề" rules={[{ required: true }]}>

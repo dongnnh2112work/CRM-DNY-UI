@@ -1,33 +1,82 @@
 "use client";
 
-import { Button, Descriptions, Segmented, Space, Tabs, Tag, Typography } from "antd";
+import { App, Button, Descriptions, Popconfirm, Segmented, Space, Tabs, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { OrderApprovalPanel } from "@/components/orders/order-approval-panel";
 import { OrderDocuments } from "@/components/orders/order-documents";
+import { LicenseUpload } from "@/components/orders/license-upload";
 import { PageHeader } from "@/components/shared/page-header";
-import { MOCK_ORDERS } from "@/lib/mock-orders";
+import { formatVndDisplay } from "@/lib/format-vnd";
+import { useOrders } from "@/lib/orders-store";
+import { usePayments } from "@/lib/payments-store";
 import { APPROVAL_STATUS_LABELS, ORDER_STAGES, type Order } from "@/lib/types";
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const initial = useMemo(() => MOCK_ORDERS.find((o) => o.id === id), [id]);
-  const [order, setOrder] = useState<Order | undefined>(initial);
+  const { message } = App.useApp();
+  const { getById, ready, updateOrder, deleteOrder } = useOrders();
+  const { getByOrderId } = usePayments();
+  const order = getById(id);
+  const payment = order ? getByOrderId(order.id) : undefined;
   const [actingAs, setActingAs] = useState<"submitter" | "reviewer">("reviewer");
 
+  if (!ready) return null;
   if (!order) return <div style={{ padding: 24 }}>Không tìm thấy đơn hàng.</div>;
+
   const stageMeta = ORDER_STAGES.find((s) => s.key === order.stage);
-  const fileCount = order.attachments.filter((a) => !a.deleted).length;
+  const workFileCount = order.attachments.filter((a) => !a.deleted).length;
+  const licenseFileCount = (order.licenseAttachments ?? []).filter((a) => !a.deleted).length;
+
+  const persist = (next: Order) => {
+    updateOrder(order.id, next);
+  };
 
   return (
     <>
       <PageHeader breadcrumbs={[{ title: "Đơn hàng", href: "/orders" }, { title: order.orderNumber }]}>
-        <Space>
-          <Button onClick={() => router.push(`/payments`)}>Thanh toán</Button>
+        <Space wrap>
+          <Button
+            type="primary"
+            onClick={() => {
+              if (payment) router.push(`/payments/${payment.id}`);
+              else router.push("/payments");
+            }}
+          >
+            Thanh toán
+            {payment ? ` (${formatVndDisplay(payment.remaining)} còn lại)` : ""}
+          </Button>
           <Button onClick={() => router.push("/vat/new")}>Tạo VAT</Button>
-          <Button danger>Hủy đơn</Button>
+          <Popconfirm
+            title="Hủy đơn này?"
+            description="Đơn sẽ chuyển sang giai đoạn Đã hủy."
+            okText="Hủy đơn"
+            cancelText="Đóng"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => {
+              updateOrder(order.id, { stage: "cancelled", approvalStatus: "none", pendingTransition: undefined });
+              message.success("Đã hủy đơn");
+            }}
+          >
+            <Button danger>Hủy đơn</Button>
+          </Popconfirm>
+          <Popconfirm
+            title="Xóa đơn hàng?"
+            okText="Xóa"
+            cancelText="Hủy"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => {
+              deleteOrder(order.id);
+              message.success("Đã xóa đơn");
+              router.push("/orders");
+            }}
+          >
+            <Button danger type="primary">
+              Xóa
+            </Button>
+          </Popconfirm>
         </Space>
       </PageHeader>
       <div style={{ padding: 16 }}>
@@ -42,7 +91,8 @@ export default function OrderDetailPage() {
           {order.approvalStatus === "rejected" && (
             <Tag color="error">{APPROVAL_STATUS_LABELS.rejected}</Tag>
           )}
-          <Tag>{fileCount} file</Tag>
+          <Tag>{workFileCount} hồ sơ</Tag>
+          {licenseFileCount > 0 && <Tag color="green">{licenseFileCount} giấy phép</Tag>}
         </Space>
 
         <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small" style={{ marginBottom: 16 }}>
@@ -50,7 +100,7 @@ export default function OrderDetailPage() {
             <Link href={`/customers/${order.customerId}`}>{order.customerName}</Link>
           </Descriptions.Item>
           <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
-          <Descriptions.Item label="Giá trị Ratecard">{order.value.toLocaleString()} ₫</Descriptions.Item>
+          <Descriptions.Item label="Giá trị Ratecard">{formatVndDisplay(order.value)}</Descriptions.Item>
           <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
           {order.ctvName && (
             <Descriptions.Item label="CTV">
@@ -59,9 +109,9 @@ export default function OrderDetailPage() {
           )}
           {order.channel === "ctv" && order.ctvPrice != null && (
             <>
-              <Descriptions.Item label="Giá CTV">{order.ctvPrice.toLocaleString()} ₫</Descriptions.Item>
+              <Descriptions.Item label="Giá CTV">{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
               <Descriptions.Item label="Commission">
-                <Tag color="green">{(order.ctvPrice - order.value).toLocaleString()} ₫</Tag>
+                <Tag color="green">{formatVndDisplay(order.ctvPrice - order.value)}</Tag>
                 <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                   Giá CTV − Ratecard
                 </Typography.Text>
@@ -83,13 +133,30 @@ export default function OrderDetailPage() {
           items={[
             {
               key: "documents",
-              label: `Hồ sơ (${fileCount})`,
+              label: `Hồ sơ làm việc (${workFileCount})`,
               children: (
                 <OrderDocuments
                   attachments={order.attachments}
-                  onChange={(attachments) => setOrder({ ...order, attachments })}
+                  onChange={(attachments) => persist({ ...order, attachments })}
                   uploaderName={order.submitterName}
                 />
+              ),
+            },
+            {
+              key: "license",
+              label: `Giấy phép final (${licenseFileCount})`,
+              children: (
+                <div>
+                  <Typography.Paragraph type="secondary">
+                    File giấy phép / văn bản được cấp phép — lưu final, tách bạch với hồ sơ làm việc.
+                    Thường tải lên khi yêu cầu chuyển sang Hoàn thành.
+                  </Typography.Paragraph>
+                  <LicenseUpload
+                    files={order.licenseAttachments ?? []}
+                    onChange={(licenseAttachments) => persist({ ...order, licenseAttachments })}
+                    uploaderName={order.submitterName}
+                  />
+                </div>
               ),
             },
             {
@@ -110,7 +177,7 @@ export default function OrderDetailPage() {
                       ]}
                     />
                   </div>
-                  <OrderApprovalPanel order={order} onChange={setOrder} actingAs={actingAs} />
+                  <OrderApprovalPanel order={order} onChange={persist} actingAs={actingAs} />
                 </>
               ),
             },

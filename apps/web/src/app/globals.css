@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  /* Notion design system */
+  /* Notion design system — light */
   --nt-primary: #0075de;
   --nt-primary-active: #005bab;
   --nt-secondary: #213183;
@@ -14,6 +14,8 @@
   --nt-ink-muted: #615d59;
   --nt-ink-faint: #a39e98;
   --nt-hairline: #e6e6e6;
+  --nt-hover: rgba(0, 0, 0, 0.04);
+  --nt-selected: rgba(0, 117, 222, 0.08);
   --nt-accent-sky: #62aef0;
   --nt-accent-purple: #d6b6f6;
   --nt-accent-pink: #ff64c8;
@@ -27,6 +29,24 @@
 
   --background: var(--nt-canvas-soft);
   --foreground: var(--nt-ink-secondary);
+}
+
+html[data-theme="dark"] {
+  --nt-canvas: #202020;
+  --nt-canvas-soft: #191919;
+  --nt-surface: #202020;
+  --nt-ink: #ffffff;
+  --nt-ink-secondary: #e8e6e3;
+  --nt-ink-muted: #a39e98;
+  --nt-ink-faint: #6f6b66;
+  --nt-hairline: #333333;
+  --nt-hover: rgba(255, 255, 255, 0.06);
+  --nt-selected: rgba(0, 117, 222, 0.2);
+  --nt-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+
+  --background: var(--nt-canvas-soft);
+  --foreground: var(--nt-ink-secondary);
+  color-scheme: dark;
 }
 
 @theme inline {

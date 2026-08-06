@@ -5,15 +5,16 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DynamicTable } from "@/components/shared/dynamic-table";
 import { PageHeader } from "@/components/shared/page-header";
-import { SERVICE_FIELD_DEFS, MOCK_SERVICES } from "@/lib/mock-services";
+import { SERVICE_LOCKED_FIELD_KEYS } from "@/lib/service-fields";
+import { useServices } from "@/lib/services-store";
 import type { Service } from "@/lib/types";
 
 export default function ServicesPage() {
   const router = useRouter();
+  const { services, fieldDefs, saveFieldDefs } = useServices();
   const [query, setQuery] = useState("");
-  const [fieldDefs, setFieldDefs] = useState(SERVICE_FIELD_DEFS);
 
-  const filtered = MOCK_SERVICES.filter((s) =>
+  const filtered = services.filter((s) =>
     [s.name, s.code, s.category].some((f) => f.toLowerCase().includes(query.toLowerCase())),
   );
 
@@ -42,7 +43,8 @@ export default function ServicesPage() {
       />
       <DynamicTable<Service>
         fieldDefs={fieldDefs}
-        onFieldDefsChange={setFieldDefs}
+        onFieldDefsChange={saveFieldDefs}
+        lockedFieldKeys={SERVICE_LOCKED_FIELD_KEYS}
         dataSource={filtered}
         rowKey="id"
         extra={actionCol}

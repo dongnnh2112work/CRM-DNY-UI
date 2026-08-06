@@ -1,17 +1,24 @@
 "use client";
 
-import { Alert, Button, Form, Input, InputNumber, Select, Space, Typography } from "antd";
+import { App, Alert, Button, Form, Input, InputNumber, Select, Space, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
-import { MOCK_CUSTOMERS } from "@/lib/mock-customers";
-import { MOCK_CTVS } from "@/lib/mock-ctv";
-import { MOCK_SERVICES } from "@/lib/mock-services";
+import { useCustomers } from "@/lib/customers-store";
+import { useCtvs } from "@/lib/ctvs-store";
+import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { MOCK_USERS } from "@/lib/mock-users";
+import { useOrders } from "@/lib/orders-store";
+import { useServices } from "@/lib/services-store";
 
 const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
 export default function NewOrderPage() {
   const router = useRouter();
+  const { message } = App.useApp();
+  const { services } = useServices();
+  const { customers } = useCustomers();
+  const { ctvs, addJob } = useCtvs();
+  const { addOrder } = useOrders();
   const [form] = Form.useForm();
   const channel = Form.useWatch("channel", form);
   const submitterId = Form.useWatch("submitterId", form);
@@ -19,14 +26,14 @@ export default function NewOrderPage() {
   const ctvPrice = Form.useWatch("ctvPrice", form) as number | undefined;
   const serviceId = Form.useWatch("serviceId", form) as string | undefined;
 
-  const selectedService = MOCK_SERVICES.find((s) => s.id === serviceId);
+  const selectedService = services.find((s) => s.id === serviceId);
   const commission =
     channel === "ctv" && typeof value === "number" && typeof ctvPrice === "number"
       ? ctvPrice - value
       : null;
 
   const onServiceChange = (id: string) => {
-    const svc = MOCK_SERVICES.find((s) => s.id === id);
+    const svc = services.find((s) => s.id === id);
     if (svc && (value == null || value === 0)) {
       form.setFieldValue("value", svc.unitPrice);
     }
@@ -39,22 +46,71 @@ export default function NewOrderPage() {
         form={form}
         layout="vertical"
         style={{ maxWidth: 560, padding: 24 }}
-        onFinish={() => router.push("/orders")}
+        onFinish={(values) => {
+          const customer = customers.find((c) => c.id === values.customerId);
+          const service = services.find((s) => s.id === values.serviceId);
+          const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
+          const submitter = activeUsers.find((u) => u.id === values.submitterId);
+          const reviewer = activeUsers.find((u) => u.id === values.reviewerId);
+          const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
+          if (!customer || !service || !assigned || !submitter || !reviewer) {
+            message.error("Thiếu thông tin bắt buộc");
+            return;
+          }
+
+          const created = addOrder({
+            customerId: customer.id,
+            customerName: customer.name,
+            serviceId: service.id,
+            serviceName: service.name,
+            channel: values.channel,
+            ctvId: ctv?.id,
+            ctvName: ctv?.name,
+            value: Number(values.value),
+            ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
+            assignedUserId: assigned.id,
+            assignedUserName: assigned.name,
+            submitterId: submitter.id,
+            submitterName: submitter.name,
+            reviewerId: reviewer.id,
+            reviewerName: reviewer.name,
+            notes: values.notes,
+          });
+
+          if (ctv && values.channel === "ctv") {
+            const ratecard = Number(values.value);
+            const price = Number(values.ctvPrice);
+            addJob(ctv.id, {
+              orderId: created.id,
+              orderNumber: created.orderNumber,
+              customerName: customer.name,
+              serviceName: service.name,
+              ratecard,
+              ctvPrice: price,
+              commission: price - ratecard,
+            });
+          }
+
+          message.success("Đã tạo đơn hàng");
+          router.push(`/orders/${created.id}`);
+        }}
       >
         <Form.Item name="customerId" label="Khách hàng" rules={[{ required: true, message: "Chọn khách hàng" }]}>
           <Select
             showSearch
             optionFilterProp="label"
-            options={MOCK_CUSTOMERS.map((c) => ({ value: c.id, label: c.name }))}
+            options={customers.map((c) => ({ value: c.id, label: c.name }))}
           />
         </Form.Item>
         <Form.Item name="serviceId" label="Dịch vụ (1 đơn / 1 dịch vụ)" rules={[{ required: true }]}>
           <Select
             onChange={onServiceChange}
-            options={MOCK_SERVICES.filter((s) => s.status === "active").map((s) => ({
-              value: s.id,
-              label: `${s.name} — ${s.unitPrice.toLocaleString()} ₫`,
-            }))}
+            options={services
+              .filter((s) => s.status === "active")
+              .map((s) => ({
+                value: s.id,
+                label: `${s.name} — ${formatVndDisplay(s.unitPrice)}`,
+              }))}
           />
         </Form.Item>
         <Form.Item name="channel" label="Kênh" rules={[{ required: true }]}>
@@ -69,7 +125,11 @@ export default function NewOrderPage() {
         </Form.Item>
         {channel === "ctv" && (
           <Form.Item name="ctvId" label="Chọn CTV" rules={[{ required: true, message: "Chọn CTV" }]}>
-            <Select options={MOCK_CTVS.map((c) => ({ value: c.id, label: c.name }))} />
+            <Select
+              options={ctvs
+                .filter((c) => c.status === "active")
+                .map((c) => ({ value: c.id, label: c.name }))}
+            />
           </Form.Item>
         )}
         <Form.Item
@@ -78,15 +138,11 @@ export default function NewOrderPage() {
           rules={[{ required: true, message: "Nhập giá trị Ratecard" }]}
           extra={
             selectedService
-              ? `Ratecard dịch vụ gợi ý: ${selectedService.unitPrice.toLocaleString()} ₫`
+              ? `Ratecard dịch vụ gợi ý: ${formatVndDisplay(selectedService.unitPrice)}`
               : "Giá Ratecard — cơ sở tính hoa hồng"
           }
         >
-          <InputNumber
-            style={{ width: "100%" }}
-            min={0}
-            formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-          />
+          <InputNumber {...vndInputProps} />
         </Form.Item>
         {channel === "ctv" && (
           <>
@@ -107,11 +163,7 @@ export default function NewOrderPage() {
               extra="Commission = Giá CTV − Giá trị Ratecard"
               dependencies={["value"]}
             >
-              <InputNumber
-                style={{ width: "100%" }}
-                min={0}
-                formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-              />
+              <InputNumber {...vndInputProps} />
             </Form.Item>
             {commission != null && (
               <Alert
@@ -121,13 +173,8 @@ export default function NewOrderPage() {
                 message={
                   <Typography.Text>
                     Commission dự kiến:{" "}
-                    <Typography.Text strong>
-                      {commission.toLocaleString()} ₫
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {" "}
-                      (Giá CTV − Ratecard)
-                    </Typography.Text>
+                    <Typography.Text strong>{formatVndDisplay(commission)}</Typography.Text>
+                    <Typography.Text type="secondary"> (Giá CTV − Ratecard)</Typography.Text>
                     {commission < 0 && " — kiểm tra lại giá"}
                   </Typography.Text>
                 }

@@ -1,6 +1,13 @@
 "use client";
 
-import { DeleteOutlined, FileExcelOutlined, FilePdfOutlined, FileWordOutlined, InboxOutlined, PaperClipOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  FileExcelOutlined,
+  FilePdfOutlined,
+  FileWordOutlined,
+  InboxOutlined,
+  PaperClipOutlined,
+} from "@ant-design/icons";
 import { App, Button, Table, Tag, Typography, Upload } from "antd";
 import type { UploadProps } from "antd";
 import type { OrderAttachment } from "@/lib/types";
@@ -25,6 +32,7 @@ interface OrderDocumentsProps {
   uploaderName?: string;
 }
 
+/** Hồ sơ làm việc trong quá trình xử lý (không gồm giấy phép final) */
 export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }: OrderDocumentsProps) {
   const { message } = App.useApp();
   const visible = attachments.filter((a) => !a.deleted);
@@ -45,7 +53,7 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }
     };
     onChange([...attachments, next]);
     message.success(`Đã thêm ${file.name}`);
-    return false; // mock — do not upload to server
+    return false;
   };
 
   const softDelete = (id: string) => {
@@ -54,12 +62,10 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }
 
   return (
     <div>
-      <Upload.Dragger
-        accept={ACCEPT_FILE_TYPES}
-        beforeUpload={beforeUpload}
-        showUploadList={false}
-        multiple
-      >
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+        Hồ sơ làm việc trong quá trình xử lý. File giấy phép final tải riêng khi chuyển sang Hoàn thành.
+      </Typography.Paragraph>
+      <Upload.Dragger accept={ACCEPT_FILE_TYPES} beforeUpload={beforeUpload} showUploadList={false} multiple>
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
@@ -73,15 +79,14 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }
         size="small"
         pagination={false}
         dataSource={visible}
-        locale={{ emptyText: "Chưa có hồ sơ" }}
+        locale={{ emptyText: "Chưa có hồ sơ làm việc" }}
         columns={[
           {
             title: "Tệp",
             dataIndex: "name",
             render: (name: string, r: OrderAttachment) => (
               <span>
-                {typeIcon(r.type)}{" "}
-                <Typography.Text>{name}</Typography.Text>
+                {typeIcon(r.type)} <Typography.Text>{name}</Typography.Text>
               </span>
             ),
           },

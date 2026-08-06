@@ -201,7 +201,10 @@ export interface Order {
   submitterName: string;
   reviewerId: string;
   reviewerName: string;
+  /** Hồ sơ làm việc trong quá trình xử lý */
   attachments: OrderAttachment[];
+  /** File giấy phép / văn bản được cấp phép — lưu final, tách khỏi hồ sơ làm việc */
+  licenseAttachments: OrderAttachment[];
   approvalStatus: ApprovalStatus;
   pendingTransition?: { toStage: OrderStage; requestId: string };
   approvalHistory: OrderApprovalRequest[];

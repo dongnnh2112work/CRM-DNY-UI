@@ -6,7 +6,7 @@ import {
   TeamOutlined,
   TrophyOutlined,
 } from "@ant-design/icons";
-import { Card, Col, Row, Space, Tag, Typography } from "antd";
+import { Card, Col, Row, Space, Tag, Typography, theme } from "antd";
 import Link from "next/link";
 import {
   Bar,
@@ -24,19 +24,11 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { MOCK_DASHBOARD } from "@/lib/mock-dashboard";
-import { MOCK_ORDERS } from "@/lib/mock-orders";
-import { MOCK_PAYMENTS } from "@/lib/mock-payments";
-import { PAYMENT_STATUS_LABELS } from "@/lib/types";
+import { useOrders } from "@/lib/orders-store";
+import { usePayments } from "@/lib/payments-store";
+import { ORDER_STAGES, PAYMENT_STATUS_LABELS, type Order, type OrderStage } from "@/lib/types";
 
 const d = MOCK_DASHBOARD;
-
-const STATUS_COLORS: Record<string, string> = {
-  Mới: "#0075de",
-  "Đang xử lý": "#dd5b00",
-  Chờ: "#2a9d99",
-  "Hoàn thành": "#1aae39",
-  "Đã hủy": "#a39e98",
-};
 
 const CTV_COLORS = ["#0075de", "#62aef0", "#2a9d99", "#d6b6f6", "#dd5b00"];
 
@@ -57,14 +49,32 @@ const revenueData = d.revenue.byMonth.map((item) => ({
   label: formatMonth(item.month),
 }));
 
-const orderStatusData = d.orders.byStatus.map((item) => ({
-  name: item.status,
-  value: item.count,
-}));
+/** Đồng bộ với Quản lý đơn hàng: đếm theo ORDER_STAGES */
+function buildOrderStatusChart(orders: Order[]) {
+  const counts = orders.reduce(
+    (acc, order) => {
+      acc[order.stage] = (acc[order.stage] ?? 0) + 1;
+      return acc;
+    },
+    {} as Partial<Record<OrderStage, number>>,
+  );
+
+  return ORDER_STAGES.map((stage) => ({
+    key: stage.key,
+    name: stage.label,
+    value: counts[stage.key] ?? 0,
+    color: stage.color,
+  })).filter((item) => item.value > 0);
+}
 
 export default function DashboardPage() {
-  const recentOrders = MOCK_ORDERS.slice(0, 5);
-  const upcomingPayments = MOCK_PAYMENTS.filter((p) => p.status !== "paid").slice(0, 5);
+  const { token } = theme.useToken();
+  const { orders } = useOrders();
+  const { payments } = usePayments();
+  const recentOrders = orders.slice(0, 5);
+  const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
+  const orderStatusData = buildOrderStatusChart(orders);
+  const totalOrders = orders.length;
 
   return (
     <>
@@ -80,7 +90,7 @@ export default function DashboardPage() {
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <StatCard title="Tổng đơn hàng" value={d.orders.total} prefix={<ProjectOutlined />} />
+            <StatCard title="Tổng đơn hàng" value={totalOrders} prefix={<ProjectOutlined />} />
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard title="Tổng khách hàng" value={d.customers.total} prefix={<TeamOutlined />} />
@@ -105,8 +115,18 @@ export default function DashboardPage() {
                     <XAxis dataKey="label" tickLine={false} />
                     <YAxis tickFormatter={formatVnd} tickLine={false} width={48} />
                     <Tooltip
-                      formatter={(value) => [`${Number(value).toLocaleString()} ₫`, "Doanh thu"]}
+                      cursor={false}
+                      formatter={(value) => [`${Number(value).toLocaleString("vi-VN")} ₫`, "Doanh thu"]}
                       labelFormatter={(label) => `Tháng: ${label}`}
+                      contentStyle={{
+                        background: token.colorBgElevated,
+                        border: `1px solid ${token.colorBorder}`,
+                        borderRadius: 8,
+                        color: token.colorText,
+                        boxShadow: token.boxShadowSecondary,
+                      }}
+                      labelStyle={{ color: token.colorTextSecondary }}
+                      itemStyle={{ color: token.colorText }}
                     />
                     <Bar dataKey="value" fill="#0075de" radius={[8, 8, 0, 0]} maxBarSize={42} />
                   </BarChart>
@@ -131,10 +151,34 @@ export default function DashboardPage() {
                       paddingAngle={2}
                     >
                       {orderStatusData.map((entry) => (
-                        <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? "#1677ff"} />
+                        <Cell key={entry.key} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => [`${value} đơn`, "Số lượng"]} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const item = payload[0];
+                        const status = String(item.name ?? "");
+                        const count = item.value;
+                        return (
+                          <div
+                            style={{
+                              background: token.colorBgElevated,
+                              border: `1px solid ${token.colorBorder}`,
+                              borderRadius: 8,
+                              padding: "8px 12px",
+                              fontSize: 13,
+                              color: token.colorText,
+                              boxShadow: token.boxShadowSecondary,
+                            }}
+                          >
+                            <span style={{ color: item.payload?.fill ?? item.color }}>
+                              {status}: {count} đơn
+                            </span>
+                          </div>
+                        );
+                      }}
+                    />
                     <Legend verticalAlign="bottom" height={36} />
                   </PieChart>
                 </ResponsiveContainer>
@@ -157,7 +201,17 @@ export default function DashboardPage() {
                     <XAxis type="number" tickFormatter={formatVnd} tickLine={false} />
                     <YAxis type="category" dataKey="name" width={100} tickLine={false} />
                     <Tooltip
-                      formatter={(value) => [`${Number(value).toLocaleString()} ₫`, "Hoa hồng"]}
+                      cursor={false}
+                      formatter={(value) => [`${Number(value).toLocaleString("vi-VN")} ₫`, "Hoa hồng"]}
+                      contentStyle={{
+                        background: token.colorBgElevated,
+                        border: `1px solid ${token.colorBorder}`,
+                        borderRadius: 8,
+                        color: token.colorText,
+                        boxShadow: token.boxShadowSecondary,
+                      }}
+                      labelStyle={{ color: token.colorTextSecondary }}
+                      itemStyle={{ color: token.colorText }}
                     />
                     <Bar dataKey="amount" radius={[0, 6, 6, 0]} maxBarSize={22}>
                       {d.commission.topCtv.map((entry, index) => (
@@ -187,7 +241,7 @@ export default function DashboardPage() {
                       >
                         <div>
                           <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
-                          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>
+                          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
                             {o.customerName} · {o.serviceName}
                           </div>
                         </div>
@@ -212,8 +266,8 @@ export default function DashboardPage() {
                       >
                         <div>
                           <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
-                          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>
-                            {p.customerName} · Còn lại: {p.remaining.toLocaleString()} ₫
+                          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                            {p.customerName} · Còn lại: {p.remaining.toLocaleString("vi-VN")} ₫
                           </div>
                         </div>
                         <Tag color={p.status === "overdue" ? "error" : "warning"}>

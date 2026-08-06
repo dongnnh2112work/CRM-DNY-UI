@@ -1,18 +1,35 @@
 "use client";
 
-import { Button, Form, Input, Select, Space } from "antd";
+import { App, Button, Form, Input, Select, Space } from "antd";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
+import { useCustomers } from "@/lib/customers-store";
 
 export default function NewCustomerPage() {
   const router = useRouter();
+  const { message } = App.useApp();
+  const { addCustomer } = useCustomers();
+
   return (
     <>
       <PageHeader breadcrumbs={[{ title: "Khách hàng", href: "/customers" }, { title: "Tạo mới" }]} />
       <Form
         layout="vertical"
         style={{ maxWidth: 560, padding: 24 }}
-        onFinish={() => router.push("/customers")}
+        onFinish={(values) => {
+          addCustomer({
+            name: values.name,
+            phone: values.phone,
+            email: values.email,
+            company: values.company,
+            taxCode: values.taxCode,
+            address: values.address,
+            owner: values.owner,
+            status: "lead",
+          });
+          message.success("Đã lưu khách hàng");
+          router.push("/customers");
+        }}
       >
         <Form.Item name="name" label="Tên" rules={[{ required: true }]}>
           <Input />
@@ -37,7 +54,9 @@ export default function NewCustomerPage() {
         </Form.Item>
         <Space>
           <Button onClick={() => router.push("/customers")}>Hủy</Button>
-          <Button type="primary" htmlType="submit">Lưu khách hàng</Button>
+          <Button type="primary" htmlType="submit">
+            Lưu khách hàng
+          </Button>
         </Space>
       </Form>
     </>
