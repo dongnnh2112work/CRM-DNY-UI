@@ -1,4 +1,6 @@
-import type { FieldDefinition } from "@/lib/types";
+import { getStatusMeta } from "@/lib/status-config";
+import { matchesTableQuery } from "@/lib/table-search";
+import type { FieldDefinition, Service } from "@/lib/types";
 
 /** Keys stored on Service root (not customFields) */
 export const SERVICE_CORE_KEYS = new Set([
@@ -18,6 +20,20 @@ export function getServiceFormExtraFields(fieldDefs: FieldDefinition[]): FieldDe
   return fieldDefs
     .filter((d) => d.visible && !SERVICE_CORE_KEYS.has(d.key))
     .sort((a, b) => a.order - b.order);
+}
+
+/** Search across all values shown (or showable) in the services table. */
+export function serviceMatchesQuery(service: Service, query: string): boolean {
+  return matchesTableQuery(query, [
+    service.name,
+    service.code,
+    service.category,
+    service.status,
+    getStatusMeta("service", service.status).label,
+    service.unitPrice,
+    service.processingDays,
+    service.customFields,
+  ]);
 }
 
 export function splitServiceFormValues(

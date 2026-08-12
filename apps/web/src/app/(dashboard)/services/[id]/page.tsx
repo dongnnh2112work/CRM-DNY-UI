@@ -1,15 +1,17 @@
 "use client";
 
-import { App, Button, Descriptions, Drawer, Form, Input, InputNumber, Popconfirm, Select, Space, Tag, Typography } from "antd";
+import { App, Button, Descriptions, Modal, Popconfirm, Space, Tabs, Tag, Typography } from "antd";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
-import { ServiceExtraFormFields } from "@/components/services/service-extra-form-fields";
-import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
-import { getServiceFormExtraFields, splitServiceFormValues } from "@/lib/service-fields";
+import { PageLoading } from "@/components/shared/page-loading";
+import { ServiceForm } from "@/components/services/service-form";
+import { ds } from "@/lib/design-tokens";
+import { formatVndDisplay } from "@/lib/format-vnd";
+import { getServiceFormExtraFields } from "@/lib/service-fields";
 import { useServices } from "@/lib/services-store";
-
-const CATEGORIES = ["Work Permit", "Visa", "License", "Legal", "Other"];
 
 export default function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,24 +20,18 @@ export default function ServiceDetailPage() {
   const { getById, ready, updateService, setServiceStatus, deleteService, fieldDefs } = useServices();
   const service = getById(id);
   const [editOpen, setEditOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
   const extraFields = getServiceFormExtraFields(fieldDefs);
 
-  useEffect(() => {
-    if (service && editOpen) {
-      form.setFieldsValue({
-        name: service.name,
-        code: service.code,
-        category: service.category,
-        unitPrice: service.unitPrice,
-        processingDays: service.processingDays,
-        ...service.customFields,
-      });
-    }
-  }, [service, editOpen, form]);
-
-  if (!ready) return null;
-  if (!service) return <div style={{ padding: 24 }}>Không tìm thấy dịch vụ.</div>;
+  if (!ready) return <PageLoading />;
+  if (!service) {
+    return (
+      <EmptyState
+        description="Không tìm thấy dịch vụ."
+        action={{ label: "Quay lại danh sách", href: "/services" }}
+      />
+    );
+  }
 
   const toggleStatus = () => {
     const next = service.status === "active" ? "inactive" : "active";
@@ -65,9 +61,7 @@ export default function ServiceDetailPage() {
             okButtonProps={{ danger: true }}
             onConfirm={onDelete}
           >
-            <Button danger type="primary">
-              Xóa
-            </Button>
+            <Button danger>Xóa</Button>
           </Popconfirm>
         </Space>
       </PageHeader>
@@ -80,69 +74,79 @@ export default function ServiceDetailPage() {
             {service.status === "active" ? "Hoạt động" : "Ngừng"}
           </Tag>
         </Space>
-        <Descriptions bordered column={1} size="small" style={{ maxWidth: 560 }}>
-          <Descriptions.Item label="Mã">{service.code}</Descriptions.Item>
-          <Descriptions.Item label="Danh mục">{service.category}</Descriptions.Item>
-          <Descriptions.Item label="Đơn giá">{formatVndDisplay(service.unitPrice)}</Descriptions.Item>
-          <Descriptions.Item label="Thời gian xử lý">{service.processingDays} ngày</Descriptions.Item>
-          {extraFields.map((def) => {
-            const raw = service.customFields?.[def.key];
-            const display =
-              raw == null || raw === ""
-                ? "—"
-                : def.type === "number" && typeof raw === "number"
-                  ? Number(raw).toLocaleString("vi-VN")
-                  : String(raw);
-            return (
-              <Descriptions.Item key={def.key} label={def.label}>
-                {display}
-              </Descriptions.Item>
-            );
-          })}
-        </Descriptions>
+        <Tabs
+          items={[
+            {
+              key: "info",
+              label: "Thông tin",
+              children: (
+                <Descriptions bordered column={1} size="small" style={{ maxWidth: 560 }}>
+                  <Descriptions.Item label="Mã">{service.code}</Descriptions.Item>
+                  <Descriptions.Item label="Danh mục">{service.category}</Descriptions.Item>
+                  <Descriptions.Item label="Đơn giá">{formatVndDisplay(service.unitPrice)}</Descriptions.Item>
+                  <Descriptions.Item label="Thời gian xử lý">{service.processingDays} ngày</Descriptions.Item>
+                  {extraFields.map((def) => {
+                    const raw = service.customFields?.[def.key];
+                    const display =
+                      raw == null || raw === ""
+                        ? "—"
+                        : def.type === "number" && typeof raw === "number"
+                          ? Number(raw).toLocaleString("vi-VN")
+                          : String(raw);
+                    return (
+                      <Descriptions.Item key={def.key} label={def.label}>
+                        {display}
+                      </Descriptions.Item>
+                    );
+                  })}
+                </Descriptions>
+              ),
+            },
+            {
+              key: "notes",
+              label: "Ghi chú / Liên quan",
+              children: (
+                <Typography.Paragraph type="secondary">
+                  Ghi chú và đơn hàng dùng dịch vụ này sẽ hiển thị tại đây.{" "}
+                  <Link href="/orders/new">Tạo đơn mới</Link>.
+                </Typography.Paragraph>
+              ),
+            },
+          ]}
+        />
       </div>
 
-      <Drawer
+      <Modal
         title="Sửa dịch vụ"
         open={editOpen}
-        onClose={() => setEditOpen(false)}
-        width={420}
-        destroyOnClose
+        onCancel={() => setEditOpen(false)}
+        footer={null}
+        width={560}
+        centered
+        destroyOnHidden
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(values) => {
-            const { core, customFields } = splitServiceFormValues(values, extraFields);
-            updateService(service.id, { ...core, customFields });
-            message.success("Đã cập nhật dịch vụ");
-            setEditOpen(false);
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}>
+          Chỉnh sửa thông tin dịch vụ rồi bấm lưu.
+        </Typography.Paragraph>
+        <ServiceForm
+          key={service.id}
+          service={service}
+          fieldDefs={fieldDefs}
+          submitLabel="Lưu thay đổi"
+          loading={saving}
+          onSubmit={async (payload) => {
+            setSaving(true);
+            try {
+              updateService(service.id, payload);
+              message.success("Đã cập nhật dịch vụ");
+              setEditOpen(false);
+            } finally {
+              setSaving(false);
+            }
           }}
-        >
-          <Form.Item name="name" label="Tên dịch vụ" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="code" label="Mã" rules={[{ required: true }]}>
-            <Input style={{ fontFamily: "monospace" }} />
-          </Form.Item>
-          <Form.Item name="category" label="Danh mục" rules={[{ required: true }]}>
-            <Select options={CATEGORIES.map((c) => ({ value: c, label: c }))} />
-          </Form.Item>
-          <Form.Item name="unitPrice" label="Đơn giá (VND)" rules={[{ required: true }]}>
-            <InputNumber {...vndInputProps} />
-          </Form.Item>
-          <Form.Item name="processingDays" label="Thời gian xử lý (ngày)" rules={[{ required: true }]}>
-            <InputNumber style={{ width: "100%" }} min={1} />
-          </Form.Item>
-          <ServiceExtraFormFields fields={extraFields} />
-          <Space>
-            <Button onClick={() => setEditOpen(false)}>Hủy</Button>
-            <Button type="primary" htmlType="submit">
-              Lưu
-            </Button>
-          </Space>
-        </Form>
-      </Drawer>
+        />
+      </Modal>
     </>
   );
 }

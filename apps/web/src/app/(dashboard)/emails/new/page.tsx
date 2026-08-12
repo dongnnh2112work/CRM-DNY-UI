@@ -2,17 +2,30 @@
 
 import { Button, DatePicker, Form, Input, Select, Space, Typography } from "antd";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { useCustomers } from "@/lib/customers-store";
 
 export default function ComposeEmailPage() {
   const router = useRouter();
   const { customers } = useCustomers();
+  const [saving, setSaving] = useState(false);
 
   return (
     <>
       <PageHeader breadcrumbs={[{ title: "Email", href: "/emails" }, { title: "Soạn thư" }]} />
-      <Form layout="vertical" style={{ maxWidth: 640, padding: 24 }} onFinish={() => router.push("/emails")}>
+      <Form
+        layout="vertical"
+        style={{ maxWidth: 640, padding: 24 }}
+        onFinish={() => {
+          setSaving(true);
+          try {
+            router.push("/emails");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
         <Form.Item name="recipients" label="Người nhận" rules={[{ required: true }]}>
           <Select
             mode="multiple"
@@ -35,9 +48,15 @@ export default function ComposeEmailPage() {
           Trình soạn thảo đầy đủ sẽ có trong phiên bản hoàn chỉnh.
         </Typography.Text>
         <Space>
-          <Button onClick={() => router.push("/emails")}>Hủy</Button>
-          <Button htmlType="submit">Lưu nháp</Button>
-          <Button type="primary" htmlType="submit">Gửi ngay</Button>
+          <Button onClick={() => router.push("/emails")} disabled={saving}>
+            Hủy
+          </Button>
+          <Button htmlType="submit" loading={saving} disabled={saving}>
+            Lưu nháp
+          </Button>
+          <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
+            Gửi ngay
+          </Button>
         </Space>
       </Form>
     </>

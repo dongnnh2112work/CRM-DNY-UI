@@ -1,16 +1,16 @@
-import type { AppUser, Order, OrderStage, UserRole } from "./types";
+import type { AppUser, BuiltInUserRole, Order, OrderStage } from "./types";
 
 /**
  * Toggle later when business rules change.
  * - true  = every stage change needs reviewer approval
  * - false = free drag (except when a pending request exists)
  */
-export const STAGE_TRANSITION_REQUIRES_APPROVAL = true;
+export const STAGE_TRANSITION_REQUIRES_APPROVAL = false;
 
 /** Stages that still require approval even if STAGE_TRANSITION_REQUIRES_APPROVAL is false */
-export const ALWAYS_GATED_STAGES: OrderStage[] = ["completed", "cancelled"];
+export const ALWAYS_GATED_STAGES: OrderStage[] = [];
 
-const OVERRIDE_ROLES: UserRole[] = ["super_admin", "admin"];
+const OVERRIDE_ROLES: BuiltInUserRole[] = ["super_admin", "admin"];
 
 export function requiresApprovalForTransition(_from: OrderStage, to: OrderStage): boolean {
   if (STAGE_TRANSITION_REQUIRES_APPROVAL) return true;
@@ -25,7 +25,7 @@ export function canRequestTransition(order: Order, actorId: string): boolean {
 export function canApprove(order: Order, actor: Pick<AppUser, "id" | "role">): boolean {
   if (order.approvalStatus !== "pending_review") return false;
   if (actor.id === order.reviewerId) return true;
-  return OVERRIDE_ROLES.includes(actor.role);
+  return (OVERRIDE_ROLES as string[]).includes(actor.role);
 }
 
 export function isTransitionAllowed(order: Order, toStage: OrderStage): boolean {

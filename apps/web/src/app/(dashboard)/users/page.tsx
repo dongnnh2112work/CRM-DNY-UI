@@ -1,93 +1,212 @@
 "use client";
 
-import { GoogleOutlined, MailOutlined } from "@ant-design/icons";
-import { Button, Checkbox, Drawer, Form, Input, Modal, Select, Space, Table, Tag, type TableColumnsType } from "antd";
-import { useState } from "react";
+import { PlusOutlined, UserOutlined } from "@ant-design/icons";
+import {
+  App,
+  Avatar,
+  Button,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  type TableColumnsType,
+} from "antd";
+import { useEffect, useState } from "react";
+import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
-import { MOCK_USERS } from "@/lib/mock-users";
-import { PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS, type AppUser, type Permission, type UserRole } from "@/lib/types";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { PermissionMatrix } from "@/components/users/permission-matrix";
+import { UserProfileForm } from "@/components/users/user-profile-form";
+import { ds } from "@/lib/design-tokens";
+import {
+  emptyPagePermissions,
+  normalizePagePermissions,
+  type AppUser,
+  type RolePagePermissions,
+  type UserRole,
+} from "@/lib/types";
+import { getStatusMeta } from "@/lib/status-config";
+import { matchesTableQuery } from "@/lib/table-search";
+import { useUsers } from "@/lib/users-store";
 
-const USER_STATUS_LABELS: Record<string, string> = {
-  active: "Hoạt động",
-  inactive: "Ngừng",
-};
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, "vi");
+}
+
+function formatDob(iso?: string) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
 
 export default function UsersPage() {
-  const [users, setUsers] = useState(MOCK_USERS);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { message } = App.useApp();
+  const {
+    users,
+    roles,
+    createUser,
+    updateUser,
+    setUserStatus,
+    rolePermissions,
+    updateRolePermissions,
+    createRole,
+    deleteRole,
+    getRoleLabel,
+  } = useUsers();
+  const [profileOpen, setProfileOpen] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
-  const [permDrawer, setPermDrawer] = useState<UserRole | null>(null);
+  const [permRole, setPermRole] = useState<UserRole | null>(null);
+  const [draftPerms, setDraftPerms] = useState<RolePagePermissions | null>(null);
+  const [newRoleLabel, setNewRoleLabel] = useState("");
   const [query, setQuery] = useState("");
-  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+  const [savingPerms, setSavingPerms] = useState(false);
 
   const filtered = users.filter((u) =>
-    [u.name, u.email, u.role].some((f) => f.toLowerCase().includes(query.toLowerCase())),
+    matchesTableQuery(query, [
+      u.name,
+      u.email,
+      u.phone,
+      u.dateOfBirth,
+      formatDob(u.dateOfBirth),
+      u.address,
+      u.role,
+      getRoleLabel(u.role),
+      u.status,
+      getStatusMeta("user", u.status).label,
+      u.authMethod,
+      u.useCustomPermissions ? "custom" : null,
+    ]),
   );
 
-  const handleSave = (values: Record<string, string>) => {
-    if (editUser) {
-      setUsers((prev) => prev.map((u) => (u.id === editUser.id ? { ...u, ...values } as AppUser : u)));
+  useEffect(() => {
+    if (permRole) {
+      setDraftPerms(
+        normalizePagePermissions(rolePermissions[permRole] ?? emptyPagePermissions()),
+      );
     } else {
-      const newUser: AppUser = {
-        id: `u${Date.now()}`,
-        name: values.name,
-        email: values.email,
-        role: values.role as UserRole,
-        status: "active",
-        authMethod: "email",
-        createdAt: new Date().toISOString().slice(0, 10),
-      };
-      setUsers((prev) => [...prev, newUser]);
+      setDraftPerms(null);
     }
-    setDrawerOpen(false);
+  }, [permRole, rolePermissions]);
+
+  const openCreate = () => {
     setEditUser(null);
-    form.resetFields();
+    setProfileOpen(true);
   };
 
-  const openEdit = (user: AppUser) => {
+  const openUser = (user: AppUser) => {
     setEditUser(user);
-    form.setFieldsValue(user);
-    setDrawerOpen(true);
+    setProfileOpen(true);
   };
 
-  const toggleStatus = (id: string) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: u.status === "active" ? "inactive" : "active" } : u)),
-    );
+  const closeProfile = () => {
+    setProfileOpen(false);
+    setEditUser(null);
   };
+
+  const openRolePerms = (roleKey: UserRole) => {
+    setPermRole(roleKey);
+    setNewRoleLabel("");
+  };
+
+  const selectedRoleDef = permRole ? roles.find((r) => r.key === permRole) : null;
 
   const columns: TableColumnsType<AppUser> = [
-    { title: "Tên", dataIndex: "name" },
-    { title: "Email", dataIndex: "email" },
     {
-      title: "Vai trò",
-      dataIndex: "role",
-      render: (r: UserRole) => (
-        <Tag color="blue" style={{ cursor: "pointer" }} onClick={() => setPermDrawer(r)}>
-          {ROLE_LABELS[r]}
-        </Tag>
+      title: "",
+      key: "avatar",
+      width: 48,
+      render: (_, r) => <Avatar size="small" src={r.avatar} icon={<UserOutlined />} />,
+    },
+    {
+      title: "Họ tên",
+      dataIndex: "name",
+      sorter: (a, b) => compareText(a.name, b.name),
+      render: (name: string, record) => (
+        <Button
+          type="link"
+          style={{ padding: 0, height: "auto", fontWeight: 500 }}
+          onClick={() => openUser(record)}
+        >
+          {name}
+        </Button>
       ),
     },
     {
-      title: "Đăng nhập",
-      dataIndex: "authMethod",
-      render: (m: string) => m === "google" ? <GoogleOutlined style={{ color: "#4285f4" }} /> : <MailOutlined />,
+      title: "SĐT",
+      dataIndex: "phone",
+      sorter: (a, b) => compareText(a.phone ?? "", b.phone ?? ""),
+      render: (v?: string) => v || "—",
+    },
+    {
+      title: "Email",
+      dataIndex: "email",
+      sorter: (a, b) => compareText(a.email, b.email),
+    },
+    {
+      title: "Ngày sinh",
+      dataIndex: "dateOfBirth",
+      sorter: (a, b) => compareText(a.dateOfBirth ?? "", b.dateOfBirth ?? ""),
+      render: (v?: string) => formatDob(v),
+    },
+    {
+      title: "Địa chỉ",
+      dataIndex: "address",
+      ellipsis: true,
+      render: (v?: string) =>
+        v ? (
+          <Tooltip title={v}>
+            <span>{v}</span>
+          </Tooltip>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      title: "Vai trò",
+      dataIndex: "role",
+      sorter: (a, b) => compareText(getRoleLabel(a.role), getRoleLabel(b.role)),
+      render: (r: UserRole, record) => (
+        <Space size={4}>
+          <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openRolePerms(r)}>
+            <Tag color="blue">{getRoleLabel(r)}</Tag>
+          </Button>
+          {record.useCustomPermissions ? (
+            <Tooltip title="Đang dùng phân quyền tùy chỉnh (ghi đè vai trò)">
+              <Tag color="orange">Custom</Tag>
+            </Tooltip>
+          ) : null}
+        </Space>
+      ),
     },
     {
       title: "Trạng thái",
       dataIndex: "status",
-      render: (s: string) => <Tag color={s === "active" ? "success" : "default"}>{USER_STATUS_LABELS[s] ?? s}</Tag>,
+      sorter: (a, b) => compareText(a.status, b.status),
+      render: (s: string) => <StatusBadge module="user" status={s} />,
     },
     {
       title: "Thao tác",
       key: "action",
       render: (_, record) => (
-        <Space>
-          <Button size="small" onClick={() => openEdit(record)}>Sửa</Button>
-          <Button size="small" danger={record.status === "active"} onClick={() => toggleStatus(record.id)}>
+        <Popconfirm
+          title={record.status === "active" ? "Vô hiệu hóa người dùng này?" : "Kích hoạt người dùng này?"}
+          okText="Xác nhận"
+          cancelText="Hủy"
+          onConfirm={() => {
+            setUserStatus(record.id, record.status === "active" ? "inactive" : "active");
+            message.success("Đã cập nhật trạng thái");
+          }}
+        >
+          <Button size="small" danger={record.status === "active"}>
             {record.status === "active" ? "Vô hiệu hóa" : "Kích hoạt"}
           </Button>
-        </Space>
+        </Popconfirm>
       ),
     },
   ];
@@ -96,44 +215,197 @@ export default function UsersPage() {
     <>
       <PageHeader
         breadcrumbs={[{ title: "Quản lý người dùng" }]}
-        searchPlaceholder="Tìm người dùng…"
+        searchPlaceholder="Tìm trong bảng…"
         onSearch={setQuery}
         searchValue={query}
-        primaryAction={{ label: "+ Người dùng mới", href: "#" }}
+        primaryAction={{ label: "+ Người dùng mới", onClick: openCreate }}
+      />
+      <DataTable<AppUser>
+        rowKey="id"
+        columns={columns}
+        dataSource={filtered}
+        emptyDescription={
+          query.trim() && users.length > 0
+            ? "Không tìm thấy kết quả phù hợp."
+            : "Chưa có người dùng nào."
+        }
+        emptyAction={
+          query.trim() && users.length > 0
+            ? undefined
+            : { label: "Thêm người dùng", onClick: openCreate }
+        }
+      />
+
+      <Modal
+        title={editUser ? editUser.name : "Người dùng mới"}
+        open={profileOpen}
+        onCancel={closeProfile}
+        footer={null}
+        width={560}
+        centered
+        destroyOnHidden
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
       >
-        <Button type="primary" onClick={() => { setEditUser(null); form.resetFields(); setDrawerOpen(true); }}>
-          + Người dùng mới
-        </Button>
-      </PageHeader>
-      <div style={{ padding: 16 }}>
-        <Table rowKey="id" columns={columns} dataSource={filtered} pagination={{ pageSize: 10 }} />
-      </div>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}>
+          {editUser
+            ? "Xem và chỉnh sửa thông tin. Có thể bật phân quyền tùy chỉnh cho case đặc biệt."
+            : "Điền thông tin để tạo người dùng mới."}
+        </Typography.Paragraph>
+        <UserProfileForm
+          key={editUser?.id ?? "new"}
+          user={
+            editUser ?? {
+              id: "",
+              name: "",
+              email: "",
+              role: "staff",
+              status: "active",
+              authMethod: "email",
+              createdAt: "",
+            }
+          }
+          showRole
+          showStatus={Boolean(editUser)}
+          showCustomPermissions={Boolean(editUser)}
+          roleOptions={roles}
+          rolePermissionsLookup={rolePermissions}
+          submitLabel={editUser ? "Lưu thay đổi" : "Tạo người dùng"}
+          loading={saving}
+          onSubmit={async (values) => {
+            setSaving(true);
+            try {
+              if (editUser) {
+                updateUser(editUser.id, {
+                  name: values.name,
+                  email: values.email,
+                  phone: values.phone,
+                  dateOfBirth: values.dateOfBirth,
+                  address: values.address,
+                  avatar: values.avatar,
+                  role: values.role,
+                  status: values.status,
+                  useCustomPermissions: values.useCustomPermissions,
+                  customPermissions: values.useCustomPermissions
+                    ? values.customPermissions
+                    : undefined,
+                });
+                message.success("Đã cập nhật người dùng");
+              } else {
+                createUser({
+                  name: values.name,
+                  email: values.email,
+                  phone: values.phone,
+                  dateOfBirth: values.dateOfBirth,
+                  address: values.address,
+                  avatar: values.avatar,
+                  role: values.role ?? "staff",
+                  status: "active",
+                  authMethod: "email",
+                });
+                message.success("Đã tạo người dùng");
+              }
+              closeProfile();
+            } finally {
+              setSaving(false);
+            }
+          }}
+        />
+      </Modal>
 
-      <Drawer title={editUser ? "Sửa người dùng" : "Người dùng mới"} open={drawerOpen} onClose={() => { setDrawerOpen(false); setEditUser(null); }} width={420}>
-        <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="name" label="Tên" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="role" label="Vai trò" rules={[{ required: true }]}>
-            <Select options={Object.entries(ROLE_LABELS).map(([k, v]) => ({ value: k, label: v }))} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" block>
-            {editUser ? "Lưu thay đổi" : "Tạo người dùng"}
+      <Modal
+        title="Phân quyền theo vai trò"
+        open={!!permRole}
+        onCancel={() => setPermRole(null)}
+        width={640}
+        centered
+        okText="Lưu ma trận"
+        cancelText="Đóng"
+        confirmLoading={savingPerms}
+        onOk={() => {
+          if (!permRole || !draftPerms) return;
+          setSavingPerms(true);
+          try {
+            updateRolePermissions(permRole, draftPerms);
+            message.success(`Đã lưu phân quyền ${getRoleLabel(permRole)}`);
+            setPermRole(null);
+          } finally {
+            setSavingPerms(false);
+          }
+        }}
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
+          Chọn / thêm vai trò, rồi chỉnh <strong>Xem</strong> và <strong>Sửa</strong> theo từng trang.
+          Bật Sửa sẽ tự bật Xem.
+        </Typography.Paragraph>
+
+        <Space wrap style={{ width: "100%", marginBottom: 12 }} align="start">
+          <Select
+            style={{ minWidth: 220 }}
+            value={permRole ?? undefined}
+            options={roles.map((r) => ({
+              value: r.key,
+              label: r.builtin ? r.label : `${r.label} (tùy chỉnh)`,
+            }))}
+            onChange={(key) => openRolePerms(key)}
+          />
+          {selectedRoleDef && !selectedRoleDef.builtin ? (
+            <Popconfirm
+              title={`Xóa vai trò “${selectedRoleDef.label}”?`}
+              description="Chỉ xóa được khi không còn user nào dùng role này."
+              okText="Xóa"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
+                const res = deleteRole(selectedRoleDef.key);
+                if (!res.ok) {
+                  message.warning(res.reason);
+                  return;
+                }
+                message.success("Đã xóa vai trò");
+                setPermRole("staff");
+              }}
+            >
+              <Button danger size="small">
+                Xóa vai trò
+              </Button>
+            </Popconfirm>
+          ) : null}
+        </Space>
+
+        <Space.Compact style={{ width: "100%", marginBottom: 16 }}>
+          <Input
+            placeholder="Tên vai trò mới (vd: Sales Lead)"
+            value={newRoleLabel}
+            onChange={(e) => setNewRoleLabel(e.target.value)}
+            onPressEnter={() => {
+              if (!newRoleLabel.trim()) return;
+              const created = createRole(newRoleLabel, permRole ?? "staff");
+              message.success(`Đã tạo vai trò ${created.label}`);
+              setNewRoleLabel("");
+              openRolePerms(created.key);
+            }}
+          />
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              if (!newRoleLabel.trim()) {
+                message.warning("Nhập tên vai trò");
+                return;
+              }
+              const created = createRole(newRoleLabel, permRole ?? "staff");
+              message.success(`Đã tạo vai trò ${created.label}`);
+              setNewRoleLabel("");
+              openRolePerms(created.key);
+            }}
+          >
+            Thêm role
           </Button>
-        </Form>
-      </Drawer>
+        </Space.Compact>
 
-      <Modal title={`Quyền: ${permDrawer ? ROLE_LABELS[permDrawer] : ""}`} open={!!permDrawer} onCancel={() => setPermDrawer(null)} footer={null}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-          {PERMISSIONS.map((p) => (
-            <Checkbox key={p} checked={permDrawer ? ROLE_PERMISSIONS[permDrawer].includes(p as Permission) : false} disabled>
-              {p}
-            </Checkbox>
-          ))}
-        </div>
+        {draftPerms ? (
+          <PermissionMatrix value={draftPerms} onChange={setDraftPerms} />
+        ) : null}
       </Modal>
     </>
   );

@@ -21,12 +21,22 @@ export const ds = {
   accentTeal: "#2a9d99",
   accentGreen: "#1aae39",
   accentBrown: "#523410",
+  danger: "#e03e3e",
   /** Soft fills for hover / selected rows */
   hover: "rgba(0, 0, 0, 0.04)",
   selected: "rgba(0, 117, 222, 0.08)",
   focusRing: "rgba(0, 117, 222, 0.35)",
   shadow: "0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.04)",
   radius: { xs: 4, sm: 5, md: 8, lg: 12, xl: 16, full: 9999 },
+  /** Typography scale — crm-ui-ux-rules: 12, 14, 16, 20, 24, 32 */
+  fontSize: {
+    caption: 12, // text-caption
+    bodySm: 14, // text-body-sm
+    body: 16, // text-body
+    h3: 20, // text-heading-3
+    h2: 24, // text-heading-2
+    h1: 32, // text-heading-1
+  },
 } as const;
 
 /** @deprecated use `ds` — kept briefly for migration */

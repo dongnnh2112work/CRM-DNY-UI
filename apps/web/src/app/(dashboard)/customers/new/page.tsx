@@ -2,6 +2,7 @@
 
 import { App, Button, Form, Input, Select, Space } from "antd";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { useCustomers } from "@/lib/customers-store";
 
@@ -9,6 +10,7 @@ export default function NewCustomerPage() {
   const router = useRouter();
   const { message } = App.useApp();
   const { addCustomer } = useCustomers();
+  const [saving, setSaving] = useState(false);
 
   return (
     <>
@@ -17,18 +19,23 @@ export default function NewCustomerPage() {
         layout="vertical"
         style={{ maxWidth: 560, padding: 24 }}
         onFinish={(values) => {
-          addCustomer({
-            name: values.name,
-            phone: values.phone,
-            email: values.email,
-            company: values.company,
-            taxCode: values.taxCode,
-            address: values.address,
-            owner: values.owner,
-            status: "lead",
-          });
-          message.success("Đã lưu khách hàng");
-          router.push("/customers");
+          setSaving(true);
+          try {
+            addCustomer({
+              name: values.name,
+              phone: values.phone,
+              email: values.email,
+              company: values.company,
+              taxCode: values.taxCode,
+              address: values.address,
+              owner: values.owner,
+              status: "lead",
+            });
+            message.success("Đã lưu khách hàng");
+            router.push("/customers");
+          } finally {
+            setSaving(false);
+          }
         }}
       >
         <Form.Item name="name" label="Tên" rules={[{ required: true }]}>
@@ -53,8 +60,10 @@ export default function NewCustomerPage() {
           <Select options={[{ value: "Le Staff A" }, { value: "Vo Staff B" }, { value: "Tran Admin" }]} />
         </Form.Item>
         <Space>
-          <Button onClick={() => router.push("/customers")}>Hủy</Button>
-          <Button type="primary" htmlType="submit">
+          <Button onClick={() => router.push("/customers")} disabled={saving}>
+            Hủy
+          </Button>
+          <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
             Lưu khách hàng
           </Button>
         </Space>

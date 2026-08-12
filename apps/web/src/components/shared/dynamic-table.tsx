@@ -1,9 +1,44 @@
 "use client";
 
 import { DeleteOutlined, SettingOutlined } from "@ant-design/icons";
-import { App, Button, Checkbox, Drawer, Input, Popconfirm, Select, Space, Table, Tag, Tooltip, type TableColumnsType } from "antd";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  App,
+  Button,
+  Checkbox,
+  Drawer,
+  Input,
+  Popconfirm,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  theme,
+  type TableColumnsType,
+} from "antd";
+import { useEffect, useMemo, useRef, useState, type Key, type ReactNode } from "react";
+import { DataTable } from "@/components/shared/data-table";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { formatVndDisplay } from "@/lib/format-vnd";
+import type { StatusModule } from "@/lib/status-config";
 import type { FieldDefinition, FieldType } from "@/lib/types";
+
+const MONEY_FIELD_KEYS = new Set([
+  "unitPrice",
+  "value",
+  "amount",
+  "totalAmount",
+  "paidAmount",
+  "remaining",
+  "taxAmount",
+  "ctvPrice",
+  "ratecard",
+  "commission",
+  "totalCommission",
+]);
+
+function isMoneyField(def: FieldDefinition) {
+  return MONEY_FIELD_KEYS.has(def.key) || /vnd|đơn giá|tiền|hoa hồng/i.test(def.label);
+}
 
 interface DynamicTableProps<T extends object> {
   fieldDefs: FieldDefinition[];
@@ -14,6 +49,18 @@ interface DynamicTableProps<T extends object> {
   rowKey: string;
   onRow?: (record: T) => { onClick?: () => void };
   extra?: TableColumnsType<T>;
+  /** When set, status column uses shared StatusBadge for this module */
+  statusModule?: StatusModule;
+  emptyDescription?: string;
+  emptyAction?: { label: string; href?: string; onClick?: () => void };
+  /** Enable checkbox selection (current page only via Ant Table default). */
+  enableRowSelection?: boolean;
+  selectedRowKeys?: Key[];
+  onSelectedRowKeysChange?: (keys: Key[]) => void;
+  /** Rendered between column manager and table when selection is active. */
+  bulkToolbar?: ReactNode;
+  /** Make a field value a clickable link (e.g. name → open edit). */
+  linkField?: { key: string; onClick: (record: T) => void };
 }
 
 function defsEqual(a: FieldDefinition[], b: FieldDefinition[]) {
@@ -28,8 +75,17 @@ export function DynamicTable<T extends object>({
   rowKey,
   onRow,
   extra = [],
+  statusModule,
+  emptyDescription = "Chưa có dữ liệu.",
+  emptyAction,
+  enableRowSelection = false,
+  selectedRowKeys,
+  onSelectedRowKeysChange,
+  bulkToolbar,
+  linkField,
 }: DynamicTableProps<T>) {
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [defs, setDefs] = useState(fieldDefs);
   const [newFieldLabel, setNewFieldLabel] = useState("");
@@ -52,20 +108,48 @@ export function DynamicTable<T extends object>({
     [defs],
   );
 
+  /** Persist so create/edit forms (Services/Customers) pick up new columns immediately. */
+  const applyDefs = (next: FieldDefinition[], toast?: string) => {
+    setDefs(next);
+    onFieldDefsChange?.(next);
+    if (toast) message.success(toast);
+  };
+
   const columns: TableColumnsType<T> = useMemo(() => {
     const cols: TableColumnsType<T> = visibleDefs.map((def) => ({
       title: def.label,
       dataIndex: def.key,
       key: def.key,
+      align: def.type === "number" ? ("center" as const) : undefined,
       sorter:
         def.type === "number"
           ? (a: T, b: T) =>
               Number((a as Record<string, unknown>)[def.key] ?? 0) -
               Number((b as Record<string, unknown>)[def.key] ?? 0)
           : undefined,
-      render: (value: unknown) => {
+      render: (value: unknown, record: T) => {
+        if (linkField && def.key === linkField.key) {
+          const label =
+            value != null && value !== "" ? String(value) : "—";
+          return (
+            <Button
+              type="link"
+              style={{ padding: 0, height: "auto", fontWeight: 500 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                linkField.onClick(record);
+              }}
+            >
+              {label}
+            </Button>
+          );
+        }
         if (def.type === "checkbox") return value ? "Có" : "Không";
         if (def.key === "status" && typeof value === "string") {
+          if (statusModule) {
+            return <StatusBadge module={statusModule} status={value} />;
+          }
+          // Legacy fallback until remaining modules migrate
           const color = value === "active" ? "success" : value === "lead" ? "processing" : "default";
           const statusLabels: Record<string, string> = {
             active: "Hoạt động",
@@ -76,15 +160,20 @@ export function DynamicTable<T extends object>({
           const label = statusLabels[value] ?? String(value).toUpperCase();
           return <Tag color={color}>{label}</Tag>;
         }
-        if (def.type === "number" && typeof value === "number") return value.toLocaleString("vi-VN");
+        if (def.type === "number" && typeof value === "number") {
+          return isMoneyField(def) ? formatVndDisplay(value) : value.toLocaleString("vi-VN");
+        }
         return value != null && value !== "" ? String(value) : "—";
       },
     }));
     return [...cols, ...extra];
-  }, [visibleDefs, extra]);
+  }, [visibleDefs, extra, statusModule, linkField]);
 
   const toggleVisibility = (key: string) => {
-    setDefs((prev) => prev.map((d) => (d.key === key ? { ...d, visible: !d.visible } : d)));
+    applyDefs(
+      defs.map((d) => (d.key === key ? { ...d, visible: !d.visible } : d)),
+      "Đã cập nhật hiển thị cột",
+    );
   };
 
   const addField = () => {
@@ -99,23 +188,29 @@ export function DynamicTable<T extends object>({
       message.warning("Tên cột không hợp lệ hoặc đã tồn tại");
       return;
     }
-    setDefs((prev) => [
-      ...prev,
-      {
-        key,
-        label: newFieldLabel.trim(),
-        type: newFieldType,
-        required: false,
-        order: prev.length + 1,
-        visible: true,
-      },
-    ]);
+    applyDefs(
+      [
+        ...defs,
+        {
+          key,
+          label: newFieldLabel.trim(),
+          type: newFieldType,
+          required: false,
+          order: defs.length + 1,
+          visible: true,
+        },
+      ],
+      "Đã thêm cột — hiện trên bảng và form tạo/sửa",
+    );
     setNewFieldLabel("");
   };
 
   const removeField = (key: string) => {
     if (locked.has(key)) return;
-    setDefs((prev) => prev.filter((d) => d.key !== key));
+    applyDefs(
+      defs.filter((d) => d.key !== key),
+      "Đã xóa cột khỏi bảng và form",
+    );
   };
 
   const handleSave = () => {
@@ -139,21 +234,25 @@ export function DynamicTable<T extends object>({
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0" }}>
-        <Button icon={<SettingOutlined />} size="small" onClick={() => setDrawerOpen(true)}>
-          Quản lý cột
-        </Button>
-      </div>
-      <div style={{ padding: 16 }}>
-        <Table
-          rowKey={rowKey}
-          columns={columns}
-          dataSource={flatData as T[]}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
-          size="middle"
-          onRow={onRow}
-        />
-      </div>
+      <DataTable<T>
+        rowKey={rowKey}
+        columns={columns}
+        dataSource={flatData as T[]}
+        onRow={onRow}
+        emptyDescription={emptyDescription}
+        emptyAction={emptyAction}
+        enableRowSelection={enableRowSelection}
+        selectedRowKeys={selectedRowKeys}
+        onSelectedRowKeysChange={onSelectedRowKeysChange}
+        bulkToolbar={bulkToolbar}
+        toolbar={
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0" }}>
+            <Button icon={<SettingOutlined />} size="small" onClick={() => setDrawerOpen(true)}>
+              Quản lý cột
+            </Button>
+          </div>
+        }
+      />
       <Drawer
         title="Quản lý cột"
         open={drawerOpen}
@@ -169,9 +268,6 @@ export function DynamicTable<T extends object>({
         }
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          {dirty && (
-            <Tag color="warning">Có thay đổi chưa lưu — bấm Lưu để giữ lại</Tag>
-          )}
           {defs.map((def) => {
             const isLocked = locked.has(def.key);
             return (
@@ -186,7 +282,7 @@ export function DynamicTable<T extends object>({
                 ) : (
                   <Popconfirm
                     title={`Xóa cột “${def.label}”?`}
-                    description="Cột sẽ biến mất khỏi bảng và form tạo/sửa sau khi Lưu."
+                    description="Cột sẽ biến mất khỏi bảng và form tạo/sửa."
                     okText="Xóa"
                     cancelText="Hủy"
                     okButtonProps={{ danger: true }}
@@ -200,7 +296,7 @@ export function DynamicTable<T extends object>({
               </div>
             );
           })}
-          <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 12 }}>
+          <div style={{ borderTop: `1px solid ${token.colorBorder}`, paddingTop: 12 }}>
             <Space.Compact style={{ width: "100%" }}>
               <Input
                 placeholder="Tên cột mới"

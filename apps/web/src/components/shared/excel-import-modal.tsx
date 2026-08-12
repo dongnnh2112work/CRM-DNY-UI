@@ -4,6 +4,7 @@ import { InboxOutlined } from "@ant-design/icons";
 import { Button, Modal, Space, Table, Typography, Upload } from "antd";
 import { useState, useCallback } from "react";
 import * as XLSX from "xlsx";
+import { ds } from "@/lib/design-tokens";
 
 interface ExcelImportModalProps {
   open: boolean;
@@ -59,7 +60,7 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">Nhấn hoặc kéo thả file .xlsx / .csv vào đây</p>
           {expectedColumns && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
               Cột mong đợi: {expectedColumns.join(", ")}
             </Typography.Text>
           )}

@@ -3,8 +3,10 @@
 import { CheckOutlined, CloseOutlined, SendOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Form, Input, Select, Space, Tag, Timeline, Typography } from "antd";
 import { LicenseUpload } from "@/components/orders/license-upload";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { ds } from "@/lib/design-tokens";
 import type { Order, OrderApprovalRequest, OrderAttachment, OrderStage } from "@/lib/types";
-import { APPROVAL_STATUS_LABELS, ORDER_STAGES } from "@/lib/types";
+import { ORDER_STAGES } from "@/lib/types";
 import {
   canApprove,
   canMoveToCompleted,
@@ -14,23 +16,10 @@ import {
   requiresLicenseForStage,
 } from "@/lib/order-workflow";
 import { MOCK_USERS } from "@/lib/mock-users";
+import { useUsers } from "@/lib/users-store";
 
-/** Mock current user — swap later with real auth session */
-export const MOCK_CURRENT_USER = MOCK_USERS[1];
+/** Fallback submitter mock when acting as submitter in demos */
 export const MOCK_CURRENT_SUBMITTER = MOCK_USERS[2];
-
-const approvalColor: Record<Order["approvalStatus"], string> = {
-  none: "default",
-  pending_review: "processing",
-  approved: "success",
-  rejected: "error",
-};
-
-const REQUEST_STATUS_LABELS: Record<OrderApprovalRequest["status"], string> = {
-  pending: "Chờ",
-  approved: "Đã duyệt",
-  rejected: "Từ chối",
-};
 
 interface OrderApprovalPanelProps {
   order: Order;
@@ -40,12 +29,14 @@ interface OrderApprovalPanelProps {
 
 export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: OrderApprovalPanelProps) {
   const { message } = App.useApp();
+  const { currentUser } = useUsers();
   const [form] = Form.useForm();
   const toStageWatch = Form.useWatch("toStage", form) as OrderStage | undefined;
+  const reviewer = currentUser ?? MOCK_USERS[1];
   const actor =
     actingAs === "submitter"
       ? { id: order.submitterId, role: MOCK_CURRENT_SUBMITTER.role, name: order.submitterName }
-      : { id: MOCK_CURRENT_USER.id, role: MOCK_CURRENT_USER.role, name: MOCK_CURRENT_USER.name };
+      : { id: reviewer.id, role: reviewer.role, name: reviewer.name };
 
   const pending = order.approvalHistory.find(
     (h) => h.id === order.pendingTransition?.requestId && h.status === "pending",
@@ -171,7 +162,7 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
     <div>
       <Space wrap style={{ marginBottom: 16 }}>
         <Typography.Text>Trạng thái duyệt:</Typography.Text>
-        <Tag color={approvalColor[order.approvalStatus]}>{APPROVAL_STATUS_LABELS[order.approvalStatus]}</Tag>
+        <StatusBadge module="approval" status={order.approvalStatus} />
         <Typography.Text type="secondary">
           Người gửi: {order.submitterName} · Người duyệt: {order.reviewerName}
         </Typography.Text>
@@ -301,15 +292,15 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
             children: (
               <div>
                 <div>
-                  <Tag>{REQUEST_STATUS_LABELS[h.status]}</Tag>
+                  <StatusBadge module="approvalRequest" status={h.status} />
                   {stageLabel(h.fromStage)} → {stageLabel(h.toStage)}
                 </div>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
                   Gửi bởi {h.requestedBy} ngày {h.requestedAt}
                   {h.reviewedBy ? ` · Duyệt bởi ${h.reviewedBy} ngày ${h.reviewedAt}` : ""}
                 </Typography.Text>
                 {(h.note || h.reviewNote) && (
-                  <div style={{ fontSize: 12 }}>
+                  <div style={{ fontSize: ds.fontSize.caption }}>
                     {h.note && <div>Yêu cầu: {h.note}</div>}
                     {h.reviewNote && <div>Duyệt: {h.reviewNote}</div>}
                   </div>

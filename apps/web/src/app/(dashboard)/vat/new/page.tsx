@@ -15,6 +15,7 @@ export default function NewVatPage() {
   const { orders } = useOrders();
   const { getById: getCustomer } = useCustomers();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const handleOrderChange = (orderId: string) => {
     const order = orders.find((o) => o.id === orderId);
@@ -37,7 +38,19 @@ export default function NewVatPage() {
   return (
     <>
       <PageHeader breadcrumbs={[{ title: "VAT", href: "/vat" }, { title: "Hóa đơn mới" }]} />
-      <Form form={form} layout="vertical" style={{ maxWidth: 560, padding: 24 }} onFinish={() => router.push("/vat")}>
+      <Form
+        form={form}
+        layout="vertical"
+        style={{ maxWidth: 560, padding: 24 }}
+        onFinish={() => {
+          setSaving(true);
+          try {
+            router.push("/vat");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
         <Form.Item name="orderId" label="Chọn đơn hàng" rules={[{ required: true }]}>
           <Select
             showSearch
@@ -68,8 +81,10 @@ export default function NewVatPage() {
           <InputNumber {...vndInputProps} disabled />
         </Form.Item>
         <Space>
-          <Button onClick={() => router.push("/vat")}>Hủy</Button>
-          <Button type="primary" htmlType="submit">
+          <Button onClick={() => router.push("/vat")} disabled={saving}>
+            Hủy
+          </Button>
+          <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
             Tạo hóa đơn VAT
           </Button>
         </Space>

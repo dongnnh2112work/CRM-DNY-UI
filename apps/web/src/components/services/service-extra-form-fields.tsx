@@ -1,6 +1,7 @@
 "use client";
 
-import { Checkbox, Form, Input, InputNumber, Select } from "antd";
+import { Checkbox, DatePicker, Form, Input, InputNumber, Select } from "antd";
+import dayjs from "dayjs";
 import type { FieldDefinition } from "@/lib/types";
 import { vndInputProps } from "@/lib/format-vnd";
 
@@ -16,6 +17,14 @@ export function ServiceExtraFormFields({ fields }: { fields: FieldDefinition[] }
           label={def.label}
           rules={def.required ? [{ required: true, message: `Nhập ${def.label}` }] : undefined}
           valuePropName={def.type === "checkbox" ? "checked" : "value"}
+          {...(def.type === "date"
+            ? {
+                getValueFromEvent: (d: dayjs.Dayjs | null) => (d ? d.format("YYYY-MM-DD") : undefined),
+                getValueProps: (value: string | undefined) => ({
+                  value: value ? dayjs(value) : undefined,
+                }),
+              }
+            : {})}
         >
           {def.type === "number" ? (
             <InputNumber {...vndInputProps} />
@@ -25,7 +34,7 @@ export function ServiceExtraFormFields({ fields }: { fields: FieldDefinition[] }
               allowClear={!def.required}
             />
           ) : def.type === "date" ? (
-            <Input type="date" />
+            <DatePicker style={{ width: "100%" }} />
           ) : def.type === "checkbox" ? (
             <Checkbox />
           ) : (

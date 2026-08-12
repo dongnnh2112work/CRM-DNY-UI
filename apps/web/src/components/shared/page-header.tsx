@@ -17,7 +17,8 @@ export function PageHeader({
   searchPlaceholder?: string;
   onSearch?: (v: string) => void;
   searchValue?: string;
-  primaryAction?: { label: string; href: string };
+  /** Right-aligned primary CTA — use href (navigate) or onClick (e.g. open modal). */
+  primaryAction?: { label: string; href?: string; onClick?: () => void };
   children?: ReactNode;
 }) {
   const router = useRouter();
@@ -48,7 +49,13 @@ export function PageHeader({
         {children}
         <div style={{ flex: 1 }} />
         {primaryAction && (
-          <Button type="primary" onClick={() => router.push(primaryAction.href)}>
+          <Button
+            type="primary"
+            onClick={() => {
+              if (primaryAction.onClick) primaryAction.onClick();
+              else if (primaryAction.href) router.push(primaryAction.href);
+            }}
+          >
             {primaryAction.label}
           </Button>
         )}

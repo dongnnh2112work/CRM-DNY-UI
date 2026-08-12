@@ -3,10 +3,19 @@
 import { GoogleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Button, Divider, Form, Input, Typography, theme } from "antd";
 import { useRouter } from "next/navigation";
+import { useUsers } from "@/lib/users-store";
+
+const DEFAULT_LOGIN_USER_ID = "u2";
 
 export default function LoginPage() {
   const router = useRouter();
   const { token } = theme.useToken();
+  const { loginAs } = useUsers();
+
+  const enterApp = () => {
+    loginAs(DEFAULT_LOGIN_USER_ID);
+    router.push("/dashboard");
+  };
 
   return (
     <div
@@ -46,7 +55,7 @@ export default function LoginPage() {
             borderRadius: 9999,
           }}
           icon={<GoogleOutlined />}
-          onClick={() => router.push("/dashboard")}
+          onClick={enterApp}
         >
           Đăng nhập bằng Google
         </Button>
@@ -55,7 +64,7 @@ export default function LoginPage() {
           hoặc đăng nhập bằng email
         </Divider>
 
-        <Form layout="vertical" onFinish={() => router.push("/dashboard")} requiredMark={false}>
+        <Form layout="vertical" onFinish={enterApp} requiredMark={false}>
           <Form.Item name="email" rules={[{ required: true, type: "email", message: "Vui lòng nhập email" }]}>
             <Input
               prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}

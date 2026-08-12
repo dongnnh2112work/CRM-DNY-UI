@@ -1,5 +1,7 @@
 /* ── Custom Field Engine ─────────────────────────────────────────── */
 
+import { ds } from "./design-tokens";
+
 export type FieldType = "text" | "number" | "date" | "select" | "checkbox";
 
 export interface FieldDefinition {
@@ -14,22 +16,50 @@ export interface FieldDefinition {
 
 /* ── User & RBAC ────────────────────────────────────────────────── */
 
-export type UserRole = "super_admin" | "admin" | "staff" | "accountant" | "ctv_role";
+/** Built-in role keys (cannot delete). Custom roles use free-form string keys. */
+export type BuiltInUserRole = "super_admin" | "admin" | "staff" | "accountant" | "ctv_role";
+
+/** Role key — built-in or custom (e.g. `custom_sales_lead`) */
+export type UserRole = BuiltInUserRole | (string & {});
 
 export type UserStatus = "active" | "inactive";
+
+export interface RoleDefinition {
+  key: string;
+  label: string;
+  /** System roles cannot be deleted */
+  builtin: boolean;
+}
 
 export interface AppUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  dateOfBirth?: string; // YYYY-MM-DD
+  address?: string;
   role: UserRole;
   status: UserStatus;
   authMethod: "google" | "email";
   avatar?: string;
   createdAt: string;
+  /**
+   * Special-case override: when true, `customPermissions` is used instead of the role matrix.
+   */
+  useCustomPermissions?: boolean;
+  customPermissions?: RolePagePermissions;
 }
 
-export const ROLE_LABELS: Record<UserRole, string> = {
+export const BUILT_IN_ROLES: RoleDefinition[] = [
+  { key: "super_admin", label: "Siêu quản trị", builtin: true },
+  { key: "admin", label: "Quản trị", builtin: true },
+  { key: "staff", label: "Nhân viên", builtin: true },
+  { key: "accountant", label: "Kế toán", builtin: true },
+  { key: "ctv_role", label: "CTV", builtin: true },
+];
+
+/** @deprecated Prefer RoleDefinition list from users-store; kept for built-in lookups */
+export const ROLE_LABELS: Record<BuiltInUserRole, string> = {
   super_admin: "Siêu quản trị",
   admin: "Quản trị",
   staff: "Nhân viên",
@@ -37,60 +67,84 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   ctv_role: "CTV",
 };
 
-export const PERMISSIONS = [
-  "dashboard.view",
-  "orders.view",
-  "orders.create",
-  "orders.edit",
-  "orders.delete",
-  "customers.view",
-  "customers.create",
-  "customers.edit",
-  "customers.delete",
-  "customers.import",
-  "payments.view",
-  "payments.create",
-  "payments.edit",
-  "vat.view",
-  "vat.create",
-  "services.view",
-  "services.create",
-  "services.edit",
-  "emails.view",
-  "emails.send",
-  "ctv.view",
-  "ctv.edit",
-  "users.view",
-  "users.create",
-  "users.edit",
-  "config.edit",
+/** Pages in the CRM menu — used for View/Edit permission matrix */
+export const SYSTEM_PAGES = [
+  { key: "dashboard", label: "Tổng quan" },
+  { key: "orders", label: "Quản lý đơn hàng" },
+  { key: "customers", label: "Quản lý khách hàng" },
+  { key: "ctv", label: "Quản lý CTV" },
+  { key: "payments", label: "Quản lý thanh toán" },
+  { key: "expense_approvals", label: "Duyệt chi" },
+  { key: "vat", label: "Quản lý VAT" },
+  { key: "services", label: "Danh sách dịch vụ" },
+  { key: "emails", label: "Quản lý email" },
+  { key: "users", label: "Quản lý người dùng" },
+  { key: "config", label: "Cấu hình" },
 ] as const;
 
-export type Permission = (typeof PERMISSIONS)[number];
+export type SystemPageKey = (typeof SYSTEM_PAGES)[number]["key"];
 
-export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  super_admin: [...PERMISSIONS],
-  admin: [...PERMISSIONS],
-  staff: [
-    "dashboard.view",
-    "orders.view",
-    "orders.create",
-    "orders.edit",
-    "customers.view",
-    "customers.create",
-    "customers.edit",
-    "payments.view",
-  ],
-  accountant: [
-    "dashboard.view",
-    "payments.view",
-    "payments.create",
-    "payments.edit",
-    "vat.view",
-    "vat.create",
-  ],
-  ctv_role: ["dashboard.view", "orders.view", "ctv.view"],
+export type PageAccess = { view: boolean; edit: boolean };
+
+export type RolePagePermissions = Record<SystemPageKey, PageAccess>;
+
+export function emptyPagePermissions(): RolePagePermissions {
+  return Object.fromEntries(
+    SYSTEM_PAGES.map((p) => [p.key, { view: false, edit: false }]),
+  ) as RolePagePermissions;
+}
+
+export function fullPagePermissions(): RolePagePermissions {
+  return Object.fromEntries(
+    SYSTEM_PAGES.map((p) => [p.key, { view: true, edit: true }]),
+  ) as RolePagePermissions;
+}
+
+/** Fill missing page keys (e.g. after adding Duyệt chi to SYSTEM_PAGES). */
+export function normalizePagePermissions(
+  partial?: Partial<RolePagePermissions> | null,
+): RolePagePermissions {
+  return { ...emptyPagePermissions(), ...(partial ?? {}) };
+}
+
+function access(pages: Partial<Record<SystemPageKey, PageAccess>>): RolePagePermissions {
+  return { ...emptyPagePermissions(), ...pages };
+}
+
+/** Default View/Edit matrix for built-in roles (editable in Users UI) */
+export const DEFAULT_ROLE_PAGE_PERMISSIONS: Record<string, RolePagePermissions> = {
+  super_admin: fullPagePermissions(),
+  admin: fullPagePermissions(),
+  staff: access({
+    dashboard: { view: true, edit: false },
+    orders: { view: true, edit: true },
+    customers: { view: true, edit: true },
+    payments: { view: true, edit: false },
+    services: { view: true, edit: false },
+    emails: { view: true, edit: false },
+  }),
+  accountant: access({
+    dashboard: { view: true, edit: false },
+    payments: { view: true, edit: true },
+    expense_approvals: { view: true, edit: true },
+    vat: { view: true, edit: true },
+  }),
+  ctv_role: access({
+    dashboard: { view: true, edit: false },
+    orders: { view: true, edit: false },
+    ctv: { view: true, edit: false },
+  }),
 };
+
+export function slugifyRoleKey(label: string): string {
+  const base = label
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  return base ? `custom_${base}` : `custom_${Date.now()}`;
+}
 
 /* ── Customer ───────────────────────────────────────────────────── */
 
@@ -135,14 +189,25 @@ export type OrderStage =
   | "completed"
   | "cancelled";
 
+/** Ant Design Tag semantic colors — aligned with status-config orderStage */
 export const ORDER_STAGES: { key: OrderStage; label: string; color: string }[] = [
-  { key: "new", label: "Mới", color: "#0075de" },
-  { key: "processing", label: "Đang xử lý", color: "#dd5b00" },
-  { key: "waiting_customer", label: "Chờ khách", color: "#2a9d99" },
-  { key: "waiting_gov", label: "Chờ cơ quan", color: "#62aef0" },
-  { key: "completed", label: "Hoàn thành", color: "#1aae39" },
-  { key: "cancelled", label: "Đã hủy", color: "#a39e98" },
+  { key: "new", label: "Mới", color: "processing" },
+  { key: "processing", label: "Đang xử lý", color: "warning" },
+  { key: "waiting_customer", label: "Chờ khách", color: "processing" },
+  { key: "waiting_gov", label: "Chờ cơ quan", color: "warning" },
+  { key: "completed", label: "Hoàn thành", color: "success" },
+  { key: "cancelled", label: "Đã hủy", color: "default" },
 ];
+
+/** Hex fills for charts (Recharts Cell) — from design-tokens */
+export const ORDER_STAGE_CHART_COLORS: Record<OrderStage, string> = {
+  new: ds.primary,
+  processing: ds.accentOrange,
+  waiting_customer: ds.accentTeal,
+  waiting_gov: ds.accentSky,
+  completed: ds.accentGreen,
+  cancelled: ds.inkFaint,
+};
 
 export type OrderChannel = "direct" | "website" | "referral" | "ctv";
 
@@ -156,6 +221,10 @@ export interface OrderAttachment {
   uploadedBy: string;
   uploadedAt: string;
   deleted?: boolean;
+  /** Ngày cấp giấy phép (license files) */
+  issuedAt?: string;
+  /** Ngày hết hạn giấy phép (license files) */
+  expiresAt?: string;
 }
 
 export type ApprovalStatus = "none" | "pending_review" | "approved" | "rejected";
@@ -199,8 +268,9 @@ export interface Order {
   assignedUserName: string;
   submitterId: string;
   submitterName: string;
-  reviewerId: string;
-  reviewerName: string;
+  /** Optional — used for expense approval */
+  reviewerId?: string;
+  reviewerName?: string;
   /** Hồ sơ làm việc trong quá trình xử lý */
   attachments: OrderAttachment[];
   /** File giấy phép / văn bản được cấp phép — lưu final, tách khỏi hồ sơ làm việc */
@@ -211,18 +281,63 @@ export interface Order {
   notes?: string;
   createdAt: string;
   month: string; // YYYY-MM for filtering
+  /** Đơn có xuất hóa đơn VAT */
+  needsVat: boolean;
+  /** Số hợp đồng (tự nhiên, unique) — chỉ khi needsVat */
+  contractNumber?: number;
+  /** Hạn xử lý đơn */
+  deadline?: string;
+  /** Hạn xuất hóa đơn VAT — khi needsVat */
+  vatIssueDeadline?: string;
+}
+
+/* ── Order expense (duyệt chi) ───────────────────────────────────── */
+
+export type OrderExpenseStatus = "pending" | "approved" | "rejected";
+
+export interface OrderExpense {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  amount: number;
+  title: string;
+  note?: string;
+  requestedById: string;
+  requestedByName: string;
+  requestedAt: string;
+  status: OrderExpenseStatus;
+  reviewedById?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+}
+
+/* ── App notifications ──────────────────────────────────────────── */
+
+export type AppNotificationType =
+  | "task_assigned"
+  | "order_overdue"
+  | "license_expiring"
+  | "vat_deadline_approaching"
+  | "expense_pending";
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: AppNotificationType;
+  title: string;
+  body: string;
+  href?: string;
+  orderId?: string;
+  read: boolean;
+  createdAt: string;
+  /** Dedupe key e.g. license_expiring:o1:2026-08-13 */
+  dedupeKey?: string;
 }
 
 /* ── Payment ────────────────────────────────────────────────────── */
 
 export type PaymentStatus = "unpaid" | "partial" | "paid" | "overdue";
-
-export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
-  unpaid: "Chưa TT",
-  partial: "Một phần",
-  paid: "Đã TT",
-  overdue: "Quá hạn",
-};
 
 export interface PaymentInstallment {
   id: string;

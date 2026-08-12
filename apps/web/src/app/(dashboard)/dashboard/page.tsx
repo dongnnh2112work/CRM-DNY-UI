@@ -6,7 +6,7 @@ import {
   TeamOutlined,
   TrophyOutlined,
 } from "@ant-design/icons";
-import { Card, Col, Row, Space, Tag, Typography, theme } from "antd";
+import { Card, Col, Row, Space, Typography, theme } from "antd";
 import Link from "next/link";
 import {
   Bar,
@@ -23,16 +23,20 @@ import {
 } from "recharts";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { MOCK_DASHBOARD } from "@/lib/mock-dashboard";
+import { ds } from "@/lib/design-tokens";
+import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
-import { ORDER_STAGES, PAYMENT_STATUS_LABELS, type Order, type OrderStage } from "@/lib/types";
+import { ORDER_STAGE_CHART_COLORS, ORDER_STAGES, type Order, type OrderStage } from "@/lib/types";
 
 const d = MOCK_DASHBOARD;
 
 const CTV_COLORS = ["#0075de", "#62aef0", "#2a9d99", "#d6b6f6", "#dd5b00"];
 
-function formatVnd(value: number) {
+/** Compact tick labels for chart axes only (not list/table display). */
+function formatVndAxisTick(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
   return String(value);
@@ -63,7 +67,7 @@ function buildOrderStatusChart(orders: Order[]) {
     key: stage.key,
     name: stage.label,
     value: counts[stage.key] ?? 0,
-    color: stage.color,
+    color: ORDER_STAGE_CHART_COLORS[stage.key],
   })).filter((item) => item.value > 0);
 }
 
@@ -113,10 +117,10 @@ export default function DashboardPage() {
                   <BarChart data={revenueData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="label" tickLine={false} />
-                    <YAxis tickFormatter={formatVnd} tickLine={false} width={48} />
+                    <YAxis tickFormatter={formatVndAxisTick} tickLine={false} width={48} />
                     <Tooltip
                       cursor={false}
-                      formatter={(value) => [`${Number(value).toLocaleString("vi-VN")} ₫`, "Doanh thu"]}
+                      formatter={(value) => [formatVndDisplay(Number(value)), "Doanh thu"]}
                       labelFormatter={(label) => `Tháng: ${label}`}
                       contentStyle={{
                         background: token.colorBgElevated,
@@ -167,7 +171,7 @@ export default function DashboardPage() {
                               border: `1px solid ${token.colorBorder}`,
                               borderRadius: 8,
                               padding: "8px 12px",
-                              fontSize: 13,
+                              fontSize: ds.fontSize.caption,
                               color: token.colorText,
                               boxShadow: token.boxShadowSecondary,
                             }}
@@ -198,11 +202,11 @@ export default function DashboardPage() {
                     margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tickFormatter={formatVnd} tickLine={false} />
+                    <XAxis type="number" tickFormatter={formatVndAxisTick} tickLine={false} />
                     <YAxis type="category" dataKey="name" width={100} tickLine={false} />
                     <Tooltip
                       cursor={false}
-                      formatter={(value) => [`${Number(value).toLocaleString("vi-VN")} ₫`, "Hoa hồng"]}
+                      formatter={(value) => [formatVndDisplay(Number(value)), "Hoa hồng"]}
                       contentStyle={{
                         background: token.colorBgElevated,
                         border: `1px solid ${token.colorBorder}`,
@@ -241,11 +245,11 @@ export default function DashboardPage() {
                       >
                         <div>
                           <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
-                          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                          <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
                             {o.customerName} · {o.serviceName}
                           </div>
                         </div>
-                        <Typography.Text>{o.value.toLocaleString()} ₫</Typography.Text>
+                        <Typography.Text>{formatVndDisplay(o.value)}</Typography.Text>
                       </div>
                     ))}
                   </Space>
@@ -266,13 +270,11 @@ export default function DashboardPage() {
                       >
                         <div>
                           <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
-                          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                            {p.customerName} · Còn lại: {p.remaining.toLocaleString("vi-VN")} ₫
+                          <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
+                            {p.customerName} · Còn lại: {formatVndDisplay(p.remaining)}
                           </div>
                         </div>
-                        <Tag color={p.status === "overdue" ? "error" : "warning"}>
-                          {PAYMENT_STATUS_LABELS[p.status]}
-                        </Tag>
+                        <StatusBadge module="payment" status={p.status} />
                       </div>
                     ))}
                   </Space>

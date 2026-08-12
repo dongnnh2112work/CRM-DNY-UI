@@ -1,18 +1,16 @@
 "use client";
 
-import { App, Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import type { CtvJob, CtvStatus } from "@/lib/types";
-
-const CTV_STATUS_LABELS: Record<CtvStatus, string> = {
-  active: "Hoạt động",
-  inactive: "Ngừng",
-};
+import type { CtvJob } from "@/lib/types";
 
 export default function CtvDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,8 +32,15 @@ export default function CtvDetailPage() {
     }
   }, [ctv, editOpen, form]);
 
-  if (!ready) return null;
-  if (!ctv) return <div style={{ padding: 24 }}>Không tìm thấy CTV.</div>;
+  if (!ready) return <PageLoading />;
+  if (!ctv) {
+    return (
+      <EmptyState
+        description="Không tìm thấy CTV."
+        action={{ label: "Quay lại danh sách", href: "/ctv" }}
+      />
+    );
+  }
 
   const jobColumns = [
     {
@@ -45,11 +50,12 @@ export default function CtvDetailPage() {
     },
     { title: "Khách hàng", dataIndex: "customerName" },
     { title: "Dịch vụ", dataIndex: "serviceName" },
-    { title: "Bảng giá", dataIndex: "ratecard", render: (v: number) => formatVndDisplay(v) },
-    { title: "Giá CTV", dataIndex: "ctvPrice", render: (v: number) => formatVndDisplay(v) },
+    { title: "Bảng giá", dataIndex: "ratecard", align: "center" as const, render: (v: number) => formatVndDisplay(v) },
+    { title: "Giá CTV", dataIndex: "ctvPrice", align: "center" as const, render: (v: number) => formatVndDisplay(v) },
     {
       title: "Hoa hồng",
       dataIndex: "commission",
+      align: "center" as const,
       render: (v: number) => <Tag color="green">{formatVndDisplay(v)}</Tag>,
     },
   ];
@@ -80,27 +86,46 @@ export default function CtvDetailPage() {
               router.push("/ctv");
             }}
           >
-            <Button danger type="primary">
+            <Button danger>
               Xóa
             </Button>
           </Popconfirm>
         </Space>
       </PageHeader>
       <div style={{ padding: 16 }}>
-        <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="Tên">{ctv.name}</Descriptions.Item>
-          <Descriptions.Item label="SĐT">{ctv.phone}</Descriptions.Item>
-          <Descriptions.Item label="Email">{ctv.email}</Descriptions.Item>
-          <Descriptions.Item label="Trạng thái">
-            <Tag color={ctv.status === "active" ? "success" : "default"}>
-              {CTV_STATUS_LABELS[ctv.status]}
-            </Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="Tổng đơn">{ctv.totalJobs}</Descriptions.Item>
-          <Descriptions.Item label="Tổng hoa hồng">{formatVndDisplay(ctv.totalCommission)}</Descriptions.Item>
-        </Descriptions>
-        <Typography.Title level={5}>Đơn giới thiệu & hoa hồng</Typography.Title>
-        <Table rowKey="orderId" columns={jobColumns} dataSource={ctv.jobs} pagination={false} />
+        <Tabs
+          items={[
+            {
+              key: "info",
+              label: "Thông tin",
+              children: (
+                <>
+                  <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
+                    <Descriptions.Item label="Tên">{ctv.name}</Descriptions.Item>
+                    <Descriptions.Item label="SĐT">{ctv.phone}</Descriptions.Item>
+                    <Descriptions.Item label="Email">{ctv.email}</Descriptions.Item>
+                    <Descriptions.Item label="Trạng thái">
+                      <StatusBadge module="ctv" status={ctv.status} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Tổng đơn">{ctv.totalJobs}</Descriptions.Item>
+                    <Descriptions.Item label="Tổng hoa hồng">{formatVndDisplay(ctv.totalCommission)}</Descriptions.Item>
+                  </Descriptions>
+                  <Typography.Title level={5}>Đơn giới thiệu & hoa hồng</Typography.Title>
+                  <Table rowKey="orderId" columns={jobColumns} dataSource={ctv.jobs} pagination={false} />
+                </>
+              ),
+            },
+            {
+              key: "notes",
+              label: "Ghi chú / Liên quan",
+              children: (
+                <Typography.Paragraph type="secondary">
+                  Ghi chú nội bộ về CTV sẽ hiển thị tại đây.
+                </Typography.Paragraph>
+              ),
+            },
+          ]}
+        />
       </div>
 
       <Drawer title="Sửa CTV" open={editOpen} onClose={() => setEditOpen(false)} width={420} destroyOnClose>

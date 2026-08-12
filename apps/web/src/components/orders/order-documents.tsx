@@ -1,15 +1,9 @@
 "use client";
 
-import {
-  DeleteOutlined,
-  FileExcelOutlined,
-  FilePdfOutlined,
-  FileWordOutlined,
-  InboxOutlined,
-  PaperClipOutlined,
-} from "@ant-design/icons";
+import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
 import { App, Button, Table, Tag, Typography, Upload } from "antd";
 import type { UploadProps } from "antd";
+import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
 import type { OrderAttachment } from "@/lib/types";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
 
@@ -17,13 +11,6 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function typeIcon(type: OrderAttachment["type"]) {
-  if (type === "pdf") return <FilePdfOutlined style={{ color: "#ff4d4f" }} />;
-  if (type === "word") return <FileWordOutlined style={{ color: "#1677ff" }} />;
-  if (type === "excel") return <FileExcelOutlined style={{ color: "#52c41a" }} />;
-  return <PaperClipOutlined />;
 }
 
 interface OrderDocumentsProps {
@@ -86,7 +73,7 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }
             dataIndex: "name",
             render: (name: string, r: OrderAttachment) => (
               <span>
-                {typeIcon(r.type)} <Typography.Text>{name}</Typography.Text>
+                {attachmentTypeIcon(r.type)} <Typography.Text>{name}</Typography.Text>
               </span>
             ),
           },

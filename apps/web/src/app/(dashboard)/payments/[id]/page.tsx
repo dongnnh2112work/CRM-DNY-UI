@@ -1,20 +1,34 @@
 "use client";
 
-import { App, Button, Checkbox, Descriptions, Drawer, Form, Input, InputNumber, Select, Space, Table, Tag, Typography } from "antd";
+import {
+  App,
+  Button,
+  Checkbox,
+  DatePicker,
+  Descriptions,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tabs,
+  Typography,
+} from "antd";
+import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
-import { PAYMENT_STATUS_LABELS, type PaymentInstallment } from "@/lib/types";
-
-const INSTALLMENT_STATUS_LABELS: Record<PaymentInstallment["status"], string> = {
-  pending: "Chờ TT",
-  paid: "Đã TT",
-  overdue: "Quá hạn",
-};
+import type { PaymentInstallment } from "@/lib/types";
 
 export default function PaymentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -28,10 +42,15 @@ export default function PaymentDetailPage() {
   const payment = getById(id) ?? getByOrderId(id);
   const order = payment ? getOrder(payment.orderId) : undefined;
 
-  if (!ready) return null;
-  if (!payment) return <div style={{ padding: 24 }}>Không tìm thấy bản ghi thanh toán.</div>;
-
-  const statusColor = { pending: "warning", paid: "success", overdue: "error" } as const;
+  if (!ready) return <PageLoading />;
+  if (!payment) {
+    return (
+      <EmptyState
+        description="Không tìm thấy bản ghi thanh toán."
+        action={{ label: "Quay lại danh sách", href: "/payments" }}
+      />
+    );
+  }
 
   return (
     <>
@@ -44,30 +63,50 @@ export default function PaymentDetailPage() {
         </Space>
       </PageHeader>
       <div style={{ padding: 16 }}>
-        <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="Đơn hàng">
-            <Link href={`/orders/${payment.orderId}`}>{payment.orderNumber}</Link>
-          </Descriptions.Item>
-          <Descriptions.Item label="Khách hàng">
-            <Link href={`/customers/${payment.customerId}`}>{payment.customerName}</Link>
-          </Descriptions.Item>
-          {order && (
-            <>
-              <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
-              <Descriptions.Item label="Giai đoạn đơn">{order.stage}</Descriptions.Item>
-              <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
-              <Descriptions.Item label="Phụ trách">{order.assignedUserName}</Descriptions.Item>
-            </>
-          )}
-          <Descriptions.Item label="Tổng">{formatVndDisplay(payment.totalAmount)}</Descriptions.Item>
-          <Descriptions.Item label="Đã TT">{formatVndDisplay(payment.paidAmount)}</Descriptions.Item>
-          <Descriptions.Item label="Còn lại">{formatVndDisplay(payment.remaining)}</Descriptions.Item>
-          <Descriptions.Item label="Trạng thái">
-            <Tag color={payment.status === "paid" ? "success" : payment.status === "overdue" ? "error" : "warning"}>
-              {PAYMENT_STATUS_LABELS[payment.status]}
-            </Tag>
-          </Descriptions.Item>
-        </Descriptions>
+        <Tabs
+          items={[
+            {
+              key: "info",
+              label: "Thông tin",
+              children: (
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
+                  <Descriptions.Item label="Đơn hàng">
+                    <Link href={`/orders/${payment.orderId}`}>{payment.orderNumber}</Link>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Khách hàng">
+                    <Link href={`/customers/${payment.customerId}`}>{payment.customerName}</Link>
+                  </Descriptions.Item>
+                  {order && (
+                    <>
+                      <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
+                      <Descriptions.Item label="Giai đoạn đơn">{order.stage}</Descriptions.Item>
+                      <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
+                      <Descriptions.Item label="Phụ trách">{order.assignedUserName}</Descriptions.Item>
+                    </>
+                  )}
+                  <Descriptions.Item label="Tổng">{formatVndDisplay(payment.totalAmount)}</Descriptions.Item>
+                  <Descriptions.Item label="Đã TT">{formatVndDisplay(payment.paidAmount)}</Descriptions.Item>
+                  <Descriptions.Item label="Còn lại">{formatVndDisplay(payment.remaining)}</Descriptions.Item>
+                  <Descriptions.Item label="Trạng thái">
+                    <StatusBadge module="payment" status={payment.status} />
+                  </Descriptions.Item>
+                </Descriptions>
+              ),
+            },
+            {
+              key: "notes",
+              label: "Ghi chú / Liên quan",
+              children: (
+                <Typography.Paragraph type="secondary">
+                  Ghi chú nội bộ và lịch sử liên quan sẽ hiển thị tại đây.{" "}
+                  <Link href={`/orders/${payment.orderId}`}>Mở đơn hàng</Link>
+                  {" · "}
+                  <Link href={`/customers/${payment.customerId}`}>Mở khách hàng</Link>
+                </Typography.Paragraph>
+              ),
+            },
+          ]}
+        />
 
         <Typography.Title level={5}>Các đợt thanh toán</Typography.Title>
         <Table
@@ -78,6 +117,7 @@ export default function PaymentDetailPage() {
             {
               title: "Số tiền",
               dataIndex: "amount",
+              align: "center",
               render: (v: number) => formatVndDisplay(v),
             },
             { title: "Hạn TT", dataIndex: "dueDate" },
@@ -87,7 +127,7 @@ export default function PaymentDetailPage() {
               title: "Trạng thái",
               dataIndex: "status",
               render: (s: PaymentInstallment["status"]) => (
-                <Tag color={statusColor[s]}>{INSTALLMENT_STATUS_LABELS[s]}</Tag>
+                <StatusBadge module="paymentInstallment" status={s} />
               ),
             },
             { title: "Ghi chú", dataIndex: "note" },
@@ -96,16 +136,20 @@ export default function PaymentDetailPage() {
               key: "action",
               render: (_, row: PaymentInstallment) =>
                 row.status !== "paid" ? (
-                  <Button
-                    size="small"
-                    type="link"
-                    onClick={() => {
+                  <Popconfirm
+                    title="Đánh dấu đã thanh toán?"
+                    description="Đợt này sẽ chuyển sang trạng thái Đã TT."
+                    okText="Xác nhận"
+                    cancelText="Hủy"
+                    onConfirm={() => {
                       markInstallmentPaid(payment.id, row.id);
                       message.success("Đã ghi nhận thanh toán");
                     }}
                   >
-                    Đánh dấu đã TT
-                  </Button>
+                    <Button size="small" type="link">
+                      Đánh dấu đã TT
+                    </Button>
+                  </Popconfirm>
                 ) : (
                   "—"
                 ),
@@ -141,8 +185,16 @@ export default function PaymentDetailPage() {
           <Form.Item name="amount" label="Số tiền" rules={[{ required: true }]}>
             <InputNumber {...vndInputProps} />
           </Form.Item>
-          <Form.Item name="dueDate" label="Hạn thanh toán" rules={[{ required: true }]}>
-            <Input type="date" />
+          <Form.Item
+            name="dueDate"
+            label="Hạn thanh toán"
+            rules={[{ required: true }]}
+            getValueFromEvent={(d: dayjs.Dayjs | null) => (d ? d.format("YYYY-MM-DD") : undefined)}
+            getValueProps={(value: string | undefined) => ({
+              value: value ? dayjs(value) : undefined,
+            })}
+          >
+            <DatePicker style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="method" label="Phương thức TT">
             <Select

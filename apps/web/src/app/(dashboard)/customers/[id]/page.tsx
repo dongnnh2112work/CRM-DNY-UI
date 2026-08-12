@@ -1,17 +1,16 @@
 "use client";
 
-import { App, Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Tag, Typography } from "antd";
+import { App, Button, Descriptions, Drawer, Form, Input, Popconfirm, Select, Space, Tabs, Typography } from "antd";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { useCustomers } from "@/lib/customers-store";
+import { getStatusOptions } from "@/lib/status-config";
 import type { CustomerStatus } from "@/lib/types";
-
-const CUSTOMER_STATUS_LABELS: Record<string, string> = {
-  active: "Hoạt động",
-  lead: "Tiềm năng",
-  archived: "Lưu trữ",
-};
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -28,8 +27,15 @@ export default function CustomerDetailPage() {
     }
   }, [customer, editOpen, form]);
 
-  if (!ready) return null;
-  if (!customer) return <div style={{ padding: 24 }}>Không tìm thấy khách hàng.</div>;
+  if (!ready) return <PageLoading />;
+  if (!customer) {
+    return (
+      <EmptyState
+        description="Không tìm thấy khách hàng."
+        action={{ label: "Quay lại danh sách", href: "/customers" }}
+      />
+    );
+  }
 
   const archive = () => {
     updateCustomer(customer.id, { status: "archived" });
@@ -45,9 +51,16 @@ export default function CustomerDetailPage() {
           </Button>
           <Button onClick={() => setEditOpen(true)}>Sửa</Button>
           {customer.status !== "archived" && (
-            <Button danger onClick={archive}>
-              Lưu trữ
-            </Button>
+            <Popconfirm
+              title="Lưu trữ khách hàng này?"
+              description="Khách hàng sẽ chuyển sang trạng thái Lưu trữ."
+              okText="Lưu trữ"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+              onConfirm={archive}
+            >
+              <Button danger>Lưu trữ</Button>
+            </Popconfirm>
           )}
           <Popconfirm
             title="Xóa khách hàng này?"
@@ -60,9 +73,7 @@ export default function CustomerDetailPage() {
               router.push("/customers");
             }}
           >
-            <Button danger type="primary">
-              Xóa
-            </Button>
+            <Button danger>Xóa</Button>
           </Popconfirm>
         </Space>
       </PageHeader>
@@ -71,19 +82,37 @@ export default function CustomerDetailPage() {
           <Typography.Title level={4} style={{ margin: 0 }}>
             {customer.name}
           </Typography.Title>
-          <Tag color={customer.status === "active" ? "success" : customer.status === "lead" ? "processing" : "default"}>
-            {CUSTOMER_STATUS_LABELS[customer.status] ?? customer.status}
-          </Tag>
+          <StatusBadge module="customer" status={customer.status} />
         </Space>
-        <Descriptions bordered column={1} size="small" style={{ maxWidth: 560 }}>
-          <Descriptions.Item label="SĐT">{customer.phone}</Descriptions.Item>
-          <Descriptions.Item label="Email">{customer.email}</Descriptions.Item>
-          <Descriptions.Item label="Công ty">{customer.company || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Mã số thuế">{customer.taxCode || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Địa chỉ">{customer.address || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Phụ trách">{customer.owner}</Descriptions.Item>
-          <Descriptions.Item label="Ngày tạo">{customer.createdAt}</Descriptions.Item>
-        </Descriptions>
+        <Tabs
+          items={[
+            {
+              key: "info",
+              label: "Thông tin",
+              children: (
+                <Descriptions bordered column={1} size="small" style={{ maxWidth: 560 }}>
+                  <Descriptions.Item label="SĐT">{customer.phone}</Descriptions.Item>
+                  <Descriptions.Item label="Email">{customer.email}</Descriptions.Item>
+                  <Descriptions.Item label="Công ty">{customer.company || "—"}</Descriptions.Item>
+                  <Descriptions.Item label="Mã số thuế">{customer.taxCode || "—"}</Descriptions.Item>
+                  <Descriptions.Item label="Địa chỉ">{customer.address || "—"}</Descriptions.Item>
+                  <Descriptions.Item label="Phụ trách">{customer.owner}</Descriptions.Item>
+                  <Descriptions.Item label="Ngày tạo">{customer.createdAt}</Descriptions.Item>
+                </Descriptions>
+              ),
+            },
+            {
+              key: "notes",
+              label: "Ghi chú / Liên quan",
+              children: (
+                <Typography.Paragraph type="secondary">
+                  Ghi chú nội bộ và đơn hàng liên quan sẽ hiển thị tại đây.{" "}
+                  <Link href="/orders/new">Tạo đơn mới</Link> cho khách hàng này.
+                </Typography.Paragraph>
+              ),
+            },
+          ]}
+        />
       </div>
 
       <Drawer title="Sửa khách hàng" open={editOpen} onClose={() => setEditOpen(false)} width={420} destroyOnClose>
@@ -127,13 +156,7 @@ export default function CustomerDetailPage() {
             <Select options={[{ value: "Le Staff A" }, { value: "Vo Staff B" }, { value: "Tran Admin" }]} />
           </Form.Item>
           <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: "active", label: "Hoạt động" },
-                { value: "lead", label: "Tiềm năng" },
-                { value: "archived", label: "Lưu trữ" },
-              ]}
-            />
+            <Select options={getStatusOptions("customer")} />
           </Form.Item>
           <Space>
             <Button onClick={() => setEditOpen(false)}>Hủy</Button>
