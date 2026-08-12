@@ -3,11 +3,12 @@
 import { DownloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { App, Button, Popconfirm, Space, type TableColumnsType } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type Key } from "react";
+import { Suspense, useEffect, useState, type Key } from "react";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DynamicTable } from "@/components/shared/dynamic-table";
 import { ExcelImportModal } from "@/components/shared/excel-import-modal";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
 import { CUSTOMER_LOCKED_FIELD_KEYS, useCustomers } from "@/lib/customers-store";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { getStatusMeta } from "@/lib/status-config";
@@ -15,6 +16,14 @@ import { matchesTableQuery } from "@/lib/table-search";
 import type { Customer, CustomerStatus } from "@/lib/types";
 
 export default function CustomersPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <CustomersPageContent />
+    </Suspense>
+  );
+}
+
+function CustomersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message } = App.useApp();
