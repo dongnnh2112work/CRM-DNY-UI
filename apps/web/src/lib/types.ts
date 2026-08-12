@@ -72,7 +72,6 @@ export const SYSTEM_PAGES = [
   { key: "dashboard", label: "Tổng quan" },
   { key: "orders", label: "Quản lý đơn hàng" },
   { key: "customers", label: "Quản lý khách hàng" },
-  { key: "ctv", label: "Quản lý CTV" },
   { key: "payments", label: "Quản lý thanh toán" },
   { key: "expense_approvals", label: "Duyệt chi" },
   { key: "vat", label: "Quản lý VAT" },
@@ -80,6 +79,7 @@ export const SYSTEM_PAGES = [
   { key: "emails", label: "Quản lý email" },
   { key: "users", label: "Quản lý người dùng" },
   { key: "config", label: "Cấu hình" },
+  { key: "order_statuses", label: "Giai đoạn đơn" },
 ] as const;
 
 export type SystemPageKey = (typeof SYSTEM_PAGES)[number]["key"];
@@ -114,7 +114,11 @@ function access(pages: Partial<Record<SystemPageKey, PageAccess>>): RolePagePerm
 /** Default View/Edit matrix for built-in roles (editable in Users UI) */
 export const DEFAULT_ROLE_PAGE_PERMISSIONS: Record<string, RolePagePermissions> = {
   super_admin: fullPagePermissions(),
-  admin: fullPagePermissions(),
+  admin: {
+    ...fullPagePermissions(),
+    /** Chỉ super_admin được sửa nhãn/màu trạng thái đơn */
+    order_statuses: { view: false, edit: false },
+  },
   staff: access({
     dashboard: { view: true, edit: false },
     orders: { view: true, edit: true },
@@ -132,7 +136,6 @@ export const DEFAULT_ROLE_PAGE_PERMISSIONS: Record<string, RolePagePermissions> 
   ctv_role: access({
     dashboard: { view: true, edit: false },
     orders: { view: true, edit: false },
-    ctv: { view: true, edit: false },
   }),
 };
 
@@ -181,15 +184,10 @@ export interface Service {
 
 /* ── Order ──────────────────────────────────────────────────────── */
 
-export type OrderStage =
-  | "new"
-  | "processing"
-  | "waiting_customer"
-  | "waiting_gov"
-  | "completed"
-  | "cancelled";
+/** Built-in + custom stage keys (custom = free string) */
+export type OrderStage = string;
 
-/** Ant Design Tag semantic colors — aligned with status-config orderStage */
+/** Default workflow stages — seed for order-status-store */
 export const ORDER_STAGES: { key: OrderStage; label: string; color: string }[] = [
   { key: "new", label: "Mới", color: "processing" },
   { key: "processing", label: "Đang xử lý", color: "warning" },
@@ -199,8 +197,8 @@ export const ORDER_STAGES: { key: OrderStage; label: string; color: string }[] =
   { key: "cancelled", label: "Đã hủy", color: "default" },
 ];
 
-/** Hex fills for charts (Recharts Cell) — from design-tokens */
-export const ORDER_STAGE_CHART_COLORS: Record<OrderStage, string> = {
+/** Hex fills for charts (Recharts Cell) — from design-tokens; custom stages use store color */
+export const ORDER_STAGE_CHART_COLORS: Record<string, string> = {
   new: ds.primary,
   processing: ds.accentOrange,
   waiting_customer: ds.accentTeal,

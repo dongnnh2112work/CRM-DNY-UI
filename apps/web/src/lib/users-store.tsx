@@ -16,10 +16,12 @@ import {
   DEFAULT_ROLE_PAGE_PERMISSIONS,
   emptyPagePermissions,
   normalizePagePermissions,
+  SYSTEM_PAGES,
   slugifyRoleKey,
   type AppUser,
   type RoleDefinition,
   type RolePagePermissions,
+  type SystemPageKey,
   type UserRole,
   type UserStatus,
 } from "@/lib/types";
@@ -56,6 +58,20 @@ function cloneDefaultRolePerms(): Record<string, RolePagePermissions> {
   return structuredClone(DEFAULT_ROLE_PAGE_PERMISSIONS);
 }
 
+/** Merge stored matrix; missing page keys fall back to role defaults (not all-false). */
+function mergeStoredRoleMatrix(
+  role: string,
+  stored: Partial<RolePagePermissions>,
+): RolePagePermissions {
+  const defaults = DEFAULT_ROLE_PAGE_PERMISSIONS[role] ?? emptyPagePermissions();
+  const next = emptyPagePermissions();
+  for (const page of SYSTEM_PAGES) {
+    const key = page.key as SystemPageKey;
+    next[key] = stored[key] ?? defaults[key];
+  }
+  return next;
+}
+
 export function UsersProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<AppUser[]>(MOCK_USERS);
   const [roles, setRoles] = useState<RoleDefinition[]>(BUILT_IN_ROLES);
@@ -73,7 +89,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     if (storedPerms) {
       const merged: Record<string, RolePagePermissions> = { ...cloneDefaultRolePerms() };
       for (const [role, matrix] of Object.entries(storedPerms)) {
-        merged[role] = normalizePagePermissions(matrix);
+        merged[role] = mergeStoredRoleMatrix(role, matrix);
       }
       setRolePermissions(merged);
     }
@@ -124,7 +140,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       if (user.useCustomPermissions && user.customPermissions) {
         return normalizePagePermissions(user.customPermissions);
       }
-      return normalizePagePermissions(rolePermissions[user.role]);
+      return mergeStoredRoleMatrix(user.role, rolePermissions[user.role] ?? {});
     },
     [rolePermissions],
   );

@@ -46,9 +46,10 @@ import {
   requiresLicenseForStage,
 } from "@/lib/order-workflow";
 import { useOrders } from "@/lib/orders-store";
+import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useServices } from "@/lib/services-store";
-import { ORDER_STAGES, type Order, type OrderStage } from "@/lib/types";
+import type { Order, OrderStage } from "@/lib/types";
 
 const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
@@ -57,6 +58,7 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const { message } = App.useApp();
   const { getById, ready, updateOrder, deleteOrder, orders, isContractTaken } = useOrders();
+  const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId } = usePayments();
   const { config } = useAppReminderConfig();
   const { customers } = useCustomers();
@@ -182,7 +184,7 @@ export default function OrderDetailPage() {
           <StatusSelect
             module="orderStage"
             value={order.stage}
-            options={ORDER_STAGES.map((s) => ({ value: s.key, label: s.label }))}
+            options={stageOptions.map((s) => ({ value: s.value, label: s.label }))}
             onChange={(v) => changeStage(v as OrderStage)}
           />
           <Tag color={order.needsVat ? "blue" : "default"}>
@@ -210,9 +212,7 @@ export default function OrderDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label="Hạn xử lý">{order.deadline ?? "—"}</Descriptions.Item>
           {order.ctvName && (
-            <Descriptions.Item label="CTV">
-              <Link href={`/ctv/${order.ctvId}`}>{order.ctvName}</Link>
-            </Descriptions.Item>
+            <Descriptions.Item label="CTV">{order.ctvName}</Descriptions.Item>
           )}
           {order.channel === "ctv" && order.ctvPrice != null && (
             <>

@@ -1,7 +1,8 @@
 "use client";
 
 import { Tag, type TagProps } from "antd";
-import { getStatusMeta, type StatusModule } from "@/lib/status-config";
+import { useStatusMeta } from "@/lib/order-status-store";
+import type { StatusModule } from "@/lib/status-config";
 
 type StatusBadgeProps = Omit<TagProps, "color" | "children"> & {
   module: StatusModule;
@@ -9,7 +10,7 @@ type StatusBadgeProps = Omit<TagProps, "color" | "children"> & {
 };
 
 export function StatusBadge({ module, status, ...tagProps }: StatusBadgeProps) {
-  const meta = getStatusMeta(module, status);
+  const meta = useStatusMeta(module, status);
   return (
     <Tag color={meta.color} {...tagProps}>
       {meta.label}

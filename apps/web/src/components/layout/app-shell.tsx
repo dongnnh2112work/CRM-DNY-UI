@@ -17,7 +17,6 @@ import {
   SunOutlined,
   TeamOutlined,
   UserOutlined,
-  UsergroupAddOutlined,
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Typography, theme } from "antd";
@@ -39,7 +38,6 @@ const MENU_ITEMS = [
   { type: "divider" as const },
   { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">Quản lý đơn hàng</Link> },
   { key: "/customers", icon: <TeamOutlined />, label: <Link href="/customers">Quản lý khách hàng</Link> },
-  { key: "/ctv", icon: <UsergroupAddOutlined />, label: <Link href="/ctv">Quản lý CTV</Link> },
   { type: "divider" as const },
   { key: "/payments", icon: <DollarOutlined />, label: <Link href="/payments">Quản lý thanh toán</Link> },
   {

@@ -6,7 +6,6 @@ import { LicenseUpload } from "@/components/orders/license-upload";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
 import type { Order, OrderApprovalRequest, OrderAttachment, OrderStage } from "@/lib/types";
-import { ORDER_STAGES } from "@/lib/types";
 import {
   canApprove,
   canMoveToCompleted,
@@ -16,6 +15,7 @@ import {
   requiresLicenseForStage,
 } from "@/lib/order-workflow";
 import { MOCK_USERS } from "@/lib/mock-users";
+import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { useUsers } from "@/lib/users-store";
 
 /** Fallback submitter mock when acting as submitter in demos */
@@ -30,6 +30,7 @@ interface OrderApprovalPanelProps {
 export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: OrderApprovalPanelProps) {
   const { message } = App.useApp();
   const { currentUser } = useUsers();
+  const { stageOptions, getMeta } = useOrderStatusConfig();
   const [form] = Form.useForm();
   const toStageWatch = Form.useWatch("toStage", form) as OrderStage | undefined;
   const reviewer = currentUser ?? MOCK_USERS[1];
@@ -42,7 +43,7 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
     (h) => h.id === order.pendingTransition?.requestId && h.status === "pending",
   );
 
-  const stageLabel = (key: OrderStage) => ORDER_STAGES.find((s) => s.key === key)?.label ?? key;
+  const stageLabel = (key: OrderStage) => getMeta("orderStage", key).label;
 
   const canActAsSubmitter = actingAs === "submitter";
   const canActAsReviewer = actingAs === "reviewer" || canApprove(order, actor);
@@ -153,10 +154,12 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
     message.info("Đã từ chối — giai đoạn không đổi");
   };
 
-  const targetOptions = ORDER_STAGES.filter((s) => s.key !== order.stage).map((s) => ({
-    value: s.key,
-    label: s.key === "completed" ? `${s.label} (cần giấy phép)` : s.label,
-  }));
+  const targetOptions = stageOptions
+    .filter((s) => s.value !== order.stage)
+    .map((s) => ({
+      value: s.value,
+      label: s.value === "completed" ? `${s.label} (cần giấy phép)` : s.label,
+    }));
 
   return (
     <div>

@@ -28,8 +28,9 @@ import { MOCK_DASHBOARD } from "@/lib/mock-dashboard";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
+import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
-import { ORDER_STAGE_CHART_COLORS, ORDER_STAGES, type Order, type OrderStage } from "@/lib/types";
+import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
 
 const d = MOCK_DASHBOARD;
 
@@ -53,31 +54,39 @@ const revenueData = d.revenue.byMonth.map((item) => ({
   label: formatMonth(item.month),
 }));
 
-/** Đồng bộ với Quản lý đơn hàng: đếm theo ORDER_STAGES */
-function buildOrderStatusChart(orders: Order[]) {
+/** Đồng bộ với cấu hình giai đoạn trên Quản lý đơn hàng */
+function buildOrderStatusChart(
+  orders: Order[],
+  stageOptions: { value: string; label: string; color: string }[],
+) {
   const counts = orders.reduce(
     (acc, order) => {
       acc[order.stage] = (acc[order.stage] ?? 0) + 1;
       return acc;
     },
-    {} as Partial<Record<OrderStage, number>>,
+    {} as Record<string, number>,
   );
 
-  return ORDER_STAGES.map((stage) => ({
-    key: stage.key,
-    name: stage.label,
-    value: counts[stage.key] ?? 0,
-    color: ORDER_STAGE_CHART_COLORS[stage.key],
-  })).filter((item) => item.value > 0);
+  return stageOptions
+    .map((stage) => ({
+      key: stage.value,
+      name: stage.label,
+      value: counts[stage.value] ?? 0,
+      color: stage.color.startsWith("#")
+        ? stage.color
+        : (ORDER_STAGE_CHART_COLORS[stage.value] ?? ds.inkFaint),
+    }))
+    .filter((item) => item.value > 0);
 }
 
 export default function DashboardPage() {
   const { token } = theme.useToken();
   const { orders } = useOrders();
   const { payments } = usePayments();
+  const { stageOptions } = useOrderStatusConfig();
   const recentOrders = orders.slice(0, 5);
   const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
-  const orderStatusData = buildOrderStatusChart(orders);
+  const orderStatusData = buildOrderStatusChart(orders, stageOptions);
   const totalOrders = orders.length;
 
   return (

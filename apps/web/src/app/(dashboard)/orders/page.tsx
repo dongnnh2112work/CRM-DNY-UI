@@ -1,9 +1,10 @@
 "use client";
 
-import { AppstoreOutlined, BarsOutlined } from "@ant-design/icons";
+import { AppstoreOutlined, BarsOutlined, BgColorsOutlined } from "@ant-design/icons";
 import { App, Button, Modal, Select, Segmented, Tag, type TableColumnsType } from "antd";
 import Link from "next/link";
 import { useMemo, useState, type Key } from "react";
+import { OrderStageSettingsDrawer } from "@/components/orders/order-stage-settings-drawer";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -24,9 +25,11 @@ import {
   licenseExpiryTagColor,
 } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
+import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { Order, OrderStage } from "@/lib/types";
+import { useUsers } from "@/lib/users-store";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -36,6 +39,11 @@ export default function OrdersPage() {
   const { message } = App.useApp();
   const { orders, updateOrder } = useOrders();
   const { config } = useAppReminderConfig();
+  const { getMeta } = useOrderStatusConfig();
+  const { currentUser, getEffectivePermissions } = useUsers();
+  const perms = currentUser ? getEffectivePermissions(currentUser) : null;
+  const canViewStages = Boolean(perms?.order_statuses?.view);
+  const canEditStages = Boolean(perms?.order_statuses?.edit);
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
   const [userFilter, setUserFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
@@ -44,6 +52,7 @@ export default function OrdersPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignUserId, setAssignUserId] = useState<string>();
   const [exporting, setExporting] = useState(false);
+  const [stageDrawerOpen, setStageDrawerOpen] = useState(false);
 
   const staffUsers = MOCK_USERS.filter((u) => u.role === "staff" || u.role === "admin");
 
@@ -58,7 +67,7 @@ export default function OrdersPage() {
           o.customerName,
           o.serviceName,
           o.stage,
-          getStatusMeta("orderStage", o.stage).label,
+          getMeta("orderStage", o.stage).label,
           o.approvalStatus,
           getStatusMeta("approval", o.approvalStatus).label,
           o.reviewerName,
@@ -79,7 +88,7 @@ export default function OrdersPage() {
       );
     }
     return list;
-  }, [orders, userFilter, monthFilter, query]);
+  }, [orders, userFilter, monthFilter, query, getMeta]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -195,6 +204,15 @@ export default function OrdersPage() {
     {
       title: "Thời hạn GP",
       key: "licenseExpiry",
+      filters: [
+        { text: "Hết hạn", value: "expired" },
+        { text: "Sắp hết hạn", value: "expiring" },
+        { text: "Còn hạn", value: "ok" },
+        { text: "Chưa có GP", value: "none" },
+      ],
+      filterMultiple: true,
+      onFilter: (value, record) =>
+        getOrderLicenseExpirySummary(record, config.licenseExpiryWarnMonths).tone === value,
       render: (_, r) => {
         const s = getOrderLicenseExpirySummary(r, config.licenseExpiryWarnMonths);
         return <Tag color={licenseExpiryTagColor(s.tone)}>{s.label}</Tag>;
@@ -266,6 +284,11 @@ export default function OrdersPage() {
             { value: "table", icon: <BarsOutlined /> },
           ]}
         />
+        {canViewStages ? (
+          <Button icon={<BgColorsOutlined />} onClick={() => setStageDrawerOpen(true)}>
+            Giai đoạn
+          </Button>
+        ) : null}
       </PageHeader>
       {filtered.length === 0 ? (
         <EmptyState description={listEmptyDescription} action={listEmptyAction} />
@@ -311,6 +334,12 @@ export default function OrdersPage() {
           options={staffUsers.map((u) => ({ value: u.id, label: u.name }))}
         />
       </Modal>
+
+      <OrderStageSettingsDrawer
+        open={stageDrawerOpen}
+        onClose={() => setStageDrawerOpen(false)}
+        canEdit={canEditStages}
+      />
     </>
   );
 }

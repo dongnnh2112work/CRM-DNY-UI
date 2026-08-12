@@ -5,8 +5,8 @@ import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-p
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { useOrderStatusConfig } from "@/lib/order-status-store";
 import type { Order, OrderStage } from "@/lib/types";
-import { ORDER_STAGES } from "@/lib/types";
 import Link from "next/link";
 
 interface KanbanBoardProps {
@@ -16,6 +16,7 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
   const { token } = theme.useToken();
+  const { stageOptions } = useOrderStatusConfig();
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
@@ -29,10 +30,10 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
     <div>
       <DragDropContext onDragEnd={handleDragEnd}>
         <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: 16, minHeight: 500 }}>
-          {ORDER_STAGES.map((stage) => {
-            const stageOrders = orders.filter((o) => o.stage === stage.key);
+          {stageOptions.map((stage) => {
+            const stageOrders = orders.filter((o) => o.stage === stage.value);
             return (
-              <Droppable droppableId={stage.key} key={stage.key}>
+              <Droppable droppableId={stage.value} key={stage.value}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
@@ -49,7 +50,7 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "4px 8px" }}>
-                      <StatusBadge module="orderStage" status={stage.key} />
+                      <StatusBadge module="orderStage" status={stage.value} />
                       <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
                         {stageOrders.length}
                       </Typography.Text>
