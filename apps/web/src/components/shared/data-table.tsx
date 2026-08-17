@@ -1,6 +1,6 @@
 "use client";
 
-import { Input, Table, type ColumnType, type TableColumnsType, type TableProps } from "antd";
+import { Input, Table, type TableColumnsType, type TableProps } from "antd";
 import { useEffect, useMemo, useState, type Key, type ReactNode } from "react";
 import {
   ColumnManagerButton,
@@ -9,7 +9,7 @@ import {
   type ColumnManagerItem,
 } from "@/components/shared/column-manager-drawer";
 import { EmptyState } from "@/components/shared/empty-state";
-import { tableIndexColumn } from "@/lib/table-index-column";
+import { tableIndexColumn, type TableColumn } from "@/lib/table-index-column";
 
 export type DataTableEmptyAction = {
   label: string;
@@ -71,7 +71,7 @@ export interface DataTableProps<T extends object> {
 
 const DEFAULT_PAGINATION = { pageSize: 10, showSizeChanger: true } as const;
 
-function getColumnKey<T>(col: ColumnType<T>): string {
+function getColumnKey<T>(col: TableColumn<T>): string {
   if (col.key != null && col.key !== "") return String(col.key);
   if (col.dataIndex != null) {
     return Array.isArray(col.dataIndex) ? col.dataIndex.join(".") : String(col.dataIndex);
@@ -79,7 +79,7 @@ function getColumnKey<T>(col: ColumnType<T>): string {
   return "";
 }
 
-function getColumnLabel<T>(col: ColumnType<T>): string {
+function getColumnLabel<T>(col: TableColumn<T>): string {
   if (typeof col.title === "string" && col.title.trim()) return col.title;
   const key = getColumnKey(col);
   if (key === "avatar") return "Avatar";
@@ -116,7 +116,7 @@ export function DataTable<T extends object>({
 
   const managerItems: ColumnManagerItem[] = useMemo(
     () =>
-      (columns as ColumnType<T>[])
+      (columns as TableColumn<T>[])
         .map((col) => ({ key: getColumnKey(col), label: getColumnLabel(col) }))
         .filter((item) => item.key),
     [columns],
@@ -125,7 +125,7 @@ export function DataTable<T extends object>({
   const { committed, save, isVisible } = useManagedColumns(columnManagerKey, managerItems);
 
   const visibleColumns = columnManagerKey
-    ? (columns as ColumnType<T>[]).filter((col) => {
+    ? (columns as TableColumn<T>[]).filter((col) => {
         const key = getColumnKey(col);
         return !key || isVisible(key);
       })
@@ -142,7 +142,7 @@ export function DataTable<T extends object>({
   const indexOffset =
     pagination === false ? 0 : (pageState.current - 1) * pageState.pageSize;
   const columnsWithIndex = useMemo(
-    () => [tableIndexColumn<T>(indexOffset), ...(visibleColumns as ColumnType<T>[])],
+    () => [tableIndexColumn<T>(indexOffset), ...(visibleColumns as TableColumn<T>[])],
     [visibleColumns, indexOffset],
   );
   const rowSelection: TableProps<T>["rowSelection"] =
