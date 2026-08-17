@@ -1,28 +1,44 @@
 "use client";
 
 import { App, Alert, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space, Typography } from "antd";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
+import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
+import { ds } from "@/lib/design-tokens";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { MOCK_USERS } from "@/lib/mock-users";
+import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import { nextContractNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
+import { useUsers } from "@/lib/users-store";
 
 const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
 export default function NewOrderPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <NewOrderPageContent />
+    </Suspense>
+  );
+}
+
+function NewOrderPageContent() {
   const router = useRouter();
-  const { message } = App.useApp();
+  const searchParams = useSearchParams();
+  const prefillCustomerId = searchParams.get("customerId") ?? undefined;
+  const { message, modal } = App.useApp();
   const { services } = useServices();
   const { customers } = useCustomers();
   const { ctvs, addJob } = useCtvs();
   const { orders, addOrder, isContractTaken } = useOrders();
-  const { addNotification } = useNotifications();
+  const { addNotifications } = useNotifications();
+  const { currentUser } = useUsers();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const channel = Form.useWatch("channel", form);
@@ -52,8 +68,8 @@ export default function NewOrderPage() {
       <Form
         form={form}
         layout="vertical"
-        style={{ maxWidth: 560, padding: 24 }}
-        initialValues={{ needsVat: false }}
+        style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
+        initialValues={{ needsVat: false, customerId: prefillCustomerId }}
         onFinish={(values) => {
           setSaving(true);
           try {
@@ -104,15 +120,11 @@ export default function NewOrderPage() {
               deadline: values.deadline ? values.deadline.format("YYYY-MM-DD") : undefined,
             });
 
-            addNotification({
-              userId: assigned.id,
-              type: "task_assigned",
-              title: `Được giao đơn ${created.orderNumber}`,
-              body: `${customer.name} — ${service.name}`,
-              href: `/orders/${created.id}`,
-              orderId: created.id,
-              dedupeKey: `task_assigned:${created.id}:${assigned.id}`,
-            });
+            addNotifications(
+              [assigned.id],
+              taskAssignedDraft(created),
+              currentUser?.id,
+            );
 
             if (ctv && values.channel === "ctv") {
               const ratecard = Number(values.value);
@@ -176,12 +188,12 @@ export default function NewOrderPage() {
         )}
         <Form.Item
           name="value"
-          label="Giá trị Ratecard (VND)"
-          rules={[{ required: true, message: "Nhập giá trị Ratecard" }]}
+          label="Giá trị niêm yết (VND)"
+          rules={[{ required: true, message: "Nhập giá trị niêm yết" }]}
           extra={
             selectedService
-              ? `Ratecard dịch vụ gợi ý: ${formatVndDisplay(selectedService.unitPrice)}`
-              : "Giá Ratecard — cơ sở tính hoa hồng"
+              ? `Giá niêm yết dịch vụ gợi ý: ${formatVndDisplay(selectedService.unitPrice)}`
+              : "Giá niêm yết — cơ sở tính hoa hồng"
           }
         >
           <InputNumber {...vndInputProps} />
@@ -197,12 +209,12 @@ export default function NewOrderPage() {
                   validator: async (_, ctvVal) => {
                     if (ctvVal == null || value == null) return;
                     if (Number(ctvVal) < Number(value)) {
-                      throw new Error("Giá CTV thường ≥ Ratecard (Commission = Giá CTV − Ratecard)");
+                      throw new Error("Giá CTV thường ≥ giá niêm yết (Hoa hồng = Giá CTV − giá niêm yết)");
                     }
                   },
                 },
               ]}
-              extra="Commission = Giá CTV − Giá trị Ratecard"
+              extra="Hoa hồng = Giá CTV − giá niêm yết"
               dependencies={["value"]}
             >
               <InputNumber {...vndInputProps} />
@@ -214,9 +226,9 @@ export default function NewOrderPage() {
                 style={{ marginBottom: 16 }}
                 message={
                   <Typography.Text>
-                    Commission dự kiến:{" "}
+                    Hoa hồng dự kiến:{" "}
                     <Typography.Text strong>{formatVndDisplay(commission)}</Typography.Text>
-                    <Typography.Text type="secondary"> (Giá CTV − Ratecard)</Typography.Text>
+                    <Typography.Text type="secondary"> (Giá CTV − giá niêm yết)</Typography.Text>
                     {commission < 0 && " — kiểm tra lại giá"}
                   </Typography.Text>
                 }
@@ -278,11 +290,14 @@ export default function NewOrderPage() {
           <Input.TextArea rows={3} />
         </Form.Item>
         <Space>
-          <Button onClick={() => router.push("/orders")} disabled={saving}>
+          <Button
+            onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/orders"))}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            Tạo đơn
+            Tạo đơn hàng
           </Button>
         </Space>
       </Form>

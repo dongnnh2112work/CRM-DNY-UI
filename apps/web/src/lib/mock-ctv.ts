@@ -1,6 +1,6 @@
 import type { Ctv } from "./types";
 
-/** Commission = Giá CTV − Giá trị Ratecard */
+/** Hoa hồng = Giá CTV − giá niêm yết */
 export const MOCK_CTVS: Ctv[] = [
   {
     id: "ctv1",

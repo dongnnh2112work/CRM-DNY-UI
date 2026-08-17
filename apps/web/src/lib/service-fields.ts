@@ -1,6 +1,6 @@
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
-import type { FieldDefinition, Service } from "@/lib/types";
+import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 
 /** Keys stored on Service root (not customFields) */
 export const SERVICE_CORE_KEYS = new Set([
@@ -46,6 +46,7 @@ export function splitServiceFormValues(
     category: string;
     unitPrice: number;
     processingDays: number;
+    status?: ServiceStatus;
   };
   customFields: Record<string, unknown>;
 } {
@@ -56,6 +57,7 @@ export function splitServiceFormValues(
       customFields[def.key] = def.type === "number" ? Number(v) : v;
     }
   }
+  const status = values.status === "active" || values.status === "inactive" ? values.status : undefined;
   return {
     core: {
       name: String(values.name ?? ""),
@@ -63,6 +65,7 @@ export function splitServiceFormValues(
       category: String(values.category ?? ""),
       unitPrice: Number(values.unitPrice),
       processingDays: Number(values.processingDays),
+      ...(status ? { status } : {}),
     },
     customFields,
   };

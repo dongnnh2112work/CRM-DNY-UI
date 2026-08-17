@@ -15,6 +15,7 @@ import {
   Space,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import dayjs from "dayjs";
@@ -28,12 +29,15 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
+import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { ds } from "@/lib/design-tokens";
 import { MOCK_USERS } from "@/lib/mock-users";
+import { taskAssignedDraft } from "@/lib/notification-targets";
+import { useNotifications } from "@/lib/notifications-store";
 import {
   getOrderLicenseExpirySummary,
   isContractNumberTaken,
@@ -50,14 +54,18 @@ import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useServices } from "@/lib/services-store";
 import type { Order, OrderStage } from "@/lib/types";
+import { useUsers } from "@/lib/users-store";
+import { orderHasContractNumber } from "@/lib/vat-helpers";
 
 const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { getById, ready, updateOrder, deleteOrder, orders, isContractTaken } = useOrders();
+  const { addNotifications } = useNotifications();
+  const { currentUser } = useUsers();
   const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId } = usePayments();
   const { config } = useAppReminderConfig();
@@ -114,7 +122,7 @@ export default function OrderDetailPage() {
     updateOrder(order.id, next);
   };
 
-  const changeStage = (newStage: OrderStage) => {
+  const applyStage = (newStage: OrderStage) => {
     if (newStage === order.stage) return;
     if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
       message.warning(getLicenseBlockMessage());
@@ -126,6 +134,21 @@ export default function OrderDetailPage() {
       pendingTransition: undefined,
     });
     message.success("Đã cập nhật giai đoạn");
+  };
+
+  const requestStageChange = (newStage: OrderStage) => {
+    if (newStage === order.stage) return;
+    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
+      message.warning(getLicenseBlockMessage());
+      return;
+    }
+    const nextLabel = stageOptions.find((s) => s.value === newStage)?.label ?? newStage;
+    modal.confirm({
+      title: `Đổi giai đoạn sang “${nextLabel}”?`,
+      okText: "Xác nhận",
+      cancelText: "Hủy",
+      onOk: () => applyStage(newStage),
+    });
   };
 
   return (
@@ -143,12 +166,16 @@ export default function OrderDetailPage() {
             Thanh toán
             {payment ? ` (${formatVndDisplay(payment.remaining)} còn lại)` : ""}
           </Button>
-          <Button
-            disabled={!order.needsVat}
-            onClick={() => router.push(`/vat/new?orderId=${order.id}`)}
-          >
-            Tạo VAT
-          </Button>
+          <Tooltip title={!orderHasContractNumber(order) ? "Chỉ xuất VAT cho đơn đã có số HĐ." : undefined}>
+            <span>
+              <Button
+                disabled={!orderHasContractNumber(order)}
+                onClick={() => router.push(`/vat/new?orderId=${order.id}`)}
+              >
+                Tạo VAT
+              </Button>
+            </span>
+          </Tooltip>
           <Popconfirm
             title="Hủy đơn này?"
             description="Đơn sẽ chuyển sang giai đoạn Đã hủy."
@@ -156,7 +183,7 @@ export default function OrderDetailPage() {
             cancelText="Đóng"
             okButtonProps={{ danger: true }}
             onConfirm={() => {
-              changeStage("cancelled");
+              applyStage("cancelled");
             }}
           >
             <Button danger>Hủy đơn</Button>
@@ -185,7 +212,7 @@ export default function OrderDetailPage() {
             module="orderStage"
             value={order.stage}
             options={stageOptions.map((s) => ({ value: s.value, label: s.label }))}
-            onChange={(v) => changeStage(v as OrderStage)}
+            onChange={(v) => requestStageChange(v as OrderStage)}
           />
           <Tag color={order.needsVat ? "blue" : "default"}>
             {order.needsVat ? "Có VAT" : "Không VAT"}
@@ -204,7 +231,7 @@ export default function OrderDetailPage() {
             <Link href={`/customers/${order.customerId}`}>{order.customerName}</Link>
           </Descriptions.Item>
           <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
-          <Descriptions.Item label="Giá trị Ratecard">{formatVndDisplay(order.value)}</Descriptions.Item>
+          <Descriptions.Item label="Giá trị niêm yết">{formatVndDisplay(order.value)}</Descriptions.Item>
           <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
           <Descriptions.Item label="Xuất VAT">{order.needsVat ? "Có" : "Không"}</Descriptions.Item>
           <Descriptions.Item label="Số HĐ">
@@ -217,10 +244,10 @@ export default function OrderDetailPage() {
           {order.channel === "ctv" && order.ctvPrice != null && (
             <>
               <Descriptions.Item label="Giá CTV">{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
-              <Descriptions.Item label="Commission">
+              <Descriptions.Item label="Hoa hồng">
                 <Tag color="green">{formatVndDisplay(order.ctvPrice - order.value)}</Tag>
                 <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: ds.fontSize.caption }}>
-                  Giá CTV − Ratecard
+                  Giá CTV − giá niêm yết
                 </Typography.Text>
               </Descriptions.Item>
             </>
@@ -337,6 +364,18 @@ export default function OrderDetailPage() {
                 deadline: values.deadline ? values.deadline.format("YYYY-MM-DD") : undefined,
                 vatIssueDeadline: undefined,
               });
+              if (assigned.id !== order.assignedUserId) {
+                addNotifications(
+                  [assigned.id],
+                  taskAssignedDraft({
+                    id: order.id,
+                    orderNumber: order.orderNumber,
+                    customerName: customer.name,
+                    serviceName: service.name,
+                  }),
+                  currentUser?.id,
+                );
+              }
               message.success("Đã cập nhật đơn hàng");
               setEditOpen(false);
             } finally {
@@ -379,7 +418,7 @@ export default function OrderDetailPage() {
               </Form.Item>
             </>
           ) : null}
-          <Form.Item name="value" label="Giá trị Ratecard" rules={[{ required: true }]}>
+          <Form.Item name="value" label="Giá trị niêm yết" rules={[{ required: true }]}>
             <InputNumber {...vndInputProps} />
           </Form.Item>
           <Form.Item name="assignedUserId" label="Phụ trách" rules={[{ required: true }]}>
@@ -426,9 +465,17 @@ export default function OrderDetailPage() {
           <Form.Item name="notes" label="Ghi chú">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={saving} disabled={saving}>
-            Lưu thay đổi
-          </Button>
+          <Space>
+            <Button
+              onClick={() => confirmDiscardIfDirty(modal, form, () => setEditOpen(false))}
+              disabled={saving}
+            >
+              Hủy
+            </Button>
+            <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
+              Lưu
+            </Button>
+          </Space>
         </Form>
       </Modal>
     </>

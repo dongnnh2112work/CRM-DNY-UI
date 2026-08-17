@@ -1,32 +1,60 @@
 "use client";
 
-import { App, Button, Popconfirm, type TableColumnsType } from "antd";
-import { useState, type Key } from "react";
+import { CalendarOutlined, CheckCircleOutlined, FileTextOutlined } from "@ant-design/icons";
+import { App, Button, Col, Popconfirm, Row, type TableColumnsType } from "antd";
+import { useCallback, useMemo, useState, type Key } from "react";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { MOCK_VAT_INVOICES } from "@/lib/mock-vat";
+import { useOrders } from "@/lib/orders-store";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { VatInvoice, VatStatus } from "@/lib/types";
+import { resolveContractNumber } from "@/lib/vat-helpers";
+import { useVat } from "@/lib/vat-store";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function VatPage() {
   const { message } = App.useApp();
-  const [invoices, setInvoices] = useState(MOCK_VAT_INVOICES);
+  const { invoices, updateInvoice, deleteInvoices } = useVat();
+  const { orders } = useOrders();
   const [query, setQuery] = useState("");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const applyUrlQuery = useCallback((q: string) => {
+    setQuery(q);
+    setSelectedRowKeys([]);
+  }, []);
   const [exporting, setExporting] = useState(false);
 
-  const filtered = invoices.filter((v) =>
+  const rows = useMemo(
+    () =>
+      invoices.map((v) => ({
+        ...v,
+        contractNumber: resolveContractNumber(v, orders),
+      })),
+    [invoices, orders],
+  );
+
+  const today = todayIso();
+  const invoicesToday = rows.filter((v) => v.issueDate === today).length;
+  const draftCount = rows.filter((v) => v.status === "draft").length;
+  const issuedCount = rows.filter((v) => v.status === "issued").length;
+
+  const filtered = rows.filter((v) =>
     matchesTableQuery(query, [
-      v.invoiceNumber,
+      v.contractNumber,
       v.customerName,
       v.orderNumber,
       v.taxCode,
@@ -37,19 +65,20 @@ export default function VatPage() {
       v.issueDate,
       v.status,
       getStatusMeta("vat", v.status).label,
+      ...(v.lines ?? []).map((line) => line.description),
     ]),
   );
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
 
-  const selectedInvoices = () => invoices.filter((v) => selectedRowKeys.includes(v.id));
+  const selectedInvoices = () => rows.filter((v) => selectedRowKeys.includes(v.id));
 
   const bulkExport = async () => {
     setExporting(true);
     try {
-      const rows = selectedInvoices().map((v) => ({
-        "Số HĐ": v.invoiceNumber,
+      const exportRows = selectedInvoices().map((v) => ({
+        "Số HĐ": v.contractNumber ?? "",
         "Khách hàng": v.customerName,
         "Đơn hàng": v.orderNumber,
         "Tiền hàng": v.amount,
@@ -58,7 +87,7 @@ export default function VatPage() {
         "Ngày xuất": v.issueDate,
         "Trạng thái": v.status,
       }));
-      await exportRowsToXlsx(`vat-selected-${Date.now()}.xlsx`, rows);
+      await exportRowsToXlsx(`vat-selected-${Date.now()}.xlsx`, exportRows);
       message.success(`Đã xuất ${selectedCount} hóa đơn VAT`);
     } finally {
       setExporting(false);
@@ -73,15 +102,13 @@ export default function VatPage() {
       message.warning("Không có hóa đơn nháp trong các dòng đã chọn.");
       return;
     }
-    setInvoices((prev) =>
-      prev.map((v) => (draftIds.includes(v.id) ? { ...v, status: "cancelled" as const } : v)),
-    );
+    for (const id of draftIds) updateInvoice(id, { status: "cancelled" });
     message.success(`Đã hủy ${draftIds.length} hóa đơn nháp`);
     clearSelection();
   };
 
   const bulkDelete = () => {
-    setInvoices((prev) => prev.filter((v) => !selectedRowKeys.includes(v.id)));
+    deleteInvoices(selectedRowKeys.map(String));
     message.success(`Đã xóa ${selectedCount} hóa đơn VAT`);
     clearSelection();
   };
@@ -90,9 +117,11 @@ export default function VatPage() {
 
   const columns: TableColumnsType<VatInvoice> = [
     {
-      title: "Số hóa đơn VAT",
-      dataIndex: "invoiceNumber",
-      sorter: (a, b) => compareText(a.invoiceNumber, b.invoiceNumber),
+      title: "Số HĐ",
+      dataIndex: "contractNumber",
+      align: "center",
+      sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
+      render: (v?: number) => (v != null ? v : "—"),
     },
     {
       title: "Khách hàng",
@@ -140,6 +169,7 @@ export default function VatPage() {
 
   return (
     <>
+      <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
         breadcrumbs={[{ title: "Quản lý VAT" }]}
         searchPlaceholder="Tìm trong bảng…"
@@ -150,11 +180,25 @@ export default function VatPage() {
         searchValue={query}
         primaryAction={{ label: "+ Hóa đơn VAT mới", href: "/vat/new" }}
       />
+      <div style={{ padding: "16px 16px 0" }}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={8}>
+            <StatCard title="Hóa đơn trong ngày" value={invoicesToday} prefix={<CalendarOutlined />} />
+          </Col>
+          <Col xs={24} sm={8}>
+            <StatCard title="Hóa đơn nháp" value={draftCount} prefix={<FileTextOutlined />} />
+          </Col>
+          <Col xs={24} sm={8}>
+            <StatCard title="Hóa đơn đã xuất" value={issuedCount} prefix={<CheckCircleOutlined />} />
+          </Col>
+        </Row>
+      </div>
       <DataTable<VatInvoice>
         rowKey="id"
         columns={columns}
         dataSource={filtered}
         loading={exporting}
+        columnManagerKey="vat"
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}

@@ -1,33 +1,39 @@
 "use client";
 
-import { App, Button, Form, Input, InputNumber, Popconfirm, Space, Table, Typography } from "antd";
-import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { App, Button, Drawer, Form, Input, InputNumber, Popconfirm, Space, Table, Tag, Typography } from "antd";
+import { useState } from "react";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { canReviewExpense, useExpenses } from "@/lib/expenses-store";
+import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { expensePendingDraft, expenseReviewedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import { usePayments } from "@/lib/payments-store";
-import { useUsers } from "@/lib/users-store";
-import { StatusBadge } from "@/components/shared/status-badge";
+import { tableIndexColumn } from "@/lib/table-index-column";
 import type { Order, OrderExpense } from "@/lib/types";
+import { useUsers } from "@/lib/users-store";
 
 export function OrderExpensesPanel({ order }: { order: Order }) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { currentUser, getEffectivePermissions } = useUsers();
   const { getByOrderId } = usePayments();
   const { getByOrderId: getExpenses, totalApprovedChi, addExpense, reviewExpense } = useExpenses();
-  const { addNotification } = useNotifications();
+  const { addNotifications } = useNotifications();
   const [form] = Form.useForm();
+  const [addOpen, setAddOpen] = useState(false);
+
+  const closeAdd = () => {
+    form.resetFields();
+    setAddOpen(false);
+  };
 
   const payment = getByOrderId(order.id);
   const thu = payment?.paidAmount ?? 0;
   const chi = totalApprovedChi(order.id);
   const rows = getExpenses(order.id);
   const canReview = currentUser
-    ? canReviewExpense(
-        currentUser,
-        order.reviewerId,
-        Boolean(getEffectivePermissions(currentUser).expense_approvals?.edit),
-      )
+    ? canReviewExpense(Boolean(getEffectivePermissions(currentUser).expense_approvals?.edit))
     : false;
 
   return (
@@ -53,56 +59,69 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
         </div>
       </Space>
 
-      <Typography.Title level={5} style={{ fontSize: ds.fontSize.body }}>
-        Yêu cầu duyệt chi
-      </Typography.Title>
-      <Form
-        form={form}
-        layout="vertical"
-        style={{ maxWidth: 480, marginBottom: 24 }}
-        onFinish={(values) => {
-          if (!currentUser) {
-            message.error("Chưa đăng nhập");
-            return;
-          }
-          const created = addExpense({
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            amount: Number(values.amount),
-            title: values.title,
-            note: values.note,
-            requestedById: currentUser.id,
-            requestedByName: currentUser.name,
-          });
-          const reviewerId = order.reviewerId;
-          if (reviewerId) {
-            addNotification({
-              userId: reviewerId,
-              type: "expense_pending",
-              title: `Yêu cầu duyệt chi — ${order.orderNumber}`,
-              body: `${currentUser.name}: ${created.title} (${formatVndDisplay(created.amount)})`,
-              href: `/orders/${order.id}`,
-              orderId: order.id,
-              dedupeKey: `expense_pending:${created.id}`,
-            });
-          }
-          message.success("Đã gửi yêu cầu duyệt chi");
-          form.resetFields();
-        }}
-      >
-        <Form.Item name="title" label="Nội dung chi" rules={[{ required: true, message: "Nhập nội dung" }]}>
-          <Input placeholder="VD: Nộp 3tr Cục Dân sự" />
-        </Form.Item>
-        <Form.Item name="amount" label="Số tiền (VND)" rules={[{ required: true, message: "Nhập số tiền" }]}>
-          <InputNumber {...vndInputProps} />
-        </Form.Item>
-        <Form.Item name="note" label="Ghi chú">
-          <Input.TextArea rows={2} />
-        </Form.Item>
-        <Button type="primary" htmlType="submit">
-          Gửi yêu cầu
+      <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }} wrap>
+        <Typography.Title level={5} style={{ fontSize: ds.fontSize.body, margin: 0 }}>
+          Yêu cầu duyệt chi
+        </Typography.Title>
+        <Button type="primary" onClick={() => setAddOpen(true)}>
+          + Thêm khoản chi
         </Button>
-      </Form>
+      </Space>
+      <Drawer
+        title="Thêm khoản chi"
+        open={addOpen}
+        onClose={() => confirmDiscardIfDirty(modal, form, closeAdd)}
+        width={400}
+        destroyOnHidden
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button onClick={() => confirmDiscardIfDirty(modal, form, closeAdd)}>Hủy</Button>
+            <Button type="primary" onClick={() => form.submit()}>
+              Gửi yêu cầu
+            </Button>
+          </div>
+        }
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => {
+            if (!currentUser) {
+              message.error("Chưa đăng nhập");
+              return;
+            }
+            const created = addExpense({
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              amount: Number(values.amount),
+              title: values.title,
+              note: values.note,
+              requestedById: currentUser.id,
+              requestedByName: currentUser.name,
+            });
+            const reviewerId = order.reviewerId;
+            addNotifications(
+              [currentUser.id, reviewerId],
+              expensePendingDraft(order, created, currentUser.name),
+            );
+            if (!reviewerId) {
+              message.warning("Đơn chưa có người duyệt chi — chỉ người gửi nhận thông báo.");
+            }
+            message.success("Đã gửi yêu cầu duyệt chi");
+            closeAdd();
+          }}
+        >
+          <Form.Item name="title" label="Nội dung chi" rules={[{ required: true, message: "Nhập nội dung" }]}>
+            <Input placeholder="VD: Nộp 3tr Cục Dân sự" />
+          </Form.Item>
+          <Form.Item name="amount" label="Số tiền (VND)" rules={[{ required: true, message: "Nhập số tiền" }]}>
+            <InputNumber {...vndInputProps} />
+          </Form.Item>
+          <Form.Item name="note" label="Ghi chú">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Drawer>
 
       <Table<OrderExpense>
         rowKey="id"
@@ -110,6 +129,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
         pagination={false}
         dataSource={rows}
         columns={[
+          tableIndexColumn<OrderExpense>(),
           { title: "Nội dung", dataIndex: "title" },
           {
             title: "Số tiền",
@@ -127,17 +147,29 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
           {
             title: "Thao tác",
             key: "actions",
-            render: (_, r) =>
-              r.status === "pending" && canReview && currentUser ? (
+            render: (_, r) => {
+              if (r.status !== "pending") {
+                return r.reviewedByName ?? "—";
+              }
+              if (!canReview || !currentUser) {
+                return <Tag>Chỉ xem</Tag>;
+              }
+              return (
                 <Space>
                   <Popconfirm
                     title="Duyệt khoản chi này?"
                     okText="Duyệt"
+                    cancelText="Hủy"
                     onConfirm={() => {
                       reviewExpense(r.id, "approved", {
                         id: currentUser.id,
                         name: currentUser.name,
                       });
+                      addNotifications(
+                        [r.requestedById, order.reviewerId],
+                        expenseReviewedDraft(r, "approved", currentUser.name),
+                        currentUser.id,
+                      );
                       message.success("Đã duyệt chi");
                     }}
                   >
@@ -148,12 +180,18 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
                   <Popconfirm
                     title="Từ chối khoản chi?"
                     okText="Từ chối"
+                    cancelText="Hủy"
                     okButtonProps={{ danger: true }}
                     onConfirm={() => {
                       reviewExpense(r.id, "rejected", {
                         id: currentUser.id,
                         name: currentUser.name,
                       });
+                      addNotifications(
+                        [r.requestedById, order.reviewerId],
+                        expenseReviewedDraft(r, "rejected", currentUser.name),
+                        currentUser.id,
+                      );
                       message.success("Đã từ chối");
                     }}
                   >
@@ -162,9 +200,8 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
                     </Button>
                   </Popconfirm>
                 </Space>
-              ) : (
-                r.reviewedByName ?? "—"
-              ),
+              );
+            },
           },
         ]}
       />

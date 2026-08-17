@@ -9,46 +9,24 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { CustomerStatusContext } from "@/lib/customer-status-store";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { ds } from "@/lib/design-tokens";
+import { STATUS_CONFIG, type DisplayStatusMeta, type StatusMeta, type StatusModule, type StatusTone } from "@/lib/status-config";
 import {
-  STATUS_CONFIG,
-  type StatusMeta,
-  type StatusModule,
-  type StatusTone,
-} from "@/lib/status-config";
+  STAGE_COLOR_PALETTE,
+  TONE_TO_HEX,
+  nextFreeStageColor,
+  normalizeStoredColor,
+  slugifyKey,
+  uniqueKey,
+} from "@/lib/status-palette";
 import type { OrderStage } from "@/lib/types";
 import { ORDER_STAGES } from "@/lib/types";
 
+export { STAGE_COLOR_PALETTE, nextFreeStageColor };
+
 const KEY = "dny-crm-order-stage-meta";
-
-/** Soft Notion-like palette — swatches only */
-export const STAGE_COLOR_PALETTE = [
-  "#787774",
-  "#9b6b43",
-  "#d9730d",
-  "#cb912f",
-  "#448361",
-  "#337ea9",
-  "#9065b0",
-  "#c14c8a",
-  "#d44c47",
-  "#5d6b7a",
-  "#2a9d99",
-  "#5b67a5",
-  "#a8557a",
-  "#6b7280",
-  "#b45309",
-  "#15803d",
-] as const;
-
-const TONE_TO_HEX: Record<StatusTone, string> = {
-  processing: "#337ea9",
-  success: "#448361",
-  warning: "#d9730d",
-  error: "#d44c47",
-  default: "#787774",
-};
 
 export type OrderStageDefinition = {
   key: OrderStage;
@@ -85,41 +63,6 @@ function defaultStages(): OrderStageDefinition[] {
 
 export function getDefaultOrderStages(): OrderStageDefinition[] {
   return defaultStages();
-}
-
-export function nextFreeStageColor(usedColors: string[]): string | null {
-  const used = new Set(usedColors.map((c) => c.toLowerCase()));
-  return STAGE_COLOR_PALETTE.find((c) => !used.has(c.toLowerCase())) ?? null;
-}
-
-function normalizeStoredColor(raw: string | undefined, fallback: string): string {
-  if (!raw) return fallback;
-  if (raw.startsWith("#")) return raw;
-  if (raw in TONE_TO_HEX) return TONE_TO_HEX[raw as StatusTone];
-  return fallback;
-}
-
-function slugifyKey(label: string): string {
-  const base = label
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 32);
-  return base || `stage_${Date.now()}`;
-}
-
-function uniqueKey(desired: string, existing: Set<string>): string {
-  let key = desired;
-  let n = 2;
-  while (existing.has(key)) {
-    key = `${desired}_${n}`;
-    n += 1;
-  }
-  return key;
 }
 
 type PersistedV1 = Record<string, { label?: string; color?: string }>;
@@ -170,7 +113,7 @@ function parseStored(raw: unknown): OrderStageDefinition[] | null {
 }
 
 /** Unified meta for badges: label + color string (tone name or hex) */
-export type DisplayStatusMeta = { label: string; color: string };
+export type { DisplayStatusMeta } from "@/lib/status-config";
 
 type Ctx = {
   stages: OrderStageDefinition[];
@@ -324,8 +267,10 @@ export function useOrderStatusConfig() {
 }
 
 export function useStatusMeta(module: StatusModule, status: string): DisplayStatusMeta {
-  const ctx = useContext(OrderStatusContext);
-  if (ctx) return ctx.getMeta(module, status);
+  const orderCtx = useContext(OrderStatusContext);
+  const customerCtx = useContext(CustomerStatusContext);
+  if (module === "customer" && customerCtx) return customerCtx.getMeta(status);
+  if (orderCtx) return orderCtx.getMeta(module, status);
   const meta = STATUS_CONFIG[module][status] ?? { label: status, color: "default" as StatusTone };
   return { label: meta.label, color: meta.color };
 }

@@ -110,7 +110,7 @@ Mọi action ghi dữ liệu (save/update/delete) phải có:
   - **Đã migrate list:** VAT → Emails → Payments → CTV → Users → Orders (pilot từng module). Customers/Services qua `DynamicTable` → `DataTable`.
   - **Không còn** pattern Ant `Table` raw trên list page. Ant `Table` chỉ còn ở bảng phụ/detail/preview (xem §2 ngoại lệ).
 - **2026-08-13 — User profile & phân quyền View/Edit:**
-  - Header avatar: Dropdown **Cập nhật thông tin** + **Đăng xuất**; form hồ sơ (họ tên, SĐT, email, ngày sinh, địa chỉ, upload avatar).
+  - Header avatar: Dropdown **thông tin** + **Đăng xuất**; form hồ sơ (họ tên, SĐT, email, ngày sinh, địa chỉ, upload avatar).
   - `AppUser` mở rộng phone / dateOfBirth / address / avatar; `UsersProvider` session + list + ma trận quyền.
   - Users: click **tên** mở drawer xem/sửa; click **vai trò** mở ma trận checkbox **Xem | Sửa** theo từng trang hệ thống (lưu được).
   - Thay `PERMISSIONS` dạng `module.action` bằng `SYSTEM_PAGES` + `ROLE_PAGE_PERMISSIONS` (View/Edit).

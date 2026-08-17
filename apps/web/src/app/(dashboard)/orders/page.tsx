@@ -3,17 +3,20 @@
 import { AppstoreOutlined, BarsOutlined, BgColorsOutlined } from "@ant-design/icons";
 import { App, Button, Modal, Select, Segmented, Tag, type TableColumnsType } from "antd";
 import Link from "next/link";
-import { useMemo, useState, type Key } from "react";
+import { useCallback, useMemo, useState, type Key } from "react";
 import { OrderStageSettingsDrawer } from "@/components/orders/order-stage-settings-drawer";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { KanbanBoard } from "@/components/shared/kanban-board";
 import { PageHeader } from "@/components/shared/page-header";
-import { StatusBadge } from "@/components/shared/status-badge";
+import { StatusSelect } from "@/components/shared/status-select";
+import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { MOCK_USERS } from "@/lib/mock-users";
+import { taskAssignedDraft } from "@/lib/notification-targets";
+import { useNotifications } from "@/lib/notifications-store";
 import {
   canMoveToCompleted,
   getLicenseBlockMessage,
@@ -36,10 +39,11 @@ function compareText(a: string, b: string) {
 }
 
 export default function OrdersPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { orders, updateOrder } = useOrders();
+  const { addNotifications } = useNotifications();
   const { config } = useAppReminderConfig();
-  const { getMeta } = useOrderStatusConfig();
+  const { getMeta, stageOptions } = useOrderStatusConfig();
   const { currentUser, getEffectivePermissions } = useUsers();
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canViewStages = Boolean(perms?.order_statuses?.view);
@@ -49,6 +53,10 @@ export default function OrdersPage() {
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const applyUrlQuery = useCallback((q: string) => {
+    setQuery(q);
+    setSelectedRowKeys([]);
+  }, []);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignUserId, setAssignUserId] = useState<string>();
   const [exporting, setExporting] = useState(false);
@@ -110,6 +118,25 @@ export default function OrdersPage() {
     return true;
   };
 
+  const requestStageChange = (order: Order, newStage: OrderStage) => {
+    if (newStage === order.stage) return;
+    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
+      message.warning(getLicenseBlockMessage());
+      return;
+    }
+    const nextLabel = getMeta("orderStage", newStage).label;
+    modal.confirm({
+      title: `Đổi giai đoạn sang “${nextLabel}”?`,
+      content: `${order.orderNumber} · ${order.customerName}`,
+      okText: "Xác nhận",
+      cancelText: "Hủy",
+      onOk: () => {
+        handleMove(order.id, newStage);
+        message.success("Đã cập nhật giai đoạn");
+      },
+    });
+  };
+
   const bulkExport = async () => {
     setExporting(true);
     try {
@@ -136,12 +163,25 @@ export default function OrdersPage() {
       message.warning("Chọn nhân viên phụ trách");
       return;
     }
-    selectedRowKeys.forEach((id) =>
+    selectedRowKeys.forEach((id) => {
+      const order = orders.find((o) => o.id === String(id));
       updateOrder(String(id), {
         assignedUserId: user.id,
         assignedUserName: user.name,
-      }),
-    );
+      });
+      if (order && order.assignedUserId !== user.id) {
+        addNotifications(
+          [user.id],
+          taskAssignedDraft({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            customerName: order.customerName,
+            serviceName: order.serviceName,
+          }),
+          currentUser?.id,
+        );
+      }
+    });
     message.success(`Đã gán ${selectedCount} đơn cho ${user.name}`);
     setAssignOpen(false);
     setAssignUserId(undefined);
@@ -180,7 +220,14 @@ export default function OrdersPage() {
       title: "Giai đoạn",
       dataIndex: "stage",
       sorter: (a, b) => compareText(a.stage, b.stage),
-      render: (s: OrderStage) => <StatusBadge module="orderStage" status={s} />,
+      render: (s: OrderStage, r) => (
+        <StatusSelect
+          module="orderStage"
+          value={s}
+          options={stageOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+          onChange={(v) => requestStageChange(r, v as OrderStage)}
+        />
+      ),
     },
     {
       title: "Số HĐ",
@@ -242,6 +289,7 @@ export default function OrdersPage() {
 
   return (
     <>
+      <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
         breadcrumbs={[{ title: "Quản lý đơn hàng" }]}
         searchPlaceholder="Tìm trong bảng…"
@@ -250,7 +298,7 @@ export default function OrdersPage() {
           clearSelection();
         }}
         searchValue={query}
-        primaryAction={{ label: "+ Tạo đơn", href: "/orders/new" }}
+        primaryAction={{ label: "+ Đơn hàng mới", href: "/orders/new" }}
       >
         <Select
           value={userFilter}
@@ -290,21 +338,24 @@ export default function OrdersPage() {
           </Button>
         ) : null}
       </PageHeader>
-      {filtered.length === 0 ? (
-        <EmptyState description={listEmptyDescription} action={listEmptyAction} />
-      ) : viewMode === "kanban" ? (
-        <KanbanBoard orders={filtered} onMove={handleMove} />
+      {viewMode === "kanban" ? (
+        filtered.length === 0 ? (
+          <EmptyState description={listEmptyDescription} action={listEmptyAction} />
+        ) : (
+          <KanbanBoard orders={filtered} onMove={handleMove} />
+        )
       ) : (
         <DataTable<Order>
           rowKey="id"
           columns={columns}
           dataSource={filtered}
           loading={exporting}
+          columnManagerKey="orders"
           enableRowSelection
           selectedRowKeys={selectedRowKeys}
           onSelectedRowKeysChange={setSelectedRowKeys}
-          emptyDescription="Chưa có đơn hàng nào."
-          emptyAction={{ label: "Tạo đơn hàng", href: "/orders/new" }}
+          emptyDescription={listEmptyDescription}
+          emptyAction={listEmptyAction}
           bulkToolbar={
             <BulkActionBar count={selectedCount}>
               <Button size="small" onClick={bulkExport}>

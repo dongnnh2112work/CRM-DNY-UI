@@ -75,7 +75,7 @@ export const SYSTEM_PAGES = [
   { key: "payments", label: "Quản lý thanh toán" },
   { key: "expense_approvals", label: "Duyệt chi" },
   { key: "vat", label: "Quản lý VAT" },
-  { key: "services", label: "Danh sách dịch vụ" },
+  { key: "services", label: "Quản lý dịch vụ" },
   { key: "emails", label: "Quản lý email" },
   { key: "users", label: "Quản lý người dùng" },
   { key: "config", label: "Cấu hình" },
@@ -151,7 +151,7 @@ export function slugifyRoleKey(label: string): string {
 
 /* ── Customer ───────────────────────────────────────────────────── */
 
-export type CustomerStatus = "active" | "lead" | "archived";
+export type CustomerStatus = string;
 
 export interface Customer {
   id: string;
@@ -164,6 +164,8 @@ export interface Customer {
   owner: string;
   status: CustomerStatus;
   createdAt: string;
+  /** Dịch vụ ghi nhận thủ công (union với dịch vụ từ đơn hàng khi hiển thị). */
+  usedServiceIds?: string[];
   customFields: Record<string, unknown>;
 }
 
@@ -258,9 +260,9 @@ export interface Order {
   channel: OrderChannel;
   ctvId?: string;
   ctvName?: string;
-  /** Giá trị Ratecard */
+  /** Giá trị niêm yết */
   value: number;
-  /** Giá CTV — Commission = ctvPrice - value (Ratecard) */
+  /** Giá CTV — Hoa hồng = ctvPrice - value (giá niêm yết) */
   ctvPrice?: number;
   assignedUserId: string;
   assignedUserName: string;
@@ -317,7 +319,8 @@ export type AppNotificationType =
   | "order_overdue"
   | "license_expiring"
   | "vat_deadline_approaching"
-  | "expense_pending";
+  | "expense_pending"
+  | "expense_reviewed";
 
 export interface AppNotification {
   id: string;
@@ -364,11 +367,18 @@ export interface PaymentRecord {
 
 export type VatStatus = "draft" | "issued" | "cancelled";
 
+export interface VatInvoiceLine {
+  description: string;
+  amount: number;
+}
+
 export interface VatInvoice {
   id: string;
   invoiceNumber: string;
   orderId: string;
   orderNumber: string;
+  /** Số HĐ (hợp đồng) lấy từ đơn — hiển thị trên list */
+  contractNumber?: number;
   customerName: string;
   taxCode?: string;
   amount: number;
@@ -377,6 +387,7 @@ export interface VatInvoice {
   totalAmount: number;
   issueDate: string;
   status: VatStatus;
+  lines: VatInvoiceLine[];
 }
 
 /* ── CTV ────────────────────────────────────────────────────────── */

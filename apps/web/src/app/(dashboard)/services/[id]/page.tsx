@@ -133,8 +133,9 @@ export default function ServiceDetailPage() {
           key={service.id}
           service={service}
           fieldDefs={fieldDefs}
-          submitLabel="Lưu thay đổi"
+          submitLabel="Lưu"
           loading={saving}
+          onCancel={() => setEditOpen(false)}
           onSubmit={async (payload) => {
             setSaving(true);
             try {

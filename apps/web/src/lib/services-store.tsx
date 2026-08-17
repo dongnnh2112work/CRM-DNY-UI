@@ -9,6 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { loadJson, saveJson } from "@/lib/demo-storage";
+import { mergeSeedFieldDefs } from "@/lib/field-defs";
 import { MOCK_SERVICES, SERVICE_FIELD_DEFS } from "@/lib/mock-services";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 
@@ -40,24 +42,6 @@ type ServicesContextValue = {
 
 const ServicesContext = createContext<ServicesContextValue | null>(null);
 
-function loadJson<T>(key: string): T | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
-
-function saveJson(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore quota / private mode
-  }
-}
-
 export function ServicesProvider({ children }: { children: ReactNode }) {
   const [services, setServices] = useState<Service[]>(MOCK_SERVICES);
   const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>(SERVICE_FIELD_DEFS);
@@ -67,7 +51,9 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
     const storedServices = loadJson<Service[]>(SERVICES_KEY);
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
     if (storedServices && Array.isArray(storedServices)) setServices(storedServices);
-    if (storedFields && Array.isArray(storedFields)) setFieldDefs(storedFields);
+    if (storedFields && Array.isArray(storedFields)) {
+      setFieldDefs(mergeSeedFieldDefs(storedFields, SERVICE_FIELD_DEFS));
+    }
     setReady(true);
   }, []);
 

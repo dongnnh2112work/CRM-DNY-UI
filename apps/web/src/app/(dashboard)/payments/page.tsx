@@ -1,16 +1,17 @@
 "use client";
 
-import { App, Button, type TableColumnsType } from "antd";
+import { App, Button, Select, type TableColumnsType } from "antd";
 import Link from "next/link";
-import { useState, type Key } from "react";
+import { useCallback, useMemo, useState, type Key } from "react";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { usePayments } from "@/lib/payments-store";
-import { getStatusMeta } from "@/lib/status-config";
+import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { PaymentRecord, PaymentStatus } from "@/lib/types";
 
@@ -22,24 +23,37 @@ export default function PaymentsPage() {
   const { message } = App.useApp();
   const { payments } = usePayments();
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const applyUrlQuery = useCallback((q: string) => {
+    setQuery(q);
+    setSelectedRowKeys([]);
+  }, []);
   const [exporting, setExporting] = useState(false);
 
-  const filtered = payments.filter((p) =>
-    matchesTableQuery(query, [
-      p.orderNumber,
-      p.customerName,
-      p.totalAmount,
-      p.paidAmount,
-      p.remaining,
-      p.status,
-      getStatusMeta("payment", p.status).label,
-      p.installments.length,
-    ]),
-  );
+  const filtered = useMemo(() => {
+    let list = [...payments];
+    if (statusFilter !== "all") list = list.filter((p) => p.status === statusFilter);
+    if (query.trim()) {
+      list = list.filter((p) =>
+        matchesTableQuery(query, [
+          p.orderNumber,
+          p.customerName,
+          p.totalAmount,
+          p.paidAmount,
+          p.remaining,
+          p.status,
+          getStatusMeta("payment", p.status).label,
+          p.installments.length,
+        ]),
+      );
+    }
+    return list;
+  }, [payments, statusFilter, query]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
+  const hasActiveFilters = Boolean(query.trim()) || statusFilter !== "all";
 
   const bulkExport = async () => {
     setExporting(true);
@@ -72,7 +86,6 @@ export default function PaymentsPage() {
       title: "Khách hàng",
       dataIndex: "customerName",
       sorter: (a, b) => compareText(a.customerName, b.customerName),
-      render: (v, r) => <Link href={`/customers/${r.customerId}`}>{v}</Link>,
     },
     {
       title: "Tổng",
@@ -108,28 +121,11 @@ export default function PaymentsPage() {
       sorter: (a, b) => a.installments.length - b.installments.length,
       render: (_, r) => r.installments.length,
     },
-    {
-      title: "Đơn hàng",
-      key: "order",
-      render: (_, r) => (
-        <Button size="small">
-          <Link href={`/orders/${r.orderId}`}>Mở đơn</Link>
-        </Button>
-      ),
-    },
-    {
-      title: "Thao tác",
-      key: "action",
-      render: (_, r) => (
-        <Button size="small">
-          <Link href={`/payments/${r.id}`}>Chi tiết</Link>
-        </Button>
-      ),
-    },
   ];
 
   return (
     <>
+      <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
         breadcrumbs={[{ title: "Quản lý thanh toán" }]}
         searchPlaceholder="Tìm trong bảng…"
@@ -138,22 +134,33 @@ export default function PaymentsPage() {
           clearSelection();
         }}
         searchValue={query}
-      />
+      >
+        <Select
+          value={statusFilter}
+          onChange={(v) => {
+            setStatusFilter(v);
+            clearSelection();
+          }}
+          style={{ width: 180 }}
+          options={[{ value: "all", label: "Tất cả trạng thái" }, ...getStatusOptions("payment")]}
+        />
+      </PageHeader>
       <DataTable<PaymentRecord>
         rowKey="id"
         columns={columns}
         dataSource={filtered}
         loading={exporting}
+        columnManagerKey="payments"
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}
         emptyDescription={
-          query.trim() && payments.length > 0
+          hasActiveFilters && payments.length > 0
             ? "Không tìm thấy kết quả phù hợp."
             : "Chưa có bản ghi thanh toán nào."
         }
         emptyAction={
-          query.trim() && payments.length > 0
+          hasActiveFilters && payments.length > 0
             ? undefined
             : { label: "Tạo đơn hàng", href: "/orders/new" }
         }

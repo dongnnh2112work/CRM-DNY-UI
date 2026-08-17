@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { mergeSeedFieldDefs } from "@/lib/field-defs";
 import { CUSTOMER_FIELD_DEFS, MOCK_CUSTOMERS } from "@/lib/mock-customers";
 import type { Customer, CustomerStatus, FieldDefinition } from "@/lib/types";
 
@@ -25,6 +26,7 @@ export type NewCustomerInput = {
   address?: string;
   owner: string;
   status?: CustomerStatus;
+  usedServiceIds?: string[];
   customFields?: Record<string, unknown>;
 };
 
@@ -51,7 +53,9 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
     const stored = loadJson<Customer[]>(CUSTOMERS_KEY);
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
     if (stored && Array.isArray(stored)) setCustomers(stored);
-    if (storedFields && Array.isArray(storedFields)) setFieldDefs(storedFields);
+    if (storedFields && Array.isArray(storedFields)) {
+      setFieldDefs(mergeSeedFieldDefs(storedFields, CUSTOMER_FIELD_DEFS));
+    }
     setReady(true);
   }, []);
 
@@ -77,6 +81,7 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
       owner: input.owner,
       status: input.status ?? "lead",
       createdAt: new Date().toISOString().slice(0, 10),
+      usedServiceIds: input.usedServiceIds ?? [],
       customFields: input.customFields ?? {},
     };
     setCustomers((prev) => [...prev, created]);
@@ -154,4 +159,6 @@ export const CUSTOMER_LOCKED_FIELD_KEYS = [
   "address",
   "owner",
   "status",
+  "usedServiceIds",
+  "createdAt",
 ];

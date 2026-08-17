@@ -14,7 +14,7 @@ import {
   Select,
   Space,
   Table,
-  Tabs,
+  Tag,
   Typography,
 } from "antd";
 import dayjs from "dayjs";
@@ -25,7 +25,10 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
+import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { tableIndexColumn } from "@/lib/table-index-column";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import type { PaymentInstallment } from "@/lib/types";
@@ -33,11 +36,15 @@ import type { PaymentInstallment } from "@/lib/types";
 export default function PaymentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { getById, getByOrderId, ready, addInstallment, markInstallmentPaid } = usePayments();
   const { getById: getOrder } = useOrders();
   const [addOpen, setAddOpen] = useState(false);
   const [form] = Form.useForm();
+  const closeAdd = () => {
+    form.resetFields();
+    setAddOpen(false);
+  };
 
   const payment = getById(id) ?? getByOrderId(id);
   const order = payment ? getOrder(payment.orderId) : undefined;
@@ -63,57 +70,50 @@ export default function PaymentDetailPage() {
         </Space>
       </PageHeader>
       <div style={{ padding: 16 }}>
-        <Tabs
-          items={[
-            {
-              key: "info",
-              label: "Thông tin",
-              children: (
-                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
-                  <Descriptions.Item label="Đơn hàng">
-                    <Link href={`/orders/${payment.orderId}`}>{payment.orderNumber}</Link>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Khách hàng">
-                    <Link href={`/customers/${payment.customerId}`}>{payment.customerName}</Link>
-                  </Descriptions.Item>
-                  {order && (
-                    <>
-                      <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
-                      <Descriptions.Item label="Giai đoạn đơn">{order.stage}</Descriptions.Item>
-                      <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
-                      <Descriptions.Item label="Phụ trách">{order.assignedUserName}</Descriptions.Item>
-                    </>
-                  )}
-                  <Descriptions.Item label="Tổng">{formatVndDisplay(payment.totalAmount)}</Descriptions.Item>
-                  <Descriptions.Item label="Đã TT">{formatVndDisplay(payment.paidAmount)}</Descriptions.Item>
-                  <Descriptions.Item label="Còn lại">{formatVndDisplay(payment.remaining)}</Descriptions.Item>
-                  <Descriptions.Item label="Trạng thái">
-                    <StatusBadge module="payment" status={payment.status} />
-                  </Descriptions.Item>
-                </Descriptions>
-              ),
-            },
-            {
-              key: "notes",
-              label: "Ghi chú / Liên quan",
-              children: (
-                <Typography.Paragraph type="secondary">
-                  Ghi chú nội bộ và lịch sử liên quan sẽ hiển thị tại đây.{" "}
-                  <Link href={`/orders/${payment.orderId}`}>Mở đơn hàng</Link>
-                  {" · "}
-                  <Link href={`/customers/${payment.customerId}`}>Mở khách hàng</Link>
-                </Typography.Paragraph>
-              ),
-            },
-          ]}
-        />
+        <Space align="center" size="middle" style={{ marginBottom: 16 }} wrap>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            {payment.orderNumber}
+          </Typography.Title>
+          <StatusBadge module="payment" status={payment.status} />
+          {payment.remaining > 0 ? (
+            <Tag color={payment.status === "overdue" ? "error" : "warning"}>
+              Còn {formatVndDisplay(payment.remaining)}
+            </Tag>
+          ) : (
+            <Tag color="success">Đã thu đủ</Tag>
+          )}
+        </Space>
 
-        <Typography.Title level={5}>Các đợt thanh toán</Typography.Title>
+        <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="Đơn hàng">
+            <Link href={`/orders/${payment.orderId}`}>{payment.orderNumber}</Link>
+          </Descriptions.Item>
+          <Descriptions.Item label="Khách hàng">
+            <Link href={`/customers/${payment.customerId}`}>{payment.customerName}</Link>
+          </Descriptions.Item>
+          {order ? (
+            <>
+              <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
+              <Descriptions.Item label="Phụ trách">{order.assignedUserName}</Descriptions.Item>
+            </>
+          ) : null}
+          <Descriptions.Item label="Tổng">{formatVndDisplay(payment.totalAmount)}</Descriptions.Item>
+          <Descriptions.Item label="Đã TT">{formatVndDisplay(payment.paidAmount)}</Descriptions.Item>
+          <Descriptions.Item label="Còn lại">{formatVndDisplay(payment.remaining)}</Descriptions.Item>
+          <Descriptions.Item label="Đợt TT">{payment.installments.length}</Descriptions.Item>
+        </Descriptions>
+
+        <Typography.Title level={5} style={{ fontSize: ds.fontSize.body }}>
+          Các đợt thanh toán
+        </Typography.Title>
         <Table
           rowKey="id"
+          size="small"
           dataSource={payment.installments}
           pagination={false}
+          locale={{ emptyText: "Chưa có đợt thanh toán." }}
           columns={[
+            tableIndexColumn<PaymentInstallment>(),
             {
               title: "Số tiền",
               dataIndex: "amount",
@@ -130,7 +130,7 @@ export default function PaymentDetailPage() {
                 <StatusBadge module="paymentInstallment" status={s} />
               ),
             },
-            { title: "Ghi chú", dataIndex: "note" },
+            { title: "Ghi chú", dataIndex: "note", render: (v?: string) => v || "—" },
             {
               title: "Thao tác",
               key: "action",
@@ -146,9 +146,7 @@ export default function PaymentDetailPage() {
                       message.success("Đã ghi nhận thanh toán");
                     }}
                   >
-                    <Button size="small" type="link">
-                      Đánh dấu đã TT
-                    </Button>
+                    <Button size="small">Đánh dấu đã TT</Button>
                   </Popconfirm>
                 ) : (
                   "—"
@@ -161,9 +159,17 @@ export default function PaymentDetailPage() {
       <Drawer
         title="Thêm đợt thanh toán"
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        onClose={() => confirmDiscardIfDirty(modal, form, closeAdd)}
         width={400}
         destroyOnClose
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button onClick={() => confirmDiscardIfDirty(modal, form, closeAdd)}>Hủy</Button>
+            <Button type="primary" onClick={() => form.submit()}>
+              Thêm
+            </Button>
+          </div>
+        }
       >
         <Form
           form={form}
@@ -178,17 +184,16 @@ export default function PaymentDetailPage() {
               status: values.markPaid ? "paid" : "pending",
             });
             message.success("Đã thêm đợt thanh toán");
-            form.resetFields();
-            setAddOpen(false);
+            closeAdd();
           }}
         >
-          <Form.Item name="amount" label="Số tiền" rules={[{ required: true }]}>
+          <Form.Item name="amount" label="Số tiền" rules={[{ required: true, message: "Nhập số tiền" }]}>
             <InputNumber {...vndInputProps} />
           </Form.Item>
           <Form.Item
             name="dueDate"
             label="Hạn thanh toán"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "Chọn hạn thanh toán" }]}
             getValueFromEvent={(d: dayjs.Dayjs | null) => (d ? d.format("YYYY-MM-DD") : undefined)}
             getValueProps={(value: string | undefined) => ({
               value: value ? dayjs(value) : undefined,
@@ -201,7 +206,7 @@ export default function PaymentDetailPage() {
               options={[
                 { value: "Bank transfer", label: "Chuyển khoản" },
                 { value: "Cash", label: "Tiền mặt" },
-                { value: "Credit card", label: "Thẻ" },
+                { value: "QR", label: "QR" },
               ]}
             />
           </Form.Item>
@@ -211,9 +216,6 @@ export default function PaymentDetailPage() {
           <Form.Item name="markPaid" valuePropName="checked">
             <Checkbox>Đã thanh toán ngay</Checkbox>
           </Form.Item>
-          <Button type="primary" htmlType="submit" block>
-            Thêm
-          </Button>
         </Form>
       </Drawer>
     </>

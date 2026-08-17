@@ -23,6 +23,9 @@ export interface StatusMeta {
   color: StatusTone;
 }
 
+/** Label + color (Ant tone name or hex) for badges / selects */
+export type DisplayStatusMeta = { label: string; color: string };
+
 export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
   customer: {
     active: { label: "Hoạt động", color: "success" },

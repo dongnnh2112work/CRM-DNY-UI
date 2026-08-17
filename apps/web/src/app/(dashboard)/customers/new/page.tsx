@@ -3,21 +3,34 @@
 import { App, Button, Form, Input, Select, Space } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ExtraFormFields } from "@/components/shared/extra-form-fields";
 import { PageHeader } from "@/components/shared/page-header";
+import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
+import { ds } from "@/lib/design-tokens";
+import {
+  CUSTOMER_OWNER_OPTIONS,
+  collectCustomFields,
+  getCustomerFormExtraFields,
+} from "@/lib/customer-helpers";
 import { useCustomers } from "@/lib/customers-store";
+import { useServices } from "@/lib/services-store";
 
 export default function NewCustomerPage() {
   const router = useRouter();
-  const { message } = App.useApp();
-  const { addCustomer } = useCustomers();
+  const { message, modal } = App.useApp();
+  const { addCustomer, fieldDefs } = useCustomers();
+  const { services } = useServices();
+  const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const extraFields = getCustomerFormExtraFields(fieldDefs);
 
   return (
     <>
       <PageHeader breadcrumbs={[{ title: "Khách hàng", href: "/customers" }, { title: "Tạo mới" }]} />
       <Form
+        form={form}
         layout="vertical"
-        style={{ maxWidth: 560, padding: 24 }}
+        style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
         onFinish={(values) => {
           setSaving(true);
           try {
@@ -30,8 +43,10 @@ export default function NewCustomerPage() {
               address: values.address,
               owner: values.owner,
               status: "lead",
+              usedServiceIds: values.usedServiceIds ?? [],
+              customFields: collectCustomFields(values, extraFields),
             });
-            message.success("Đã lưu khách hàng");
+            message.success("Đã tạo khách hàng");
             router.push("/customers");
           } finally {
             setSaving(false);
@@ -57,14 +72,32 @@ export default function NewCustomerPage() {
           <Input.TextArea rows={2} />
         </Form.Item>
         <Form.Item name="owner" label="Phụ trách" initialValue="Le Staff A">
-          <Select options={[{ value: "Le Staff A" }, { value: "Vo Staff B" }, { value: "Tran Admin" }]} />
+          <Select options={CUSTOMER_OWNER_OPTIONS} />
         </Form.Item>
+        <Form.Item
+          name="usedServiceIds"
+          label="Dịch vụ đã sử dụng"
+          extra="Ghi nhận dịch vụ khách đã dùng. Đơn hàng sau này sẽ bổ sung tự động."
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Chọn dịch vụ"
+            options={services.map((s) => ({ value: s.id, label: s.name }))}
+          />
+        </Form.Item>
+        <ExtraFormFields fields={extraFields} />
         <Space>
-          <Button onClick={() => router.push("/customers")} disabled={saving}>
+          <Button
+            onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/customers"))}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            Lưu khách hàng
+            Tạo khách hàng
           </Button>
         </Space>
       </Form>

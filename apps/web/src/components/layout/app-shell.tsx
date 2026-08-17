@@ -24,6 +24,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ds } from "@/lib/design-tokens";
+import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
@@ -47,7 +48,7 @@ const MENU_ITEMS = [
   },
   { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">Quản lý VAT</Link> },
   { type: "divider" as const },
-  { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">Danh sách dịch vụ</Link> },
+  { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">Quản lý dịch vụ</Link> },
   { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">Quản lý email</Link> },
   { type: "divider" as const },
   { key: "/users", icon: <UserOutlined />, label: <Link href="/users">Quản lý người dùng</Link> },
@@ -60,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { message } = App.useApp();
   const { token } = theme.useToken();
   const { theme: appTheme, setTheme } = useAppConfig();
-  const { currentUser, logout } = useUsers();
+  const { currentUser, logout, getById: getUser } = useUsers();
   const { orders, ready: ordersReady } = useOrders();
   const { config } = useAppReminderConfig();
   const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
@@ -81,9 +82,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       licenseWarnMonths: config.licenseExpiryWarnMonths,
       vatWarnDays: config.vatIssueWarnDays,
       mirrorEmail: (n: AppNotification) => {
+        const user = getUser(n.userId);
+        if (!user?.email) return;
         addEmail({
           subject: n.title,
-          recipients: ["ops@dny.local"],
+          recipients: [user.email],
           recipientCount: 1,
           status: "sent",
           sentAt: new Date().toISOString().slice(0, 10),
@@ -99,6 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     config.vatIssueWarnDays,
     scanOrderAlerts,
     addEmail,
+    getUser,
   ]);
 
   const selectedKey = useMemo(() => {
@@ -110,10 +114,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }, [pathname]);
 
+  const searchTarget = useMemo(() => getHeaderSearchTarget(pathname), [pathname]);
+
   const onSearch = (value: string) => {
     const q = value.trim();
     if (!q) return;
-    router.push(`/customers?q=${encodeURIComponent(q)}`);
+    if (!searchTarget.listPath) {
+      message.info("Trang này không có danh sách để tìm.");
+      return;
+    }
+    router.push(listSearchHref(searchTarget.listPath, q));
   };
 
   const displayName = currentUser?.name ?? "Khách";
@@ -182,7 +192,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             style={{ borderRadius: token.borderRadius }}
           />
           <Input.Search
-            placeholder="Tìm kiếm…"
+            placeholder={searchTarget.placeholder}
             allowClear
             style={{ maxWidth: 360, flex: 1 }}
             onSearch={onSearch}

@@ -2,13 +2,18 @@
 
 import { App, Button, Popconfirm, Select, Space, Tag, type TableColumnsType } from "antd";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { expenseReviewedDraft } from "@/lib/notification-targets";
 import { useExpenses } from "@/lib/expenses-store";
+import { useNotifications } from "@/lib/notifications-store";
+import { useOrders } from "@/lib/orders-store";
+import { matchesTableQuery } from "@/lib/table-search";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 
@@ -20,7 +25,13 @@ export default function ExpenseApprovalsPage() {
   const { message } = App.useApp();
   const { currentUser, getEffectivePermissions } = useUsers();
   const { expenses, reviewExpense } = useExpenses();
+  const { addNotifications } = useNotifications();
+  const { getById: getOrder } = useOrders();
   const [statusFilter, setStatusFilter] = useState<OrderExpenseStatus | "all">("pending");
+  const [query, setQuery] = useState("");
+  const applyUrlQuery = useCallback((q: string) => {
+    setQuery(q);
+  }, []);
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canView = Boolean(perms?.expense_approvals?.view);
@@ -29,8 +40,22 @@ export default function ExpenseApprovalsPage() {
   const filtered = useMemo(() => {
     let list = [...expenses];
     if (statusFilter !== "all") list = list.filter((e) => e.status === statusFilter);
+    if (query.trim()) {
+      list = list.filter((e) =>
+        matchesTableQuery(query, [
+          e.orderNumber,
+          e.title,
+          e.amount,
+          e.status,
+          e.requestedByName,
+          e.requestedAt,
+          e.note,
+          e.reviewedByName,
+        ]),
+      );
+    }
     return list.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
-  }, [expenses, statusFilter]);
+  }, [expenses, statusFilter, query]);
 
   if (!currentUser || !canView) {
     return (
@@ -88,11 +113,17 @@ export default function ExpenseApprovalsPage() {
             <Popconfirm
               title="Duyệt khoản chi này?"
               okText="Duyệt"
+              cancelText="Hủy"
               onConfirm={() => {
                 reviewExpense(r.id, "approved", {
                   id: currentUser.id,
                   name: currentUser.name,
                 });
+                addNotifications(
+                  [r.requestedById, getOrder(r.orderId)?.reviewerId],
+                  expenseReviewedDraft(r, "approved", currentUser.name),
+                  currentUser.id,
+                );
                 message.success("Đã duyệt chi");
               }}
             >
@@ -103,12 +134,18 @@ export default function ExpenseApprovalsPage() {
             <Popconfirm
               title="Từ chối khoản chi?"
               okText="Từ chối"
+              cancelText="Hủy"
               okButtonProps={{ danger: true }}
               onConfirm={() => {
                 reviewExpense(r.id, "rejected", {
                   id: currentUser.id,
                   name: currentUser.name,
                 });
+                addNotifications(
+                  [r.requestedById, getOrder(r.orderId)?.reviewerId],
+                  expenseReviewedDraft(r, "rejected", currentUser.name),
+                  currentUser.id,
+                );
                 message.success("Đã từ chối");
               }}
             >
@@ -124,7 +161,13 @@ export default function ExpenseApprovalsPage() {
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Duyệt chi" }]}>
+      <UrlQuerySync onQuery={applyUrlQuery} />
+      <PageHeader
+        breadcrumbs={[{ title: "Duyệt chi" }]}
+        searchPlaceholder="Tìm khoản chi…"
+        onSearch={setQuery}
+        searchValue={query}
+      >
         <Select
           value={statusFilter}
           style={{ width: 160 }}
@@ -141,10 +184,13 @@ export default function ExpenseApprovalsPage() {
         rowKey="id"
         columns={columns}
         dataSource={filtered}
+        columnManagerKey="expense-approvals"
         emptyDescription={
-          statusFilter === "pending"
-            ? "Không có yêu cầu duyệt chi đang chờ."
-            : "Chưa có khoản chi."
+          query.trim() && expenses.length > 0
+            ? "Không tìm thấy kết quả phù hợp."
+            : statusFilter === "pending"
+              ? "Không có yêu cầu duyệt chi đang chờ."
+              : "Chưa có khoản chi."
         }
       />
     </>

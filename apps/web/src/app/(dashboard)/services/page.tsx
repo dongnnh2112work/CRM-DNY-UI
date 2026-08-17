@@ -1,10 +1,11 @@
 "use client";
 
-import { App, Button, Modal, Popconfirm, Typography, type TableColumnsType } from "antd";
-import { useState, type Key } from "react";
+import { App, Button, Modal, Popconfirm, Typography } from "antd";
+import { useCallback, useState, type Key } from "react";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DynamicTable } from "@/components/shared/dynamic-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { ServiceForm } from "@/components/services/service-form";
 import { ds } from "@/lib/design-tokens";
 import { SERVICE_LOCKED_FIELD_KEYS, serviceMatchesQuery } from "@/lib/service-fields";
@@ -17,6 +18,10 @@ export default function ServicesPage() {
     useServices();
   const [query, setQuery] = useState("");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const applyUrlQuery = useCallback((q: string) => {
+    setQuery(q);
+    setSelectedRowKeys([]);
+  }, []);
   const [formOpen, setFormOpen] = useState(false);
   const [editService, setEditService] = useState<Service | null>(null);
   const [saving, setSaving] = useState(false);
@@ -57,38 +62,11 @@ export default function ServicesPage() {
     clearSelection();
   };
 
-  const actionCol: TableColumnsType<Service> = [
-    {
-      title: "Thao tác",
-      key: "action",
-      fixed: "right" as const,
-      width: 130,
-      render: (_: unknown, record: Service) => (
-        <Popconfirm
-          title={
-            record.status === "active" ? "Ngừng hoạt động dịch vụ này?" : "Kích hoạt dịch vụ này?"
-          }
-          okText="Xác nhận"
-          cancelText="Hủy"
-          onConfirm={() => {
-            setServiceStatus(record.id, record.status === "active" ? "inactive" : "active");
-            message.success(
-              record.status === "active" ? "Đã ngừng hoạt động" : "Đã kích hoạt dịch vụ",
-            );
-          }}
-        >
-          <Button size="small" danger={record.status === "active"}>
-            {record.status === "active" ? "Ngừng" : "Kích hoạt"}
-          </Button>
-        </Popconfirm>
-      ),
-    },
-  ];
-
   return (
     <>
+      <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Danh sách dịch vụ" }]}
+        breadcrumbs={[{ title: "Quản lý dịch vụ" }]}
         searchPlaceholder="Tìm trong bảng…"
         onSearch={(v) => {
           setQuery(v);
@@ -103,7 +81,7 @@ export default function ServicesPage() {
         lockedFieldKeys={SERVICE_LOCKED_FIELD_KEYS}
         dataSource={filtered}
         rowKey="id"
-        extra={actionCol}
+        columnManagerKey="services"
         statusModule="service"
         linkField={{ key: "name", onClick: openEdit }}
         enableRowSelection
@@ -149,7 +127,7 @@ export default function ServicesPage() {
         emptyAction={
           query.trim() && services.length > 0
             ? undefined
-            : { label: "Thêm dịch vụ", onClick: openCreate }
+            : { label: "Tạo dịch vụ", onClick: openCreate }
         }
       />
 
@@ -172,8 +150,9 @@ export default function ServicesPage() {
           key={`${editService?.id ?? "new"}-${fieldDefs.map((d) => `${d.key}:${d.visible}`).join("|")}`}
           service={editService}
           fieldDefs={fieldDefs}
-          submitLabel={editService ? "Lưu thay đổi" : "Tạo dịch vụ"}
+          submitLabel={editService ? "Lưu" : "Tạo dịch vụ"}
           loading={saving}
+          onCancel={closeForm}
           onSubmit={async (payload) => {
             setSaving(true);
             try {

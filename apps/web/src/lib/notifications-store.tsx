@@ -10,25 +10,23 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { orderJobOwnerIds, relatedUserIds, type NotificationDraft } from "@/lib/notification-targets";
 import { daysUntil, getOrderLicenseExpirySummary } from "@/lib/order-helpers";
-import type { AppNotification, AppNotificationType, Order } from "@/lib/types";
+import type { AppNotification, Order } from "@/lib/types";
 
 const KEY = "dny-crm-notifications";
 
-type AddInput = {
-  userId: string;
-  type: AppNotificationType;
-  title: string;
-  body: string;
-  href?: string;
-  orderId?: string;
-  dedupeKey?: string;
-};
+type AddInput = NotificationDraft & { userId: string };
 
 type Ctx = {
   notifications: AppNotification[];
   ready: boolean;
   addNotification: (input: AddInput) => AppNotification | null;
+  addNotifications: (
+    userIds: Array<string | undefined | null>,
+    draft: NotificationDraft,
+    exceptUserId?: string,
+  ) => void;
   markRead: (id: string) => void;
   markAllRead: (userId: string) => void;
   unreadCount: (userId: string) => number;
@@ -60,28 +58,42 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     saveJson(KEY, notifications);
   }, [notifications, ready]);
 
-  const addNotification = useCallback((input: AddInput) => {
-    let created: AppNotification | null = null;
-    setNotifications((prev) => {
-      if (input.dedupeKey && prev.some((n) => n.dedupeKey === input.dedupeKey)) {
-        return prev;
-      }
-      created = {
-        id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        userId: input.userId,
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        href: input.href,
-        orderId: input.orderId,
-        read: false,
-        createdAt: new Date().toISOString(),
-        dedupeKey: input.dedupeKey,
-      };
-      return [created, ...prev];
-    });
-    return created;
-  }, []);
+  const addNotifications = useCallback(
+    (userIds: Array<string | undefined | null>, draft: NotificationDraft, exceptUserId?: string) => {
+      const ids = relatedUserIds(userIds, exceptUserId);
+      if (ids.length === 0) return;
+      setNotifications((prev) => {
+        let next = prev;
+        for (const userId of ids) {
+          const dedupeKey = draft.dedupeKey ? `${draft.dedupeKey}:${userId}` : undefined;
+          if (dedupeKey && next.some((n) => n.dedupeKey === dedupeKey)) continue;
+          const created: AppNotification = {
+            id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            userId,
+            type: draft.type,
+            title: draft.title,
+            body: draft.body,
+            href: draft.href,
+            orderId: draft.orderId,
+            read: false,
+            createdAt: new Date().toISOString(),
+            dedupeKey,
+          };
+          next = [created, ...next];
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const addNotification = useCallback(
+    (input: AddInput) => {
+      addNotifications([input.userId], input);
+      return null;
+    },
+    [addNotifications],
+  );
 
   const markRead = useCallback((id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
@@ -115,28 +127,29 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       const day = todayKey();
       const toCreate: AppNotification[] = [];
 
-      const queue = (input: AddInput) => {
-        const created: AppNotification = {
-          id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          userId: input.userId,
-          type: input.type,
-          title: input.title,
-          body: input.body,
-          href: input.href,
-          orderId: input.orderId,
-          read: false,
-          createdAt: new Date().toISOString(),
-          dedupeKey: input.dedupeKey,
-        };
-        toCreate.push(created);
+      const queue = (order: Order, input: Omit<AddInput, "userId">) => {
+        for (const userId of orderJobOwnerIds(order)) {
+          const created: AppNotification = {
+            id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            userId,
+            type: input.type,
+            title: input.title,
+            body: input.body,
+            href: input.href,
+            orderId: input.orderId,
+            read: false,
+            createdAt: new Date().toISOString(),
+            dedupeKey: input.dedupeKey ? `${input.dedupeKey}:${userId}` : undefined,
+          };
+          toCreate.push(created);
+        }
       };
 
       for (const order of orders) {
         if (order.stage !== "cancelled" && order.stage !== "completed" && order.deadline) {
           const d = daysUntil(order.deadline);
           if (d < 0) {
-            queue({
-              userId: order.assignedUserId,
+            queue(order, {
               type: "order_overdue",
               title: `Đơn ${order.orderNumber} quá hạn xử lý`,
               body: `Deadline ${order.deadline} đã qua ${Math.abs(d)} ngày.`,
@@ -150,8 +163,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         if (order.needsVat && order.vatIssueDeadline) {
           const d = daysUntil(order.vatIssueDeadline);
           if (d >= 0 && d <= opts.vatWarnDays) {
-            queue({
-              userId: order.assignedUserId,
+            queue(order, {
               type: "vat_deadline_approaching",
               title: `Sắp hết hạn xuất VAT — ${order.orderNumber}`,
               body: `Hạn xuất VAT: ${order.vatIssueDeadline} (còn ${d} ngày).`,
@@ -164,8 +176,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
         const lic = getOrderLicenseExpirySummary(order, opts.licenseWarnMonths);
         if (lic.tone === "expiring" || lic.tone === "expired") {
-          queue({
-            userId: order.assignedUserId,
+          queue(order, {
             type: "license_expiring",
             title:
               lic.tone === "expired"
@@ -196,6 +207,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       notifications,
       ready,
       addNotification,
+      addNotifications,
       markRead,
       markAllRead,
       unreadCount,
@@ -206,6 +218,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       notifications,
       ready,
       addNotification,
+      addNotifications,
       markRead,
       markAllRead,
       unreadCount,

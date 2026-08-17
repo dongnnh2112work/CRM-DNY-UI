@@ -1,100 +1,18 @@
 "use client";
 
-import { CheckOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { App, Button, Drawer, Input, Modal, Popconfirm, Popover, Space, Typography } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { App, Button, Drawer, Input, Modal, Popconfirm, Space, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { ColorSwatchPicker } from "@/components/shared/color-swatch-picker";
 import {
   getDefaultOrderStages,
   nextFreeStageColor,
-  STAGE_COLOR_PALETTE,
   useOrderStatusConfig,
   type OrderStageDefinition,
 } from "@/lib/order-status-store";
 import { ds } from "@/lib/design-tokens";
 import { useOrders } from "@/lib/orders-store";
 import type { OrderStage } from "@/lib/types";
-
-function ColorSwatchPicker({
-  value,
-  takenColors,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  /** Colors already used by other stages (lowercase hex) */
-  takenColors: string[];
-  onChange: (hex: string) => void;
-  disabled?: boolean;
-}) {
-  const taken = useMemo(
-    () => new Set(takenColors.map((c) => c.toLowerCase())),
-    [takenColors],
-  );
-
-  const content = (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(8, 22px)",
-        gap: 8,
-        padding: 4,
-      }}
-    >
-      {STAGE_COLOR_PALETTE.map((hex) => {
-        const selected = value.toLowerCase() === hex.toLowerCase();
-        const isTaken = !selected && taken.has(hex.toLowerCase());
-        return (
-          <button
-            key={hex}
-            type="button"
-            aria-label={isTaken ? `${hex} (đã dùng)` : hex}
-            disabled={isTaken}
-            onClick={() => {
-              if (isTaken) return;
-              onChange(hex);
-            }}
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: "50%",
-              border: selected ? `2px solid ${ds.ink}` : `1px solid ${ds.hairline}`,
-              background: hex,
-              cursor: isTaken ? "not-allowed" : "pointer",
-              padding: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: isTaken ? 0.28 : 1,
-              boxShadow: selected ? `0 0 0 1px ${ds.surface}` : undefined,
-            }}
-          >
-            {selected ? <CheckOutlined style={{ fontSize: 10, color: "#fff" }} /> : null}
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  return (
-    <Popover content={disabled ? null : content} trigger="click" placement="bottomLeft">
-      <button
-        type="button"
-        disabled={disabled}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          border: `1px solid ${ds.hairline}`,
-          background: value,
-          cursor: disabled ? "default" : "pointer",
-          flexShrink: 0,
-          padding: 0,
-        }}
-        aria-label="Chọn màu"
-      />
-    </Popover>
-  );
-}
 
 function cloneStages(list: OrderStageDefinition[]): OrderStageDefinition[] {
   return list.map((s) => ({ ...s }));
@@ -199,10 +117,10 @@ export function OrderStageSettingsDrawer({
       return;
     }
     Modal.confirm({
-      title: "Bỏ thay đổi chưa lưu?",
-      okText: "Bỏ",
-      cancelText: "Tiếp tục sửa",
-      okButtonProps: { danger: true },
+      title: "Hủy?",
+      content: "Thay đổi sẽ không được lưu.",
+      okText: "Hủy",
+      cancelText: "Tiếp tục",
       onOk: () => {
         setDirty(false);
         onClose();

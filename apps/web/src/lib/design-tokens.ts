@@ -37,6 +37,8 @@ export const ds = {
     h2: 24, // text-heading-2
     h1: 32, // text-heading-1
   },
+  /** Create/edit pages that use the dedicated-page form pattern */
+  formPageMaxWidth: 640,
 } as const;
 
 /** @deprecated use `ds` — kept briefly for migration */

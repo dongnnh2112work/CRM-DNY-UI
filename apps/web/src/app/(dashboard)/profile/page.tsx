@@ -229,7 +229,7 @@ export default function ProfilePage() {
                           key={currentUser.id}
                           user={currentUser}
                           showAvatar={false}
-                          submitLabel="Lưu thay đổi"
+                          submitLabel="Lưu"
                           loading={saving}
                           onSubmit={async (values) => {
                             setSaving(true);

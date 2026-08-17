@@ -15,10 +15,11 @@ import {
   Typography,
   type TableColumnsType,
 } from "antd";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { PermissionMatrix } from "@/components/users/permission-matrix";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
@@ -51,7 +52,6 @@ export default function UsersPage() {
     roles,
     createUser,
     updateUser,
-    setUserStatus,
     rolePermissions,
     updateRolePermissions,
     createRole,
@@ -64,6 +64,9 @@ export default function UsersPage() {
   const [draftPerms, setDraftPerms] = useState<RolePagePermissions | null>(null);
   const [newRoleLabel, setNewRoleLabel] = useState("");
   const [query, setQuery] = useState("");
+  const applyUrlQuery = useCallback((q: string) => {
+    setQuery(q);
+  }, []);
   const [saving, setSaving] = useState(false);
   const [savingPerms, setSavingPerms] = useState(false);
 
@@ -190,29 +193,11 @@ export default function UsersPage() {
       sorter: (a, b) => compareText(a.status, b.status),
       render: (s: string) => <StatusBadge module="user" status={s} />,
     },
-    {
-      title: "Thao tác",
-      key: "action",
-      render: (_, record) => (
-        <Popconfirm
-          title={record.status === "active" ? "Vô hiệu hóa người dùng này?" : "Kích hoạt người dùng này?"}
-          okText="Xác nhận"
-          cancelText="Hủy"
-          onConfirm={() => {
-            setUserStatus(record.id, record.status === "active" ? "inactive" : "active");
-            message.success("Đã cập nhật trạng thái");
-          }}
-        >
-          <Button size="small" danger={record.status === "active"}>
-            {record.status === "active" ? "Vô hiệu hóa" : "Kích hoạt"}
-          </Button>
-        </Popconfirm>
-      ),
-    },
   ];
 
   return (
     <>
+      <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
         breadcrumbs={[{ title: "Quản lý người dùng" }]}
         searchPlaceholder="Tìm trong bảng…"
@@ -224,6 +209,7 @@ export default function UsersPage() {
         rowKey="id"
         columns={columns}
         dataSource={filtered}
+        columnManagerKey="users"
         emptyDescription={
           query.trim() && users.length > 0
             ? "Không tìm thấy kết quả phù hợp."
@@ -232,7 +218,7 @@ export default function UsersPage() {
         emptyAction={
           query.trim() && users.length > 0
             ? undefined
-            : { label: "Thêm người dùng", onClick: openCreate }
+            : { label: "Tạo người dùng", onClick: openCreate }
         }
       />
 
@@ -269,8 +255,9 @@ export default function UsersPage() {
           showCustomPermissions={Boolean(editUser)}
           roleOptions={roles}
           rolePermissionsLookup={rolePermissions}
-          submitLabel={editUser ? "Lưu thay đổi" : "Tạo người dùng"}
+          submitLabel={editUser ? "Lưu" : "Tạo người dùng"}
           loading={saving}
+          onCancel={closeProfile}
           onSubmit={async (values) => {
             setSaving(true);
             try {
@@ -319,7 +306,7 @@ export default function UsersPage() {
         width={640}
         centered
         okText="Lưu ma trận"
-        cancelText="Đóng"
+        cancelText="Hủy"
         confirmLoading={savingPerms}
         onOk={() => {
           if (!permRole || !draftPerms) return;
@@ -399,7 +386,7 @@ export default function UsersPage() {
               openRolePerms(created.key);
             }}
           >
-            Thêm role
+            Thêm vai trò
           </Button>
         </Space.Compact>
 

@@ -5,6 +5,7 @@ import { Button, Modal, Space, Table, Typography, Upload } from "antd";
 import { useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { ds } from "@/lib/design-tokens";
+import { tableIndexColumn } from "@/lib/table-index-column";
 
 interface ExcelImportModalProps {
   open: boolean;
@@ -73,7 +74,10 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
           <Table
             rowKey={(_, i) => String(i)}
             dataSource={preview}
-            columns={columns.map((c) => ({ title: c, dataIndex: c, key: c, ellipsis: true }))}
+            columns={[
+              tableIndexColumn<Record<string, unknown>>(),
+              ...columns.map((c) => ({ title: c, dataIndex: c, key: c, ellipsis: true })),
+            ]}
             size="small"
             pagination={false}
             scroll={{ x: true }}

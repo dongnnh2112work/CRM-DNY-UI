@@ -17,7 +17,9 @@ import {
 } from "antd";
 import { useEffect, useMemo, useRef, useState, type Key, type ReactNode } from "react";
 import { DataTable } from "@/components/shared/data-table";
+import { useManagedColumns } from "@/components/shared/column-manager-drawer";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import type { StatusModule } from "@/lib/status-config";
 import type { FieldDefinition, FieldType } from "@/lib/types";
@@ -61,6 +63,19 @@ interface DynamicTableProps<T extends object> {
   bulkToolbar?: ReactNode;
   /** Make a field value a clickable link (e.g. name → open edit). */
   linkField?: { key: string; onClick: (record: T) => void };
+  /** Per-field render / sorter / width for system columns (e.g. used services). */
+  columnOverrides?: Partial<
+    Record<
+      string,
+      {
+        render?: (value: unknown, record: T) => ReactNode;
+        sorter?: (a: T, b: T) => number;
+        width?: number;
+      }
+    >
+  >;
+  /** Persist ẩn/hiện cột extra (Thao tác…) — cùng rule Lưu mới áp dụng. */
+  columnManagerKey?: string;
 }
 
 function defsEqual(a: FieldDefinition[], b: FieldDefinition[]) {
@@ -83,8 +98,10 @@ export function DynamicTable<T extends object>({
   onSelectedRowKeysChange,
   bulkToolbar,
   linkField,
+  columnOverrides,
+  columnManagerKey,
 }: DynamicTableProps<T>) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { token } = theme.useToken();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [defs, setDefs] = useState(fieldDefs);
@@ -97,83 +114,115 @@ export function DynamicTable<T extends object>({
     [lockedFieldKeys],
   );
 
+  const extraItems = useMemo(
+    () =>
+      extra
+        .map((col) => {
+          const key = String(col.key ?? col.dataIndex ?? "");
+          const label =
+            typeof col.title === "string" && col.title.trim()
+              ? col.title
+              : key === "action" || key === "actions"
+                ? "Thao tác"
+                : key;
+          return { key, label };
+        })
+        .filter((i) => i.key),
+    [extra],
+  );
+  const extraManagerId =
+    columnManagerKey && extraItems.length > 0 ? `${columnManagerKey}-extra` : undefined;
+  const extraManaged = useManagedColumns(extraManagerId, extraItems);
+  const [extraDraft, setExtraDraft] = useState(extraManaged.committed);
+
   useEffect(() => {
     if (!drawerOpen) setDefs(fieldDefs);
   }, [fieldDefs, drawerOpen]);
 
-  const dirty = !defsEqual(defs, fieldDefs);
+  useEffect(() => {
+    if (!drawerOpen) setExtraDraft(extraManaged.committed);
+  }, [drawerOpen, extraManaged.committed]);
 
-  const visibleDefs = useMemo(
-    () => [...defs].filter((d) => d.visible).sort((a, b) => a.order - b.order),
-    [defs],
+  const extraDirty =
+    extraManagerId && JSON.stringify(extraDraft) !== JSON.stringify(extraManaged.committed);
+  const dirty = !defsEqual(defs, fieldDefs) || Boolean(extraDirty);
+
+  const committedVisibleDefs = useMemo(
+    () => [...fieldDefs].filter((d) => d.visible).sort((a, b) => a.order - b.order),
+    [fieldDefs],
   );
 
-  /** Persist so create/edit forms (Services/Customers) pick up new columns immediately. */
-  const applyDefs = (next: FieldDefinition[], toast?: string) => {
-    setDefs(next);
-    onFieldDefsChange?.(next);
-    if (toast) message.success(toast);
-  };
+  const visibleExtra = extraManagerId
+    ? extra.filter((col) => extraManaged.isVisible(String(col.key ?? col.dataIndex ?? "")))
+    : extra;
 
   const columns: TableColumnsType<T> = useMemo(() => {
-    const cols: TableColumnsType<T> = visibleDefs.map((def) => ({
-      title: def.label,
-      dataIndex: def.key,
-      key: def.key,
-      align: def.type === "number" ? ("center" as const) : undefined,
-      sorter:
-        def.type === "number"
-          ? (a: T, b: T) =>
-              Number((a as Record<string, unknown>)[def.key] ?? 0) -
-              Number((b as Record<string, unknown>)[def.key] ?? 0)
-          : undefined,
-      render: (value: unknown, record: T) => {
-        if (linkField && def.key === linkField.key) {
-          const label =
-            value != null && value !== "" ? String(value) : "—";
-          return (
-            <Button
-              type="link"
-              style={{ padding: 0, height: "auto", fontWeight: 500 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                linkField.onClick(record);
-              }}
-            >
-              {label}
-            </Button>
-          );
-        }
-        if (def.type === "checkbox") return value ? "Có" : "Không";
-        if (def.key === "status" && typeof value === "string") {
-          if (statusModule) {
-            return <StatusBadge module={statusModule} status={value} />;
+    const cols: TableColumnsType<T> = committedVisibleDefs.map((def) => {
+      const override = columnOverrides?.[def.key];
+      return {
+        title: def.label,
+        dataIndex: def.key,
+        key: def.key,
+        width: override?.width,
+        align: def.type === "number" ? ("center" as const) : undefined,
+        sorter:
+          override?.sorter ??
+          (def.type === "number"
+            ? (a: T, b: T) =>
+                Number((a as Record<string, unknown>)[def.key] ?? 0) -
+                Number((b as Record<string, unknown>)[def.key] ?? 0)
+            : def.type === "date"
+              ? (a: T, b: T) =>
+                  String((a as Record<string, unknown>)[def.key] ?? "").localeCompare(
+                    String((b as Record<string, unknown>)[def.key] ?? ""),
+                  )
+              : undefined),
+        render: (value: unknown, record: T) => {
+          if (override?.render) return override.render(value, record);
+          if (linkField && def.key === linkField.key) {
+            const label =
+              value != null && value !== "" ? String(value) : "—";
+            return (
+              <Button
+                type="link"
+                style={{ padding: 0, height: "auto", fontWeight: 500 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  linkField.onClick(record);
+                }}
+              >
+                {label}
+              </Button>
+            );
           }
-          // Legacy fallback until remaining modules migrate
-          const color = value === "active" ? "success" : value === "lead" ? "processing" : "default";
-          const statusLabels: Record<string, string> = {
-            active: "Hoạt động",
-            lead: "Tiềm năng",
-            archived: "Lưu trữ",
-            inactive: "Ngừng",
-          };
-          const label = statusLabels[value] ?? String(value).toUpperCase();
-          return <Tag color={color}>{label}</Tag>;
-        }
-        if (def.type === "number" && typeof value === "number") {
-          return isMoneyField(def) ? formatVndDisplay(value) : value.toLocaleString("vi-VN");
-        }
-        return value != null && value !== "" ? String(value) : "—";
-      },
-    }));
-    return [...cols, ...extra];
-  }, [visibleDefs, extra, statusModule, linkField]);
+          if (def.type === "checkbox") return value ? "Có" : "Không";
+          if (def.key === "status" && typeof value === "string") {
+            if (statusModule) {
+              return <StatusBadge module={statusModule} status={value} />;
+            }
+            const color = value === "active" ? "success" : value === "lead" ? "processing" : "default";
+            const statusLabels: Record<string, string> = {
+              active: "Hoạt động",
+              lead: "Tiềm năng",
+              archived: "Lưu trữ",
+              inactive: "Ngừng",
+            };
+            const label = statusLabels[value] ?? String(value).toUpperCase();
+            return <Tag color={color}>{label}</Tag>;
+          }
+          if (def.type === "number" && typeof value === "number") {
+            return isMoneyField(def) ? formatVndDisplay(value) : value.toLocaleString("vi-VN");
+          }
+          if (Array.isArray(value)) return value.length ? value.map(String).join(", ") : "—";
+          return value != null && value !== "" ? String(value) : "—";
+        },
+      };
+    });
+    return [...cols, ...visibleExtra];
+  }, [committedVisibleDefs, visibleExtra, statusModule, linkField, columnOverrides]);
 
   const toggleVisibility = (key: string) => {
-    applyDefs(
-      defs.map((d) => (d.key === key ? { ...d, visible: !d.visible } : d)),
-      "Đã cập nhật hiển thị cột",
-    );
+    setDefs(defs.map((d) => (d.key === key ? { ...d, visible: !d.visible } : d)));
   };
 
   const addField = () => {
@@ -188,39 +237,51 @@ export function DynamicTable<T extends object>({
       message.warning("Tên cột không hợp lệ hoặc đã tồn tại");
       return;
     }
-    applyDefs(
-      [
-        ...defs,
-        {
-          key,
-          label: newFieldLabel.trim(),
-          type: newFieldType,
-          required: false,
-          order: defs.length + 1,
-          visible: true,
-        },
-      ],
-      "Đã thêm cột — hiện trên bảng và form tạo/sửa",
-    );
+    setDefs([
+      ...defs,
+      {
+        key,
+        label: newFieldLabel.trim(),
+        type: newFieldType,
+        required: false,
+        order: defs.length + 1,
+        visible: true,
+      },
+    ]);
     setNewFieldLabel("");
   };
 
   const removeField = (key: string) => {
     if (locked.has(key)) return;
-    applyDefs(
-      defs.filter((d) => d.key !== key),
-      "Đã xóa cột khỏi bảng và form",
-    );
+    setDefs(defs.filter((d) => d.key !== key));
   };
 
   const handleSave = () => {
     onFieldDefsChange?.(defs);
+    extraManaged.save(extraDraft);
     message.success("Đã lưu cấu hình cột");
+    setDrawerOpen(false);
   };
 
   const handleClose = () => {
     setDefs(fieldDefs);
+    setExtraDraft(extraManaged.committed);
+    setNewFieldLabel("");
     setDrawerOpen(false);
+  };
+
+  const requestClose = () => {
+    if (!dirty) {
+      handleClose();
+      return;
+    }
+    modal.confirm({
+      title: "Hủy?",
+      content: "Thay đổi sẽ không được lưu.",
+      okText: "Hủy",
+      cancelText: "Tiếp tục",
+      onOk: handleClose,
+    });
   };
 
   const flatData = useMemo(
@@ -256,11 +317,11 @@ export function DynamicTable<T extends object>({
       <Drawer
         title="Quản lý cột"
         open={drawerOpen}
-        onClose={handleClose}
+        onClose={requestClose}
         width={400}
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button onClick={handleClose}>Đóng</Button>
+            <Button onClick={requestClose}>Đóng</Button>
             <Button type="primary" disabled={!dirty} onClick={handleSave}>
               Lưu
             </Button>
@@ -268,7 +329,12 @@ export function DynamicTable<T extends object>({
         }
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          {defs.map((def) => {
+          <span style={{ color: token.colorTextSecondary, fontSize: ds.fontSize.bodySm }}>
+            Ẩn/hiện, thêm hoặc xóa cột chỉ áp dụng sau khi bấm Lưu.
+          </span>
+          {[...defs]
+            .sort((a, b) => a.order - b.order)
+            .map((def) => {
             const isLocked = locked.has(def.key);
             return (
               <div key={def.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -282,7 +348,7 @@ export function DynamicTable<T extends object>({
                 ) : (
                   <Popconfirm
                     title={`Xóa cột “${def.label}”?`}
-                    description="Cột sẽ biến mất khỏi bảng và form tạo/sửa."
+                    description="Cột sẽ bị xóa sau khi bấm Lưu."
                     okText="Xóa"
                     cancelText="Hủy"
                     okButtonProps={{ danger: true }}
@@ -296,6 +362,26 @@ export function DynamicTable<T extends object>({
               </div>
             );
           })}
+          {extraManagerId
+            ? extraItems.map((item) => (
+            <div key={`extra-${item.key}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Checkbox
+                checked={extraDraft[item.key] !== false}
+                onChange={() =>
+                  setExtraDraft((prev) => ({
+                    ...prev,
+                    [item.key]: prev[item.key] === false,
+                  }))
+                }
+              />
+              <span style={{ flex: 1 }}>{item.label}</span>
+              <Tag>cột bảng</Tag>
+              <Tooltip title="Cột hệ thống — không xóa được">
+                <Button size="small" type="text" disabled icon={<DeleteOutlined />} />
+              </Tooltip>
+            </div>
+              ))
+            : null}
           <div style={{ borderTop: `1px solid ${token.colorBorder}`, paddingTop: 12 }}>
             <Space.Compact style={{ width: "100%" }}>
               <Input
@@ -311,7 +397,7 @@ export function DynamicTable<T extends object>({
                 <Select.Option value="select">Chọn</Select.Option>
                 <Select.Option value="checkbox">Checkbox</Select.Option>
               </Select>
-              <Button type="primary" onClick={addField}>
+              <Button onClick={addField}>
                 Thêm
               </Button>
             </Space.Compact>

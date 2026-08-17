@@ -125,12 +125,7 @@ export function useExpenses() {
   return ctx;
 }
 
-export function canReviewExpense(
-  actor: { id: string },
-  orderReviewerId: string | undefined,
-  /** true nếu ma trận phân quyền bật Sửa trên trang Duyệt chi */
-  hasExpenseApprovePermission: boolean,
-): boolean {
-  if (hasExpenseApprovePermission) return true;
-  return Boolean(orderReviewerId && actor.id === orderReviewerId);
+/** Duyệt chi theo ma trận phân quyền (Sửa trên trang Duyệt chi). Không bypass vì là reviewer trên đơn. */
+export function canReviewExpense(hasExpenseApprovePermission: boolean): boolean {
+  return Boolean(hasExpenseApprovePermission);
 }

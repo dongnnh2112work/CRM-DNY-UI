@@ -2,6 +2,7 @@
 
 import { UploadOutlined, UserOutlined } from "@ant-design/icons";
 import {
+  App,
   Avatar,
   Button,
   DatePicker,
@@ -17,6 +18,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import { useEffect, useState } from "react";
 import { PermissionMatrix } from "@/components/users/permission-matrix";
 import { ds } from "@/lib/design-tokens";
+import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import {
   emptyPagePermissions,
   type AppUser,
@@ -49,6 +51,7 @@ export function UserProfileForm({
   roleOptions = [],
   rolePermissionsLookup,
   loading = false,
+  onCancel,
 }: {
   user?: AppUser | null;
   onSubmit: (values: {
@@ -74,7 +77,9 @@ export function UserProfileForm({
   /** Used to seed custom matrix from selected role */
   rolePermissionsLookup?: Record<string, RolePagePermissions>;
   loading?: boolean;
+  onCancel?: () => void;
 }) {
+  const { modal } = App.useApp();
   const [form] = Form.useForm<UserProfileFormValues>();
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
   const [useCustom, setUseCustom] = useState(Boolean(user?.useCustomPermissions));
@@ -272,9 +277,16 @@ export function UserProfileForm({
         </div>
       ) : null}
 
-      <Button type="primary" htmlType="submit" block loading={loading} disabled={loading}>
-        {submitLabel}
-      </Button>
+      <Space>
+        {onCancel ? (
+          <Button onClick={() => confirmDiscardIfDirty(modal, form, onCancel)} disabled={loading}>
+            Hủy
+          </Button>
+        ) : null}
+        <Button type="primary" htmlType="submit" loading={loading} disabled={loading}>
+          {submitLabel}
+        </Button>
+      </Space>
     </Form>
   );
 }

@@ -6,6 +6,7 @@ import type { UploadProps } from "antd";
 import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
 import type { OrderAttachment } from "@/lib/types";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
+import { tableIndexColumn } from "@/lib/table-index-column";
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -68,6 +69,7 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }
         dataSource={visible}
         locale={{ emptyText: "Chưa có hồ sơ làm việc" }}
         columns={[
+          tableIndexColumn<OrderAttachment>(),
           {
             title: "Tệp",
             dataIndex: "name",
