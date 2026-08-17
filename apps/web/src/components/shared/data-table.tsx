@@ -73,7 +73,7 @@ const DEFAULT_PAGINATION = { pageSize: 10, showSizeChanger: true } as const;
 
 function getColumnKey<T>(col: TableColumn<T>): string {
   if (col.key != null && col.key !== "") return String(col.key);
-  if (col.dataIndex != null) {
+  if ("dataIndex" in col && col.dataIndex != null) {
     return Array.isArray(col.dataIndex) ? col.dataIndex.join(".") : String(col.dataIndex);
   }
   return "";
