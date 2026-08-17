@@ -436,5 +436,5 @@ export interface DashboardMetrics {
   revenue: { total: number; thisMonth: number; byMonth: { month: string; value: number }[] };
   orders: { total: number; thisMonth: number; byStatus: { status: string; count: number }[] };
   customers: { total: number; newThisMonth: number };
-  commission: { totalPaid: number; topCtv: { name: string; amount: number }[] };
+  commission: { totalPaid: number };
 }

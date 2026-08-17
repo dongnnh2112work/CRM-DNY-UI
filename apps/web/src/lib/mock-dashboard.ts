@@ -29,12 +29,5 @@ export const MOCK_DASHBOARD: DashboardMetrics = {
   customers: { total: 128, newThisMonth: 12 },
   commission: {
     totalPaid: 5_600_000,
-    topCtv: [
-      { name: "Hoang CTV", amount: 2_800_000 },
-      { name: "Linh Partner", amount: 1_200_000 },
-      { name: "Minh Agent", amount: 900_000 },
-      { name: "Lan Broker", amount: 450_000 },
-      { name: "Khoa Partner", amount: 250_000 },
-    ],
   },
 };

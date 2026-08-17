@@ -34,8 +34,6 @@ import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
 
 const d = MOCK_DASHBOARD;
 
-const CTV_COLORS = ["#0075de", "#62aef0", "#2a9d99", "#d6b6f6", "#dd5b00"];
-
 /** Compact tick labels for chart axes only (not list/table display). */
 function formatVndAxisTick(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -202,94 +200,54 @@ export default function DashboardPage() {
 
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={12}>
-            <Card title="Top CTV theo hoa hồng" size="small">
-              <div style={{ width: "100%", height: 260 }}>
-                <ResponsiveContainer>
-                  <BarChart
-                    layout="vertical"
-                    data={d.commission.topCtv}
-                    margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
+            <Card title="Đơn hàng gần đây" size="small" extra={<Link href="/orders">Xem tất cả</Link>}>
+              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                {recentOrders.map((o) => (
+                  <div
+                    key={o.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tickFormatter={formatVndAxisTick} tickLine={false} />
-                    <YAxis type="category" dataKey="name" width={100} tickLine={false} />
-                    <Tooltip
-                      cursor={false}
-                      formatter={(value) => [formatVndDisplay(Number(value)), "Hoa hồng"]}
-                      contentStyle={{
-                        background: token.colorBgElevated,
-                        border: `1px solid ${token.colorBorder}`,
-                        borderRadius: 8,
-                        color: token.colorText,
-                        boxShadow: token.boxShadowSecondary,
-                      }}
-                      labelStyle={{ color: token.colorTextSecondary }}
-                      itemStyle={{ color: token.colorText }}
-                    />
-                    <Bar dataKey="amount" radius={[0, 6, 6, 0]} maxBarSize={22}>
-                      {d.commission.topCtv.map((entry, index) => (
-                        <Cell key={entry.name} fill={CTV_COLORS[index % CTV_COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+                    <div>
+                      <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
+                      <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
+                        {o.customerName} · {o.serviceName}
+                      </div>
+                    </div>
+                    <Typography.Text>{formatVndDisplay(o.value)}</Typography.Text>
+                  </div>
+                ))}
+              </Space>
             </Card>
           </Col>
-
           <Col xs={24} lg={12}>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Card title="Đơn hàng gần đây" size="small" extra={<Link href="/orders">Xem tất cả</Link>}>
-                  <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                    {recentOrders.map((o) => (
-                      <div
-                        key={o.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 12,
-                        }}
-                      >
-                        <div>
-                          <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
-                          <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
-                            {o.customerName} · {o.serviceName}
-                          </div>
-                        </div>
-                        <Typography.Text>{formatVndDisplay(o.value)}</Typography.Text>
+            <Card title="Thanh toán sắp tới" size="small" extra={<Link href="/payments">Xem tất cả</Link>}>
+              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                {upcomingPayments.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
+                      <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
+                        {p.customerName} · Còn lại: {formatVndDisplay(p.remaining)}
                       </div>
-                    ))}
-                  </Space>
-                </Card>
-              </Col>
-              <Col span={24}>
-                <Card title="Thanh toán sắp tới" size="small" extra={<Link href="/payments">Xem tất cả</Link>}>
-                  <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                    {upcomingPayments.map((p) => (
-                      <div
-                        key={p.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 12,
-                        }}
-                      >
-                        <div>
-                          <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
-                          <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
-                            {p.customerName} · Còn lại: {formatVndDisplay(p.remaining)}
-                          </div>
-                        </div>
-                        <StatusBadge module="payment" status={p.status} />
-                      </div>
-                    ))}
-                  </Space>
-                </Card>
-              </Col>
-            </Row>
+                    </div>
+                    <StatusBadge module="payment" status={p.status} />
+                  </div>
+                ))}
+              </Space>
+            </Card>
           </Col>
         </Row>
       </div>
