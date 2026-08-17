@@ -20,6 +20,7 @@ import { DataTable } from "@/components/shared/data-table";
 import { useManagedColumns } from "@/components/shared/column-manager-drawer";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
+import { tableColumnKey } from "@/lib/table-index-column";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import type { StatusModule } from "@/lib/status-config";
 import type { FieldDefinition, FieldType } from "@/lib/types";
@@ -118,7 +119,7 @@ export function DynamicTable<T extends object>({
     () =>
       extra
         .map((col) => {
-          const key = String(col.key ?? col.dataIndex ?? "");
+          const key = tableColumnKey(col);
           const label =
             typeof col.title === "string" && col.title.trim()
               ? col.title
@@ -153,7 +154,7 @@ export function DynamicTable<T extends object>({
   );
 
   const visibleExtra = extraManagerId
-    ? extra.filter((col) => extraManaged.isVisible(String(col.key ?? col.dataIndex ?? "")))
+    ? extra.filter((col) => extraManaged.isVisible(tableColumnKey(col)))
     : extra;
 
   const columns: TableColumnsType<T> = useMemo(() => {

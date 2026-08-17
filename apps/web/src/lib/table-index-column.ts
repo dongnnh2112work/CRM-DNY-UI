@@ -4,6 +4,14 @@ export const INDEX_COLUMN_KEY = "__stt";
 
 export type TableColumn<T> = TableColumnsType<T>[number];
 
+export function tableColumnKey<T>(col: TableColumn<T>): string {
+  if (col.key != null && col.key !== "") return String(col.key);
+  if ("dataIndex" in col && col.dataIndex != null) {
+    return Array.isArray(col.dataIndex) ? col.dataIndex.join(".") : String(col.dataIndex);
+  }
+  return "";
+}
+
 /** Cột số thứ tự — không đưa vào Quản lý cột. */
 export function tableIndexColumn<T extends object>(offset = 0): TableColumn<T> {
   return {

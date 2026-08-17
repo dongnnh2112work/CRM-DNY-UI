@@ -9,7 +9,7 @@ import {
   type ColumnManagerItem,
 } from "@/components/shared/column-manager-drawer";
 import { EmptyState } from "@/components/shared/empty-state";
-import { tableIndexColumn, type TableColumn } from "@/lib/table-index-column";
+import { tableIndexColumn, tableColumnKey, type TableColumn } from "@/lib/table-index-column";
 
 export type DataTableEmptyAction = {
   label: string;
@@ -69,19 +69,14 @@ export interface DataTableProps<T extends object> {
   columnManagerKey?: string;
 }
 
-const DEFAULT_PAGINATION = { pageSize: 10, showSizeChanger: true } as const;
-
-function getColumnKey<T>(col: TableColumn<T>): string {
-  if (col.key != null && col.key !== "") return String(col.key);
-  if ("dataIndex" in col && col.dataIndex != null) {
-    return Array.isArray(col.dataIndex) ? col.dataIndex.join(".") : String(col.dataIndex);
-  }
-  return "";
-}
+const DEFAULT_PAGINATION: { pageSize: number; showSizeChanger: boolean } = {
+  pageSize: 10,
+  showSizeChanger: true,
+};
 
 function getColumnLabel<T>(col: TableColumn<T>): string {
   if (typeof col.title === "string" && col.title.trim()) return col.title;
-  const key = getColumnKey(col);
+  const key = tableColumnKey(col);
   if (key === "avatar") return "Avatar";
   if (key === "action" || key === "actions") return "Thao tác";
   return key || "Cột";
@@ -117,7 +112,7 @@ export function DataTable<T extends object>({
   const managerItems: ColumnManagerItem[] = useMemo(
     () =>
       (columns as TableColumn<T>[])
-        .map((col) => ({ key: getColumnKey(col), label: getColumnLabel(col) }))
+        .map((col) => ({ key: tableColumnKey(col), label: getColumnLabel(col) }))
         .filter((item) => item.key),
     [columns],
   );
@@ -126,7 +121,7 @@ export function DataTable<T extends object>({
 
   const visibleColumns = columnManagerKey
     ? (columns as TableColumn<T>[]).filter((col) => {
-        const key = getColumnKey(col);
+        const key = tableColumnKey(col);
         return !key || isVisible(key);
       })
     : columns;
