@@ -16,13 +16,17 @@ import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 const KEY = "dny-crm-order-expenses";
 
 export type NewExpenseInput = {
-  orderId: string;
-  orderNumber: string;
+  orderId?: string;
+  orderNumber?: string;
+  projectName: string;
   amount: number;
   title: string;
   note?: string;
   requestedById: string;
   requestedByName: string;
+  payeeName: string;
+  bankAccount: string;
+  bankName: string;
 };
 
 type Ctx = {
@@ -39,15 +43,33 @@ type Ctx = {
   ) => void;
 };
 
+function normalizeExpense(e: OrderExpense): OrderExpense {
+  return {
+    ...e,
+    projectName: (e.projectName || e.orderNumber || "").trim(),
+    payeeName: e.payeeName ?? "",
+    bankAccount: e.bankAccount ?? "",
+    bankName: e.bankName ?? "",
+  };
+}
+
+export function expenseProjectLabel(
+  e: Pick<OrderExpense, "projectName" | "orderNumber">,
+): string {
+  return (e.projectName || e.orderNumber || "—").trim() || "—";
+}
+
 const ExpensesContext = createContext<Ctx | null>(null);
 
 export function ExpensesProvider({ children }: { children: ReactNode }) {
-  const [expenses, setExpenses] = useState<OrderExpense[]>(MOCK_ORDER_EXPENSES);
+  const [expenses, setExpenses] = useState<OrderExpense[]>(() =>
+    MOCK_ORDER_EXPENSES.map(normalizeExpense),
+  );
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const stored = loadJson<OrderExpense[]>(KEY);
-    if (stored && Array.isArray(stored)) setExpenses(stored);
+    if (stored && Array.isArray(stored)) setExpenses(stored.map(normalizeExpense));
     setReady(true);
   }, []);
 
@@ -74,12 +96,16 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
       id: `ex-${Date.now()}`,
       orderId: input.orderId,
       orderNumber: input.orderNumber,
+      projectName: input.projectName.trim(),
       amount: input.amount,
       title: input.title,
       note: input.note,
       requestedById: input.requestedById,
       requestedByName: input.requestedByName,
       requestedAt: new Date().toISOString().slice(0, 10),
+      payeeName: input.payeeName.trim(),
+      bankAccount: input.bankAccount.trim(),
+      bankName: input.bankName.trim(),
       status: "pending",
     };
     setExpenses((prev) => [created, ...prev]);
@@ -125,7 +151,7 @@ export function useExpenses() {
   return ctx;
 }
 
-/** Duyệt chi theo ma trận phân quyền (Sửa trên trang Duyệt chi). Không bypass vì là reviewer trên đơn. */
+/** Duyệt đề nghị theo ma trận phân quyền (Sửa trên trang Đề nghị thanh toán). */
 export function canReviewExpense(hasExpenseApprovePermission: boolean): boolean {
   return Boolean(hasExpenseApprovePermission);
 }

@@ -47,8 +47,8 @@ export function hasLicenseDocument(order: Pick<Order, "licenseAttachments">): bo
   return (order.licenseAttachments ?? []).some((a) => !a.deleted);
 }
 
-export function requiresLicenseForStage(toStage: OrderStage): boolean {
-  return toStage === "completed";
+export function requiresLicenseForStage(_toStage: OrderStage): boolean {
+  return false;
 }
 
 export function canMoveToCompleted(order: Pick<Order, "licenseAttachments">): boolean {

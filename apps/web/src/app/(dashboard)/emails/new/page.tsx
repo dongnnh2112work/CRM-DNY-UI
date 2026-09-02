@@ -97,14 +97,37 @@ function ComposeEmailPageContent() {
         layout="vertical"
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
       >
-        <Form.Item name="recipients" label="Người nhận" rules={[{ required: true, message: "Chọn người nhận" }]}>
-          <Select
-            mode="multiple"
-            showSearch
-            optionFilterProp="label"
-            placeholder="Chọn khách hàng"
-            options={customers.map((c) => ({ value: c.email, label: `${c.name} (${c.email})` }))}
-          />
+        <Form.Item label="Người nhận" required>
+          <Space orientation="vertical" style={{ width: "100%" }} size={8}>
+            <Form.Item name="recipients" noStyle rules={[{ required: true, message: "Chọn người nhận" }]}>
+              <Select
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                placeholder="Chọn khách hàng"
+                options={customers.map((c) => ({ value: c.email, label: `${c.name} (${c.email})` }))}
+              />
+            </Form.Item>
+            <Button
+              onClick={() => {
+                const emails = [
+                  ...new Set(
+                    customers
+                      .map((c) => c.email?.trim())
+                      .filter((e): e is string => Boolean(e)),
+                  ),
+                ];
+                if (emails.length === 0) {
+                  message.warning("Không có khách hàng nào có email");
+                  return;
+                }
+                form.setFieldValue("recipients", emails);
+                message.success(`Đã chọn ${emails.length} khách hàng`);
+              }}
+            >
+              Gửi tất cả
+            </Button>
+          </Space>
         </Form.Item>
         <Form.Item name="subject" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
           <Input />

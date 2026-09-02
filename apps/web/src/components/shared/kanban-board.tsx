@@ -3,6 +3,7 @@
 import { Card, Tag, Typography, theme } from "antd";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
@@ -108,6 +109,11 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                     >
                                       {order.serviceName}
                                     </div>
+                                    {order.zaloGroupUrl ? (
+                                      <div style={{ marginTop: 6 }}>
+                                        <ZaloGroupLink url={order.zaloGroupUrl} variant="tag" />
+                                      </div>
+                                    ) : null}
                                     <div
                                       style={{
                                         display: "flex",

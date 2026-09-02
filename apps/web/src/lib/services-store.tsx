@@ -12,6 +12,7 @@ import {
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { mergeSeedFieldDefs } from "@/lib/field-defs";
 import { MOCK_SERVICES, SERVICE_FIELD_DEFS } from "@/lib/mock-services";
+import { DEFAULT_LICENSE_WARN_MONTHS, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 
 const SERVICES_KEY = "dny-crm-services";
@@ -23,6 +24,7 @@ export type NewServiceInput = {
   category: string;
   unitPrice: number;
   processingDays: number;
+  licenseExpiryWarnMonths?: number;
   customFields?: Record<string, unknown>;
 };
 export type UpdateServiceInput = Partial<Omit<Service, "id">>;
@@ -40,17 +42,27 @@ type ServicesContextValue = {
   resetToSeed: () => void;
 };
 
+function normalizeService(s: Service): Service {
+  return {
+    ...s,
+    licenseExpiryWarnMonths: licenseWarnMonthsOf(s),
+    customFields: s.customFields ?? {},
+  };
+}
+
 const ServicesContext = createContext<ServicesContextValue | null>(null);
 
 export function ServicesProvider({ children }: { children: ReactNode }) {
-  const [services, setServices] = useState<Service[]>(MOCK_SERVICES);
+  const [services, setServices] = useState<Service[]>(() => MOCK_SERVICES.map(normalizeService));
   const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>(SERVICE_FIELD_DEFS);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const storedServices = loadJson<Service[]>(SERVICES_KEY);
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
-    if (storedServices && Array.isArray(storedServices)) setServices(storedServices);
+    if (storedServices && Array.isArray(storedServices)) {
+      setServices(storedServices.map(normalizeService));
+    }
     if (storedFields && Array.isArray(storedFields)) {
       setFieldDefs(mergeSeedFieldDefs(storedFields, SERVICE_FIELD_DEFS));
     }
@@ -74,6 +86,9 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
       category: input.category,
       unitPrice: input.unitPrice,
       processingDays: input.processingDays,
+      licenseExpiryWarnMonths: licenseWarnMonthsOf({
+        licenseExpiryWarnMonths: input.licenseExpiryWarnMonths ?? DEFAULT_LICENSE_WARN_MONTHS,
+      }),
       id: `s-${Date.now()}`,
       status: "active",
       customFields: input.customFields ?? {},
@@ -87,11 +102,11 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
     setServices((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
-        updated = {
+        updated = normalizeService({
           ...s,
           ...patch,
           customFields: patch.customFields !== undefined ? patch.customFields : s.customFields,
-        };
+        });
         return updated;
       }),
     );
@@ -116,7 +131,7 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
   );
 
   const resetToSeed = useCallback(() => {
-    setServices(MOCK_SERVICES);
+    setServices(MOCK_SERVICES.map(normalizeService));
     setFieldDefs(SERVICE_FIELD_DEFS);
   }, []);
 

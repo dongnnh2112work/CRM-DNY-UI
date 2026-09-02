@@ -6,6 +6,7 @@ import { ServiceExtraFormFields } from "@/components/services/service-extra-form
 import { ds } from "@/lib/design-tokens";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { vndInputProps } from "@/lib/format-vnd";
+import { DEFAULT_LICENSE_WARN_MONTHS, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import { getServiceFormExtraFields, splitServiceFormValues } from "@/lib/service-fields";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 
@@ -27,6 +28,7 @@ export function ServiceForm({
     category: string;
     unitPrice: number;
     processingDays: number;
+    licenseExpiryWarnMonths?: number;
     status?: ServiceStatus;
     customFields: Record<string, unknown>;
   }) => void | Promise<void>;
@@ -46,11 +48,13 @@ export function ServiceForm({
         category: service.category,
         unitPrice: service.unitPrice,
         processingDays: service.processingDays,
+        licenseExpiryWarnMonths: licenseWarnMonthsOf(service),
         status: service.status,
         ...service.customFields,
       });
     } else {
       form.resetFields();
+      form.setFieldsValue({ licenseExpiryWarnMonths: DEFAULT_LICENSE_WARN_MONTHS });
     }
   }, [service, form, fieldDefs]);
 
@@ -81,6 +85,14 @@ export function ServiceForm({
         rules={[{ required: true, message: "Nhập số ngày" }]}
       >
         <InputNumber style={{ width: "100%" }} min={1} />
+      </Form.Item>
+      <Form.Item
+        name="licenseExpiryWarnMonths"
+        label="Cảnh báo giấy phép trước (tháng)"
+        rules={[{ required: true, message: "Nhập số tháng" }]}
+        extra="Tag “Sắp hết hạn” và thông báo khi GP của đơn dùng dịch vụ này còn trong khoảng này."
+      >
+        <InputNumber style={{ width: "100%" }} min={1} max={6} />
       </Form.Item>
       {service ? (
         <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>

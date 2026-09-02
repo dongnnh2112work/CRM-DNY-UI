@@ -85,6 +85,9 @@ export default function ServiceDetailPage() {
                   <Descriptions.Item label="Danh mục">{service.category}</Descriptions.Item>
                   <Descriptions.Item label="Đơn giá">{formatVndDisplay(service.unitPrice)}</Descriptions.Item>
                   <Descriptions.Item label="Thời gian xử lý">{service.processingDays} ngày</Descriptions.Item>
+                  <Descriptions.Item label="Cảnh báo GP">
+                    {service.licenseExpiryWarnMonths ?? 2} tháng
+                  </Descriptions.Item>
                   {extraFields.map((def) => {
                     const raw = service.customFields?.[def.key];
                     const display =

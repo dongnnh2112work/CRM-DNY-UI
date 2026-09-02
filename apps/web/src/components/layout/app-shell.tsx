@@ -29,6 +29,7 @@ import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
+import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 import type { AppNotification } from "@/lib/types";
 
@@ -44,7 +45,7 @@ const MENU_ITEMS = [
   {
     key: "/expense-approvals",
     icon: <AccountBookOutlined />,
-    label: <Link href="/expense-approvals">Duyệt chi</Link>,
+    label: <Link href="/expense-approvals">Đề nghị thanh toán</Link>,
   },
   { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">Quản lý VAT</Link> },
   { type: "divider" as const },
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { theme: appTheme, setTheme } = useAppConfig();
   const { currentUser, logout, getById: getUser } = useUsers();
   const { orders, ready: ordersReady } = useOrders();
+  const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
   const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
     useNotifications();
@@ -76,10 +78,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const unread = userId ? unreadCount(userId) : 0;
 
   useEffect(() => {
-    if (!ordersReady || !notifReady || scannedRef.current) return;
+    if (!ordersReady || !servicesReady || !notifReady || scannedRef.current) return;
     scannedRef.current = true;
     scanOrderAlerts(orders, {
-      licenseWarnMonths: config.licenseExpiryWarnMonths,
+      services,
       vatWarnDays: config.vatIssueWarnDays,
       mirrorEmail: (n: AppNotification) => {
         const user = getUser(n.userId);
@@ -96,9 +98,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     });
   }, [
     ordersReady,
+    servicesReady,
     notifReady,
     orders,
-    config.licenseExpiryWarnMonths,
+    services,
     config.vatIssueWarnDays,
     scanOrderAlerts,
     addEmail,

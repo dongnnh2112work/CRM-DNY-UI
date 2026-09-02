@@ -11,8 +11,8 @@ import {
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { orderJobOwnerIds, relatedUserIds, type NotificationDraft } from "@/lib/notification-targets";
-import { daysUntil, getOrderLicenseExpirySummary } from "@/lib/order-helpers";
-import type { AppNotification, Order } from "@/lib/types";
+import { daysUntil, getOrderLicenseExpirySummary, licenseWarnMonthsOf } from "@/lib/order-helpers";
+import type { AppNotification, Order, Service } from "@/lib/types";
 
 const KEY = "dny-crm-notifications";
 
@@ -33,7 +33,11 @@ type Ctx = {
   forUser: (userId: string) => AppNotification[];
   scanOrderAlerts: (
     orders: Order[],
-    opts: { licenseWarnMonths: number; vatWarnDays: number; mirrorEmail?: (n: AppNotification) => void },
+    opts: {
+      services: Array<Pick<Service, "id" | "licenseExpiryWarnMonths">>;
+      vatWarnDays: number;
+      mirrorEmail?: (n: AppNotification) => void;
+    },
   ) => void;
 };
 
@@ -119,7 +123,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     (
       orders: Order[],
       opts: {
-        licenseWarnMonths: number;
+        services: Array<Pick<Service, "id" | "licenseExpiryWarnMonths">>;
         vatWarnDays: number;
         mirrorEmail?: (n: AppNotification) => void;
       },
@@ -174,7 +178,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const lic = getOrderLicenseExpirySummary(order, opts.licenseWarnMonths);
+        const warnMonths = licenseWarnMonthsOf(
+          opts.services.find((s) => s.id === order.serviceId),
+        );
+        const lic = getOrderLicenseExpirySummary(order, warnMonths);
         if (lic.tone === "expiring" || lic.tone === "expired") {
           queue(order, {
             type: "license_expiring",

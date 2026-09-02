@@ -1,6 +1,7 @@
 "use client";
 
 import { App, Alert, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space, Typography } from "antd";
+import dayjs from "dayjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -13,7 +14,7 @@ import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { MOCK_USERS } from "@/lib/mock-users";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
-import { nextContractNumber } from "@/lib/order-helpers";
+import { deadlineFromService, nextContractNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
@@ -50,16 +51,16 @@ function NewOrderPageContent() {
   const suggestedHd = useMemo(() => nextContractNumber(orders), [orders]);
 
   const selectedService = services.find((s) => s.id === serviceId);
-  const commission =
+  const ctvCommission =
     channel === "ctv" && typeof value === "number" && typeof ctvPrice === "number"
       ? ctvPrice - value
       : null;
 
   const onServiceChange = (id: string) => {
     const svc = services.find((s) => s.id === id);
-    if (svc && (value == null || value === 0)) {
-      form.setFieldValue("value", svc.unitPrice);
-    }
+    if (!svc) return;
+    form.setFieldValue("value", svc.unitPrice);
+    form.setFieldValue("deadline", dayjs(deadlineFromService(svc.processingDays)));
   };
 
   return (
@@ -107,6 +108,11 @@ function NewOrderPageContent() {
               ctvId: ctv?.id,
               ctvName: ctv?.name,
               value: Number(values.value),
+              commission:
+                values.commission != null && values.commission !== ""
+                  ? Number(values.commission)
+                  : undefined,
+              zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
               ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
               assignedUserId: assigned.id,
               assignedUserName: assigned.name,
@@ -198,6 +204,13 @@ function NewOrderPageContent() {
         >
           <InputNumber {...vndInputProps} />
         </Form.Item>
+        <Form.Item
+          name="commission"
+          label="Hoa hồng (VND)"
+          extra="Nhập số tiền hoa hồng của đơn này. Logic % theo tháng sẽ làm sau."
+        >
+          <InputNumber {...vndInputProps} />
+        </Form.Item>
         {channel === "ctv" && (
           <>
             <Form.Item
@@ -219,17 +232,17 @@ function NewOrderPageContent() {
             >
               <InputNumber {...vndInputProps} />
             </Form.Item>
-            {commission != null && (
+            {ctvCommission != null && (
               <Alert
-                type={commission >= 0 ? "success" : "error"}
+                type={ctvCommission >= 0 ? "success" : "error"}
                 showIcon
                 style={{ marginBottom: 16 }}
                 message={
                   <Typography.Text>
-                    Hoa hồng dự kiến:{" "}
-                    <Typography.Text strong>{formatVndDisplay(commission)}</Typography.Text>
+                    Hoa hồng CTV dự kiến:{" "}
+                    <Typography.Text strong>{formatVndDisplay(ctvCommission)}</Typography.Text>
                     <Typography.Text type="secondary"> (Giá CTV − giá niêm yết)</Typography.Text>
-                    {commission < 0 && " — kiểm tra lại giá"}
+                    {ctvCommission < 0 && " — kiểm tra lại giá"}
                   </Typography.Text>
                 }
               />
@@ -264,6 +277,25 @@ function NewOrderPageContent() {
         </Form.Item>
         <Form.Item name="deadline" label="Hạn xử lý đơn">
           <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+        </Form.Item>
+        <Form.Item
+          name="zaloGroupUrl"
+          label="Group Zalo"
+          rules={[
+            {
+              validator: async (_, v) => {
+                const s = String(v ?? "").trim();
+                if (!s) return;
+                try {
+                  new URL(s);
+                } catch {
+                  throw new Error("Nhập URL hợp lệ");
+                }
+              },
+            },
+          ]}
+        >
+          <Input placeholder="https://zalo.me/g/…" />
         </Form.Item>
         <Form.Item name="needsVat" valuePropName="checked">
           <Checkbox

@@ -6,8 +6,9 @@ export const SERVICE_FIELD_DEFS: FieldDefinition[] = [
   { key: "category", label: "Danh mục", type: "select", options: ["Work Permit", "Visa", "License", "Legal", "Other"], required: true, order: 3, visible: true },
   { key: "unitPrice", label: "Đơn giá (VND)", type: "number", required: true, order: 4, visible: true },
   { key: "processingDays", label: "Thời gian xử lý (ngày)", type: "number", required: true, order: 5, visible: true },
-  { key: "status", label: "Trạng thái", type: "select", options: ["active", "inactive"], required: true, order: 6, visible: true },
-  { key: "requiredDocs", label: "Hồ sơ yêu cầu", type: "text", required: false, order: 7, visible: false },
+  { key: "licenseExpiryWarnMonths", label: "Cảnh báo GP (tháng)", type: "number", required: true, order: 6, visible: true },
+  { key: "status", label: "Trạng thái", type: "select", options: ["active", "inactive"], required: true, order: 7, visible: true },
+  { key: "requiredDocs", label: "Hồ sơ yêu cầu", type: "text", required: false, order: 8, visible: false },
 ];
 
 export const MOCK_SERVICES: Service[] = [

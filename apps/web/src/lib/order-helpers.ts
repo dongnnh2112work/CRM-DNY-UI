@@ -1,5 +1,46 @@
 import type { Order, OrderAttachment } from "@/lib/types";
 
+export const DEFAULT_LICENSE_WARN_MONTHS = 2;
+
+export function licenseWarnMonthsOf(
+  service?: { licenseExpiryWarnMonths?: number } | null,
+): number {
+  const n = service?.licenseExpiryWarnMonths;
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_LICENSE_WARN_MONTHS;
+  return Math.min(6, Math.max(1, Math.round(n)));
+}
+
+export function licenseWarnMonthsForOrder(
+  order: Pick<Order, "serviceId">,
+  services: Array<{ id: string; licenseExpiryWarnMonths?: number }>,
+): number {
+  return licenseWarnMonthsOf(services.find((s) => s.id === order.serviceId));
+}
+
+/** DNY + YY + MM + seq (vd DNY260856). */
+export function nextDossierNumber(orders: Order[], from = new Date()): string {
+  const yy = String(from.getFullYear()).slice(-2);
+  const mm = String(from.getMonth() + 1).padStart(2, "0");
+  const prefix = `DNY${yy}${mm}`;
+  let max = 0;
+  for (const o of orders) {
+    if (!o.orderNumber.startsWith(prefix)) continue;
+    const seq = Number(o.orderNumber.slice(prefix.length));
+    if (Number.isFinite(seq) && seq > max) max = seq;
+  }
+  return `${prefix}${String(max + 1).padStart(2, "0")}`;
+}
+
+export function deadlineFromService(processingDays: number, from = new Date()): string {
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + Math.max(0, Math.round(processingDays) || 0));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function nextContractNumber(orders: Order[]): number {
   let max = 0;
   for (const o of orders) {

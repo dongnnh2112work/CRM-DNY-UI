@@ -110,7 +110,7 @@ export default function CustomerDetailPage() {
 
   const orderColumns = [
     {
-      title: "Mã đơn",
+      title: "Mã hồ sơ",
       dataIndex: "orderNumber",
       sorter: (a: Order, b: Order) => compareText(a.orderNumber, b.orderNumber),
       render: (v: string, r: Order) => <Link href={`/orders/${r.id}`}>{v}</Link>,

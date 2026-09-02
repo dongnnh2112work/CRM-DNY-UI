@@ -11,7 +11,7 @@ import {
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { MOCK_ORDERS } from "@/lib/mock-orders";
-import { isContractNumberTaken, normalizeOrder } from "@/lib/order-helpers";
+import { isContractNumberTaken, nextDossierNumber, normalizeOrder } from "@/lib/order-helpers";
 import type { Order, OrderStage } from "@/lib/types";
 
 const ORDERS_KEY = "dny-crm-orders";
@@ -25,6 +25,8 @@ export type NewOrderInput = {
   ctvId?: string;
   ctvName?: string;
   value: number;
+  commission?: number;
+  zaloGroupUrl?: string;
   ctvPrice?: number;
   assignedUserId: string;
   assignedUserName: string;
@@ -91,7 +93,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       const d = String(now.getDate()).padStart(2, "0");
       const created: Order = {
         id: `o-${Date.now()}`,
-        orderNumber: `ORD-${y}-${String(Date.now()).slice(-4)}`,
+        orderNumber: nextDossierNumber(orders, now),
         customerId: input.customerId,
         customerName: input.customerName,
         serviceId: input.serviceId,
@@ -101,6 +103,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         ctvId: input.ctvId,
         ctvName: input.ctvName,
         value: input.value,
+        commission: input.commission,
+        zaloGroupUrl: input.zaloGroupUrl?.trim() || undefined,
         ctvPrice: input.ctvPrice,
         assignedUserId: input.assignedUserId,
         assignedUserName: input.assignedUserName,

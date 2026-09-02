@@ -30,7 +30,6 @@ import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
-import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
@@ -39,16 +38,13 @@ import { MOCK_USERS } from "@/lib/mock-users";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import {
+  deadlineFromService,
   getOrderLicenseExpirySummary,
   isContractNumberTaken,
   licenseExpiryTagColor,
+  licenseWarnMonthsForOrder,
   nextContractNumber,
 } from "@/lib/order-helpers";
-import {
-  canMoveToCompleted,
-  getLicenseBlockMessage,
-  requiresLicenseForStage,
-} from "@/lib/order-workflow";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
@@ -68,7 +64,6 @@ export default function OrderDetailPage() {
   const { currentUser } = useUsers();
   const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId } = usePayments();
-  const { config } = useAppReminderConfig();
   const { customers } = useCustomers();
   const { services } = useServices();
   const { ctvs } = useCtvs();
@@ -98,6 +93,7 @@ export default function OrderDetailPage() {
       submitterId: order.submitterId,
       reviewerId: order.reviewerId,
       deadline: order.deadline ? dayjs(order.deadline) : null,
+      zaloGroupUrl: order.zaloGroupUrl,
       needsVat: order.needsVat,
       contractNumber: order.contractNumber,
       notes: order.notes,
@@ -116,7 +112,10 @@ export default function OrderDetailPage() {
 
   const workFileCount = order.attachments.filter((a) => !a.deleted).length;
   const licenseFileCount = (order.licenseAttachments ?? []).filter((a) => !a.deleted).length;
-  const licenseSummary = getOrderLicenseExpirySummary(order, config.licenseExpiryWarnMonths);
+  const licenseSummary = getOrderLicenseExpirySummary(
+    order,
+    licenseWarnMonthsForOrder(order, services),
+  );
 
   const persist = (next: Order) => {
     updateOrder(order.id, next);
@@ -124,10 +123,6 @@ export default function OrderDetailPage() {
 
   const applyStage = (newStage: OrderStage) => {
     if (newStage === order.stage) return;
-    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
-      message.warning(getLicenseBlockMessage());
-      return;
-    }
     updateOrder(order.id, {
       stage: newStage,
       approvalStatus: "none",
@@ -138,10 +133,6 @@ export default function OrderDetailPage() {
 
   const requestStageChange = (newStage: OrderStage) => {
     if (newStage === order.stage) return;
-    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
-      message.warning(getLicenseBlockMessage());
-      return;
-    }
     const nextLabel = stageOptions.find((s) => s.value === newStage)?.label ?? newStage;
     modal.confirm({
       title: `Đổi giai đoạn sang “${nextLabel}”?`,
@@ -232,6 +223,18 @@ export default function OrderDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
           <Descriptions.Item label="Giá trị niêm yết">{formatVndDisplay(order.value)}</Descriptions.Item>
+          <Descriptions.Item label="Hoa hồng">
+            {order.commission != null ? formatVndDisplay(order.commission) : "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="Group Zalo">
+            {order.zaloGroupUrl ? (
+              <Typography.Link href={order.zaloGroupUrl} target="_blank" rel="noopener noreferrer">
+                {order.zaloGroupUrl}
+              </Typography.Link>
+            ) : (
+              "—"
+            )}
+          </Descriptions.Item>
           <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
           <Descriptions.Item label="Xuất VAT">{order.needsVat ? "Có" : "Không"}</Descriptions.Item>
           <Descriptions.Item label="Số HĐ">
@@ -244,7 +247,7 @@ export default function OrderDetailPage() {
           {order.channel === "ctv" && order.ctvPrice != null && (
             <>
               <Descriptions.Item label="Giá CTV">{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
-              <Descriptions.Item label="Hoa hồng">
+              <Descriptions.Item label="Hoa hồng CTV">
                 <Tag color="green">{formatVndDisplay(order.ctvPrice - order.value)}</Tag>
                 <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: ds.fontSize.caption }}>
                   Giá CTV − giá niêm yết
@@ -287,8 +290,7 @@ export default function OrderDetailPage() {
               children: (
                 <div>
                   <Typography.Paragraph type="secondary">
-                    Mỗi giấy phép có ngày cấp / hết hạn. Chuyển sang Hoàn thành bắt buộc có ít nhất 1
-                    file giấy phép.
+                    Mỗi giấy phép có ngày cấp / hết hạn. File giấy phép không bắt buộc khi chuyển Hoàn thành.
                   </Typography.Paragraph>
                   <LicenseUpload
                     files={order.licenseAttachments ?? []}
@@ -362,6 +364,7 @@ export default function OrderDetailPage() {
                 needsVat: Boolean(values.needsVat),
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
                 deadline: values.deadline ? values.deadline.format("YYYY-MM-DD") : undefined,
+                zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
                 vatIssueDeadline: undefined,
               });
               if (assigned.id !== order.assignedUserId) {
@@ -392,6 +395,13 @@ export default function OrderDetailPage() {
           </Form.Item>
           <Form.Item name="serviceId" label="Dịch vụ" rules={[{ required: true }]}>
             <Select
+              onChange={(id) => {
+                const svc = services.find((s) => s.id === id);
+                if (!svc) return;
+                form.setFieldValue("value", svc.unitPrice);
+                const from = order.createdAt ? new Date(order.createdAt) : new Date();
+                form.setFieldValue("deadline", dayjs(deadlineFromService(svc.processingDays, from)));
+              }}
               options={services.map((s) => ({
                 value: s.id,
                 label: `${s.name} — ${formatVndDisplay(s.unitPrice)}`,
@@ -441,6 +451,25 @@ export default function OrderDetailPage() {
           </Form.Item>
           <Form.Item name="deadline" label="Hạn xử lý đơn">
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+          </Form.Item>
+          <Form.Item
+            name="zaloGroupUrl"
+            label="Group Zalo"
+            rules={[
+              {
+                validator: async (_, v) => {
+                  const s = String(v ?? "").trim();
+                  if (!s) return;
+                  try {
+                    new URL(s);
+                  } catch {
+                    throw new Error("Nhập URL hợp lệ");
+                  }
+                },
+              },
+            ]}
+          >
+            <Input placeholder="https://zalo.me/g/…" />
           </Form.Item>
           <Form.Item name="needsVat" valuePropName="checked">
             <Checkbox

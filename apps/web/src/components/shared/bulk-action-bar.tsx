@@ -6,10 +6,12 @@ import type { ReactNode } from "react";
 /** Toolbar hiện khi có dòng được chọn trên list. */
 export function BulkActionBar({
   count,
+  summary,
   children,
 }: {
   count: number;
-  children: ReactNode;
+  summary?: ReactNode;
+  children?: ReactNode;
 }) {
   const { token } = theme.useToken();
 
@@ -30,8 +32,9 @@ export function BulkActionBar({
       }}
     >
       <Typography.Text strong>Đã chọn {count}</Typography.Text>
+      {summary ? <Typography.Text>{summary}</Typography.Text> : null}
       <div style={{ flex: 1 }} />
-      <Space wrap>{children}</Space>
+      {children ? <Space wrap>{children}</Space> : null}
     </div>
   );
 }

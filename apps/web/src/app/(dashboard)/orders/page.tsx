@@ -4,7 +4,9 @@ import { AppstoreOutlined, BarsOutlined, BgColorsOutlined } from "@ant-design/ic
 import { App, Button, Modal, Select, Segmented, Tag, type TableColumnsType } from "antd";
 import Link from "next/link";
 import { useCallback, useMemo, useState, type Key } from "react";
+import { CashflowAmounts } from "@/components/orders/cashflow-amounts";
 import { OrderStageSettingsDrawer } from "@/components/orders/order-stage-settings-drawer";
+import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -18,31 +20,40 @@ import { MOCK_USERS } from "@/lib/mock-users";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import {
-  canMoveToCompleted,
-  getLicenseBlockMessage,
-  requiresLicenseForStage,
-} from "@/lib/order-workflow";
-import { useAppReminderConfig } from "@/lib/app-config-store";
-import {
   getOrderLicenseExpirySummary,
   licenseExpiryTagColor,
+  licenseWarnMonthsForOrder,
 } from "@/lib/order-helpers";
+import {
+  buildOrderCashflow,
+  cashflowForMonth,
+  currentYearMonth,
+  formatYearMonth,
+  type OrderCashflow,
+} from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
+import { usePayments } from "@/lib/payments-store";
+import { useExpenses } from "@/lib/expenses-store";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { Order, OrderStage } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
+import { useServices } from "@/lib/services-store";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
 }
 
+const emptyFlow: OrderCashflow = { thu: 0, chi: 0, net: 0, months: [] };
+
 export default function OrdersPage() {
   const { message, modal } = App.useApp();
   const { orders, updateOrder } = useOrders();
+  const { payments } = usePayments();
+  const { expenses } = useExpenses();
+  const { services } = useServices();
   const { addNotifications } = useNotifications();
-  const { config } = useAppReminderConfig();
   const { getMeta, stageOptions } = useOrderStatusConfig();
   const { currentUser, getEffectivePermissions } = useUsers();
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
@@ -63,6 +74,23 @@ export default function OrdersPage() {
   const [stageDrawerOpen, setStageDrawerOpen] = useState(false);
 
   const staffUsers = MOCK_USERS.filter((u) => u.role === "staff" || u.role === "admin");
+  const cashflowMonth = monthFilter === "all" ? currentYearMonth() : monthFilter;
+
+  const cashflowByOrder = useMemo(() => {
+    const expensesByOrder = new Map<string, typeof expenses>();
+    for (const e of expenses) {
+      if (!e.orderId) continue;
+      const list = expensesByOrder.get(e.orderId) ?? [];
+      list.push(e);
+      expensesByOrder.set(e.orderId, list);
+    }
+    const paymentByOrder = new Map(payments.map((p) => [p.orderId, p]));
+    const map = new Map<string, OrderCashflow>();
+    for (const o of orders) {
+      map.set(o.id, buildOrderCashflow(paymentByOrder.get(o.id), expensesByOrder.get(o.id) ?? []));
+    }
+    return map;
+  }, [orders, payments, expenses]);
 
   const filtered = useMemo(() => {
     let list = [...orders];
@@ -90,13 +118,17 @@ export default function OrdersPage() {
           o.contractNumber,
           o.deadline,
           o.vatIssueDeadline,
+          o.zaloGroupUrl,
+          o.commission,
+          cashflowByOrder.get(o.id)?.thu,
+          cashflowByOrder.get(o.id)?.chi,
           o.attachments.filter((a) => !a.deleted).length,
           o.licenseAttachments?.filter((a) => !a.deleted).length,
         ]),
       );
     }
     return list;
-  }, [orders, userFilter, monthFilter, query, getMeta]);
+  }, [orders, userFilter, monthFilter, query, getMeta, cashflowByOrder]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -104,11 +136,6 @@ export default function OrdersPage() {
   const handleMove = (orderId: string, newStage: OrderStage) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return false;
-
-    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
-      message.warning(getLicenseBlockMessage());
-      return false;
-    }
 
     updateOrder(orderId, {
       stage: newStage,
@@ -120,10 +147,6 @@ export default function OrdersPage() {
 
   const requestStageChange = (order: Order, newStage: OrderStage) => {
     if (newStage === order.stage) return;
-    if (requiresLicenseForStage(newStage) && !canMoveToCompleted(order)) {
-      message.warning(getLicenseBlockMessage());
-      return;
-    }
     const nextLabel = getMeta("orderStage", newStage).label;
     modal.confirm({
       title: `Đổi giai đoạn sang “${nextLabel}”?`,
@@ -143,12 +166,22 @@ export default function OrdersPage() {
       const rows = orders
         .filter((o) => selectedRowKeys.includes(o.id))
         .map((o) => ({
-          "Mã đơn": o.orderNumber,
+          "Mã hồ sơ": o.orderNumber,
           "Khách hàng": o.customerName,
           "Dịch vụ": o.serviceName,
           "Giai đoạn": o.stage,
           "Giá trị": o.value,
           "Phụ trách": o.assignedUserName,
+          [`Thu ${formatYearMonth(cashflowMonth)}`]: cashflowForMonth(
+            cashflowByOrder.get(o.id) ?? emptyFlow,
+            cashflowMonth,
+          ).thu,
+          [`Chi ${formatYearMonth(cashflowMonth)}`]: cashflowForMonth(
+            cashflowByOrder.get(o.id) ?? emptyFlow,
+            cashflowMonth,
+          ).chi,
+          "Thu cả đơn": cashflowByOrder.get(o.id)?.thu ?? 0,
+          "Chi cả đơn": cashflowByOrder.get(o.id)?.chi ?? 0,
         }));
       await exportRowsToXlsx(`orders-selected-${Date.now()}.xlsx`, rows);
       message.success(`Đã xuất ${selectedCount} đơn hàng`);
@@ -201,7 +234,7 @@ export default function OrdersPage() {
 
   const columns: TableColumnsType<Order> = [
     {
-      title: "Mã đơn",
+      title: "Mã hồ sơ",
       dataIndex: "orderNumber",
       sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
       render: (v, r) => <Link href={`/orders/${r.id}`}>{v}</Link>,
@@ -215,6 +248,12 @@ export default function OrdersPage() {
       title: "Dịch vụ",
       dataIndex: "serviceName",
       sorter: (a, b) => compareText(a.serviceName, b.serviceName),
+    },
+    {
+      title: "Zalo",
+      dataIndex: "zaloGroupUrl",
+      width: 80,
+      render: (url?: string) => <ZaloGroupLink url={url} variant="tag" />,
     },
     {
       title: "Giai đoạn",
@@ -259,9 +298,10 @@ export default function OrdersPage() {
       ],
       filterMultiple: true,
       onFilter: (value, record) =>
-        getOrderLicenseExpirySummary(record, config.licenseExpiryWarnMonths).tone === value,
+        getOrderLicenseExpirySummary(record, licenseWarnMonthsForOrder(record, services)).tone ===
+        value,
       render: (_, r) => {
-        const s = getOrderLicenseExpirySummary(r, config.licenseExpiryWarnMonths);
+        const s = getOrderLicenseExpirySummary(r, licenseWarnMonthsForOrder(r, services));
         return <Tag color={licenseExpiryTagColor(s.tone)}>{s.label}</Tag>;
       },
     },
@@ -279,6 +319,28 @@ export default function OrdersPage() {
       align: "center",
       sorter: (a, b) => a.value - b.value,
       render: (v: number) => formatVndDisplay(v),
+    },
+    {
+      title: `Thu/chi ${formatYearMonth(cashflowMonth)}`,
+      key: "cashflowMonth",
+      align: "right",
+      sorter: (a, b) =>
+        cashflowForMonth(cashflowByOrder.get(a.id) ?? emptyFlow, cashflowMonth).thu -
+        cashflowForMonth(cashflowByOrder.get(b.id) ?? emptyFlow, cashflowMonth).thu,
+      render: (_, r) => {
+        const m = cashflowForMonth(cashflowByOrder.get(r.id) ?? emptyFlow, cashflowMonth);
+        return <CashflowAmounts thu={m.thu} chi={m.chi} />;
+      },
+    },
+    {
+      title: "Thu/chi cả đơn",
+      key: "cashflowTotal",
+      align: "right",
+      sorter: (a, b) => (cashflowByOrder.get(a.id)?.thu ?? 0) - (cashflowByOrder.get(b.id)?.thu ?? 0),
+      render: (_, r) => {
+        const f = cashflowByOrder.get(r.id) ?? emptyFlow;
+        return <CashflowAmounts thu={f.thu} chi={f.chi} />;
+      },
     },
     {
       title: "Phụ trách",

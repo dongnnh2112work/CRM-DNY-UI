@@ -8,7 +8,7 @@ const MODULES: { prefix: string; listPath: string; placeholder: string }[] = [
   { prefix: "/orders", listPath: "/orders", placeholder: "Tìm đơn hàng…" },
   { prefix: "/customers", listPath: "/customers", placeholder: "Tìm khách hàng…" },
   { prefix: "/payments", listPath: "/payments", placeholder: "Tìm thanh toán…" },
-  { prefix: "/expense-approvals", listPath: "/expense-approvals", placeholder: "Tìm khoản chi…" },
+  { prefix: "/expense-approvals", listPath: "/expense-approvals", placeholder: "Tìm đề nghị thanh toán…" },
   { prefix: "/vat", listPath: "/vat", placeholder: "Tìm hóa đơn VAT…" },
   { prefix: "/services", listPath: "/services", placeholder: "Tìm dịch vụ…" },
   { prefix: "/emails", listPath: "/emails", placeholder: "Tìm email…" },

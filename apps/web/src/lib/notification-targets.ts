@@ -44,33 +44,32 @@ export function taskAssignedDraft(
 }
 
 export function expensePendingDraft(
-  order: Pick<Order, "id" | "orderNumber">,
-  expense: Pick<OrderExpense, "id" | "title" | "amount">,
+  expense: Pick<OrderExpense, "id" | "title" | "amount" | "orderId" | "orderNumber" | "projectName">,
   requesterName: string,
 ): NotificationDraft {
+  const project = expense.projectName || expense.orderNumber || "đề nghị";
   return {
     type: "expense_pending",
-    title: `Yêu cầu duyệt chi — ${order.orderNumber}`,
+    title: `Đề nghị thanh toán — ${project}`,
     body: `${requesterName}: ${expense.title} (${formatVndDisplay(expense.amount)})`,
-    href: `/orders/${order.id}`,
-    orderId: order.id,
+    href: expense.orderId ? `/orders/${expense.orderId}` : "/expense-approvals",
+    orderId: expense.orderId,
     dedupeKey: `expense_pending:${expense.id}`,
   };
 }
 
 export function expenseReviewedDraft(
-  expense: Pick<OrderExpense, "id" | "orderId" | "orderNumber" | "title" | "amount">,
+  expense: Pick<OrderExpense, "id" | "orderId" | "orderNumber" | "projectName" | "title" | "amount">,
   status: "approved" | "rejected",
   reviewerName: string,
 ): NotificationDraft {
   const approved = status === "approved";
+  const project = expense.projectName || expense.orderNumber || "đề nghị";
   return {
     type: "expense_reviewed",
-    title: approved
-      ? `Đã duyệt chi — ${expense.orderNumber}`
-      : `Từ chối chi — ${expense.orderNumber}`,
+    title: approved ? `Đã duyệt đề nghị — ${project}` : `Từ chối đề nghị — ${project}`,
     body: `${reviewerName} ${approved ? "đã duyệt" : "đã từ chối"}: ${expense.title} (${formatVndDisplay(expense.amount)})`,
-    href: `/orders/${expense.orderId}`,
+    href: expense.orderId ? `/orders/${expense.orderId}` : "/expense-approvals",
     orderId: expense.orderId,
     dedupeKey: `expense_reviewed:${expense.id}:${status}`,
   };

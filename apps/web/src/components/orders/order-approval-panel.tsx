@@ -1,19 +1,11 @@
 "use client";
 
 import { CheckOutlined, CloseOutlined, SendOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Form, Input, Select, Space, Tag, Timeline, Typography } from "antd";
-import { LicenseUpload } from "@/components/orders/license-upload";
+import { App, Button, Form, Input, Select, Space, Tag, Timeline, Typography } from "antd";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
-import type { Order, OrderApprovalRequest, OrderAttachment, OrderStage } from "@/lib/types";
-import {
-  canApprove,
-  canMoveToCompleted,
-  canRequestTransition,
-  getLicenseBlockMessage,
-  hasLicenseDocument,
-  requiresLicenseForStage,
-} from "@/lib/order-workflow";
+import type { Order, OrderApprovalRequest, OrderStage } from "@/lib/types";
+import { canApprove, canRequestTransition, hasLicenseDocument } from "@/lib/order-workflow";
 import { MOCK_USERS } from "@/lib/mock-users";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { useUsers } from "@/lib/users-store";
@@ -32,7 +24,6 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
   const { currentUser } = useUsers();
   const { stageOptions, getMeta } = useOrderStatusConfig();
   const [form] = Form.useForm();
-  const toStageWatch = Form.useWatch("toStage", form) as OrderStage | undefined;
   const reviewer = currentUser ?? MOCK_USERS[1];
   const actor =
     actingAs === "submitter"
@@ -48,12 +39,6 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
   const canActAsSubmitter = actingAs === "submitter";
   const canActAsReviewer = actingAs === "reviewer" || canApprove(order, actor);
   const hasLicense = hasLicenseDocument(order);
-  const requestingCompleted = requiresLicenseForStage(toStageWatch ?? ("new" as OrderStage));
-  const pendingToCompleted = pending ? requiresLicenseForStage(pending.toStage) : false;
-
-  const setLicenseFiles = (licenseAttachments: OrderAttachment[]) => {
-    onChange({ ...order, licenseAttachments });
-  };
 
   const handleRequest = (values: { toStage: OrderStage; note?: string }) => {
     if (!canActAsSubmitter && !canRequestTransition(order, actor.id)) {
@@ -66,10 +51,6 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
     }
     if (values.toStage === order.stage) {
       message.warning("Chọn giai đoạn khác");
-      return;
-    }
-    if (requiresLicenseForStage(values.toStage) && !canMoveToCompleted(order)) {
-      message.error(getLicenseBlockMessage());
       return;
     }
     const reqId = `ar-${Date.now()}`;
@@ -102,10 +83,6 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
       return;
     }
     const toStage = order.pendingTransition.toStage;
-    if (requiresLicenseForStage(toStage) && !canMoveToCompleted(order)) {
-      message.error(getLicenseBlockMessage());
-      return;
-    }
     onChange({
       ...order,
       stage: toStage,
@@ -158,7 +135,7 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
     .filter((s) => s.value !== order.stage)
     .map((s) => ({
       value: s.value,
-      label: s.value === "completed" ? `${s.label} (cần giấy phép)` : s.label,
+      label: s.label,
     }));
 
   return (
@@ -192,41 +169,14 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
               <Typography.Text type="secondary">Ghi chú: {pending.note}</Typography.Text>
             </div>
           )}
-          {pendingToCompleted && (
-            <div style={{ marginTop: 12 }}>
-              <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
-                File giấy phép (final)
-              </Typography.Text>
-              <LicenseUpload
-                compact
-                files={order.licenseAttachments ?? []}
-                onChange={setLicenseFiles}
-                uploaderName={actor.name}
-              />
-              {!hasLicense && (
-                <Alert type="error" showIcon style={{ marginTop: 8 }} message={getLicenseBlockMessage()} />
-              )}
-            </div>
-          )}
           <Space style={{ marginTop: 12 }}>
-            <Button
-              type="primary"
-              icon={<CheckOutlined />}
-              onClick={() => handleApprove()}
-              disabled={!canActAsReviewer || (pendingToCompleted && !hasLicense)}
-            >
+            <Button type="primary" icon={<CheckOutlined />} onClick={() => handleApprove()} disabled={!canActAsReviewer}>
               Duyệt
             </Button>
             <Button
               danger
               icon={<CloseOutlined />}
-              onClick={() =>
-                handleReject(
-                  pendingToCompleted && !hasLicense
-                    ? "Thiếu file giấy phép / văn bản được cấp phép"
-                    : "Cần bổ sung hồ sơ",
-                )
-              }
+              onClick={() => handleReject("Cần bổ sung hồ sơ")}
               disabled={!canActAsReviewer}
             >
               Từ chối
@@ -245,35 +195,10 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
             <Select placeholder="Chuyển sang…" options={targetOptions} />
           </Form.Item>
 
-          {requestingCompleted && (
-            <Form.Item
-              label="Upload giấy phép / văn bản được cấp phép"
-              required
-              validateStatus={hasLicense ? "success" : "error"}
-              help={
-                hasLicense
-                  ? "Đã có file giấy phép final — có thể gửi duyệt"
-                  : "Bắt buộc tải lên trước khi gửi duyệt Hoàn thành"
-              }
-            >
-              <LicenseUpload
-                compact
-                files={order.licenseAttachments ?? []}
-                onChange={setLicenseFiles}
-                uploaderName={order.submitterName}
-              />
-            </Form.Item>
-          )}
-
           <Form.Item name="note" label="Ghi chú">
             <Input.TextArea rows={2} placeholder="Lý do đổi giai đoạn…" />
           </Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<SendOutlined />}
-            disabled={requestingCompleted && !hasLicense}
-          >
+          <Button type="primary" htmlType="submit" icon={<SendOutlined />}>
             Gửi duyệt
           </Button>
         </Form>

@@ -1,5 +1,6 @@
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
+import { licenseWarnMonthsOf } from "@/lib/order-helpers";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 
 /** Keys stored on Service root (not customFields) */
@@ -9,6 +10,7 @@ export const SERVICE_CORE_KEYS = new Set([
   "category",
   "unitPrice",
   "processingDays",
+  "licenseExpiryWarnMonths",
   "status",
 ]);
 
@@ -32,6 +34,7 @@ export function serviceMatchesQuery(service: Service, query: string): boolean {
     getStatusMeta("service", service.status).label,
     service.unitPrice,
     service.processingDays,
+    service.licenseExpiryWarnMonths,
     service.customFields,
   ]);
 }
@@ -46,6 +49,7 @@ export function splitServiceFormValues(
     category: string;
     unitPrice: number;
     processingDays: number;
+    licenseExpiryWarnMonths: number;
     status?: ServiceStatus;
   };
   customFields: Record<string, unknown>;
@@ -65,6 +69,9 @@ export function splitServiceFormValues(
       category: String(values.category ?? ""),
       unitPrice: Number(values.unitPrice),
       processingDays: Number(values.processingDays),
+      licenseExpiryWarnMonths: licenseWarnMonthsOf({
+        licenseExpiryWarnMonths: Number(values.licenseExpiryWarnMonths),
+      }),
       ...(status ? { status } : {}),
     },
     customFields,

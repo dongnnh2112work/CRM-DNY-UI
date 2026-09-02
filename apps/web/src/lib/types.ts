@@ -73,7 +73,7 @@ export const SYSTEM_PAGES = [
   { key: "orders", label: "Quản lý đơn hàng" },
   { key: "customers", label: "Quản lý khách hàng" },
   { key: "payments", label: "Quản lý thanh toán" },
-  { key: "expense_approvals", label: "Duyệt chi" },
+  { key: "expense_approvals", label: "Đề nghị thanh toán" },
   { key: "vat", label: "Quản lý VAT" },
   { key: "services", label: "Quản lý dịch vụ" },
   { key: "emails", label: "Quản lý email" },
@@ -180,6 +180,8 @@ export interface Service {
   category: string;
   unitPrice: number;
   processingDays: number;
+  /** Cảnh báo giấy phép trước N tháng — theo từng dịch vụ */
+  licenseExpiryWarnMonths?: number;
   status: ServiceStatus;
   customFields: Record<string, unknown>;
 }
@@ -260,9 +262,13 @@ export interface Order {
   channel: OrderChannel;
   ctvId?: string;
   ctvName?: string;
-  /** Giá trị niêm yết */
+  /** Giá trị niêm yết — chỉnh được theo từng đơn */
   value: number;
-  /** Giá CTV — Hoa hồng = ctvPrice - value (giá niêm yết) */
+  /** Hoa hồng nhập lúc tạo đơn (VND). Logic % theo tháng làm sau. */
+  commission?: number;
+  /** Link group Zalo */
+  zaloGroupUrl?: string;
+  /** Giá CTV — Hoa hồng CTV = ctvPrice - value */
   ctvPrice?: number;
   assignedUserId: string;
   assignedUserName: string;
@@ -291,20 +297,30 @@ export interface Order {
   vatIssueDeadline?: string;
 }
 
-/* ── Order expense (duyệt chi) ───────────────────────────────────── */
+/* ── Payment request (đề nghị thanh toán) ───────────────────────── */
 
 export type OrderExpenseStatus = "pending" | "approved" | "rejected";
 
 export interface OrderExpense {
   id: string;
-  orderId: string;
-  orderNumber: string;
+  /** Gắn hồ sơ nếu chọn dự án có sẵn; trống nếu dự án tự nhập */
+  orderId?: string;
+  orderNumber?: string;
+  /** Nhãn dự án — hồ sơ hoặc hạng mục khác (VD: Mua văn phòng phẩm) */
+  projectName: string;
   amount: number;
+  /** Nội dung đề nghị */
   title: string;
   note?: string;
   requestedById: string;
   requestedByName: string;
   requestedAt: string;
+  /** Thanh toán cho ai */
+  payeeName: string;
+  /** Số tài khoản */
+  bankAccount: string;
+  /** Ngân hàng */
+  bankName: string;
   status: OrderExpenseStatus;
   reviewedById?: string;
   reviewedByName?: string;
