@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { tt } from "@/lib/i18n";
 import { MOCK_ORDERS } from "@/lib/mock-orders";
 import { isContractNumberTaken, nextDossierNumber, normalizeOrder } from "@/lib/order-helpers";
 import type { Order, OrderStage } from "@/lib/types";
@@ -81,10 +82,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     (input: NewOrderInput) => {
       if (input.needsVat) {
         if (input.contractNumber == null || input.contractNumber < 1) {
-          throw new Error("Số HĐ bắt buộc khi xuất VAT");
+          throw new Error(tt("order.contractRequiredVat"));
         }
         if (isContractNumberTaken(orders, input.contractNumber)) {
-          throw new Error("Số HĐ đã tồn tại");
+          throw new Error(tt("order.contractTakenStore"));
         }
       }
       const now = new Date();

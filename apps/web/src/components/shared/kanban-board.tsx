@@ -9,6 +9,7 @@ import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import type { Order, OrderStage } from "@/lib/types";
 import Link from "next/link";
+import { useT } from "@/lib/use-t";
 
 interface KanbanBoardProps {
   orders: Order[];
@@ -16,6 +17,7 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
+  const t = useT();
   const { token } = theme.useToken();
   const { stageOptions } = useOrderStatusConfig();
 
@@ -87,7 +89,7 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                       </Typography.Text>
                                       {order.approvalStatus === "pending_review" && (
                                         <Tag color="processing" style={{ fontSize: ds.fontSize.caption, margin: 0 }}>
-                                          Duyệt
+                                          {t("order.kanbanReview")}
                                         </Tag>
                                       )}
                                     </div>
@@ -136,8 +138,11 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                           color: token.colorTextTertiary,
                                         }}
                                       >
-                                        {fileCount > 0 ? `${fileCount} file` : "Chưa có file"}
-                                        {" · "}Người duyệt: {order.reviewerName}
+                                        {fileCount > 0
+                                          ? t("order.fileCount", { count: fileCount })
+                                          : t("order.noFiles")}
+                                        {" · "}
+                                        {t("order.reviewerShort")}: {order.reviewerName}
                                       </div>
                                     )}
                                   </Card>
@@ -160,7 +165,7 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
         type="secondary"
         style={{ display: "block", padding: "0 16px 16px", fontSize: ds.fontSize.caption }}
       >
-        Vuốt ngang để xem các giai đoạn
+        {t("order.swipeHint")}
       </Typography.Text>
     </div>
   );

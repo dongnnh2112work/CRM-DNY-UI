@@ -1,4 +1,5 @@
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { t } from "@/lib/i18n";
 
 /** Match query against any displayed table cell values (text, numbers, money, lists). */
 export function matchesTableQuery(query: string, parts: unknown[]): boolean {
@@ -20,7 +21,10 @@ function valueMatches(value: unknown, q: string): boolean {
   }
 
   if (typeof value === "boolean") {
-    return (value ? "có" : "không").includes(q) || String(value).includes(q);
+    const labels = (["vi", "en", "zh"] as const).map((locale) =>
+      t(locale, value ? "common.yesSearch" : "common.noSearch"),
+    );
+    return labels.some((label) => label.toLowerCase().includes(q)) || String(value).includes(q);
   }
 
   if (Array.isArray(value)) {

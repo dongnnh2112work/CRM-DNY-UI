@@ -12,6 +12,7 @@ import { useEmails } from "@/lib/emails-store";
 import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { EmailRecord, EmailStatus } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -28,6 +29,7 @@ function recipientsLabel(r: EmailRecord) {
 }
 
 export default function EmailsPage() {
+  const t = useT();
   const { message } = App.useApp();
   const { emails, setStatus, deleteEmails } = useEmails();
   const [query, setQuery] = useState("");
@@ -66,58 +68,61 @@ export default function EmailsPage() {
     setStatus(selectedRowKeys.map(String), status);
     message.success(
       status === "sent"
-        ? `Đã đánh dấu Đã gửi ${selectedCount} email`
-        : `Đã đánh dấu Thất bại ${selectedCount} email`,
+        ? t("email.markedSent", { count: selectedCount })
+        : t("email.markedFailed", { count: selectedCount }),
     );
     clearSelection();
   };
 
   const bulkDelete = () => {
     deleteEmails(selectedRowKeys.map(String));
-    message.success(`Đã xóa ${selectedCount} email`);
+    message.success(t("email.deletedN", { count: selectedCount }));
     clearSelection();
   };
 
-  const columns: TableColumnsType<EmailRecord> = [
-    {
-      title: "Tiêu đề",
-      dataIndex: "subject",
-      sorter: (a, b) => compareText(a.subject, b.subject),
-      render: (v, r) => <Link href={`/emails/new?id=${r.id}`}>{v}</Link>,
-    },
-    {
-      title: "Người nhận",
-      key: "recipients",
-      ellipsis: true,
-      sorter: (a, b) => a.recipientCount - b.recipientCount,
-      render: (_, r) => recipientsLabel(r),
-    },
-    {
-      title: "Trạng thái",
-      dataIndex: "status",
-      sorter: (a, b) => compareText(a.status, b.status),
-      render: (s: EmailStatus) => <StatusBadge module="email" status={s} />,
-    },
-    {
-      title: "Gửi / Lên lịch",
-      key: "date",
-      sorter: (a, b) => compareText(emailDate(a), emailDate(b)),
-      render: (_, r) => r.sentAt ?? r.scheduledAt ?? "—",
-    },
-  ];
+  const columns: TableColumnsType<EmailRecord> = useMemo(
+    () => [
+      {
+        title: t("email.subject"),
+        dataIndex: "subject",
+        sorter: (a, b) => compareText(a.subject, b.subject),
+        render: (v, r) => <Link href={`/emails/new?id=${r.id}`}>{v}</Link>,
+      },
+      {
+        title: t("email.recipients"),
+        key: "recipients",
+        ellipsis: true,
+        sorter: (a, b) => a.recipientCount - b.recipientCount,
+        render: (_, r) => recipientsLabel(r),
+      },
+      {
+        title: t("common.status"),
+        dataIndex: "status",
+        sorter: (a, b) => compareText(a.status, b.status),
+        render: (s: EmailStatus) => <StatusBadge module="email" status={s} />,
+      },
+      {
+        title: t("email.sendAt"),
+        key: "date",
+        sorter: (a, b) => compareText(emailDate(a), emailDate(b)),
+        render: (_, r) => r.sentAt ?? r.scheduledAt ?? "—",
+      },
+    ],
+    [t],
+  );
 
   return (
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Quản lý email" }]}
-        searchPlaceholder="Tìm trong bảng…"
+        breadcrumbs={[{ title: t("nav.emails") }]}
+        searchPlaceholder={t("common.searchTable")}
         onSearch={(v) => {
           setQuery(v);
           clearSelection();
         }}
         searchValue={query}
-        primaryAction={{ label: "+ Email mới", href: "/emails/new" }}
+        primaryAction={{ label: t("email.newCta"), href: "/emails/new" }}
       >
         <Select
           value={statusFilter}
@@ -126,7 +131,7 @@ export default function EmailsPage() {
             clearSelection();
           }}
           style={{ width: 180 }}
-          options={[{ value: "all", label: "Tất cả trạng thái" }, ...getStatusOptions("email")]}
+          options={[{ value: "all", label: t("common.allStatuses") }, ...getStatusOptions("email")]}
         />
       </PageHeader>
       <DataTable<EmailRecord>
@@ -138,43 +143,41 @@ export default function EmailsPage() {
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}
         emptyDescription={
-          hasActiveFilters && emails.length > 0
-            ? "Không tìm thấy kết quả phù hợp."
-            : "Chưa có email nào."
+          hasActiveFilters && emails.length > 0 ? t("common.noResults") : t("email.empty")
         }
         emptyAction={
           hasActiveFilters && emails.length > 0
             ? undefined
-            : { label: "Soạn email", href: "/emails/new" }
+            : { label: t("common.composeEmail"), href: "/emails/new" }
         }
         bulkToolbar={
           <BulkActionBar count={selectedCount}>
             <Popconfirm
-              title={`Đánh dấu Đã gửi ${selectedCount} email đã chọn?`}
-              okText="Xác nhận"
-              cancelText="Hủy"
+              title={t("email.markSentN", { count: selectedCount })}
+              okText={t("common.confirm")}
+              cancelText={t("common.cancel")}
               onConfirm={() => bulkSetStatus("sent")}
             >
-              <Button size="small">Đánh dấu Đã gửi</Button>
+              <Button size="small">{t("email.markSent")}</Button>
             </Popconfirm>
             <Popconfirm
-              title={`Đánh dấu Thất bại ${selectedCount} email đã chọn?`}
-              okText="Xác nhận"
-              cancelText="Hủy"
+              title={t("email.markFailedN", { count: selectedCount })}
+              okText={t("common.confirm")}
+              cancelText={t("common.cancel")}
               onConfirm={() => bulkSetStatus("failed")}
             >
-              <Button size="small">Đánh dấu Thất bại</Button>
+              <Button size="small">{t("email.markFailed")}</Button>
             </Popconfirm>
             <Popconfirm
-              title={`Xóa ${selectedCount} email đã chọn?`}
-              description="Chỉ áp dụng các dòng đang chọn trên trang hiện tại."
-              okText="Xóa"
-              cancelText="Hủy"
+              title={t("email.deleteN", { count: selectedCount })}
+              description={t("common.applyCurrentPage")}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
               onConfirm={bulkDelete}
             >
               <Button size="small" danger>
-                Xóa
+                {t("common.delete")}
               </Button>
             </Popconfirm>
           </BulkActionBar>

@@ -2,6 +2,7 @@
 
 import { Space, Typography, theme } from "antd";
 import type { ReactNode } from "react";
+import { useT } from "@/lib/use-t";
 
 /** Toolbar hiện khi có dòng được chọn trên list. */
 export function BulkActionBar({
@@ -14,6 +15,7 @@ export function BulkActionBar({
   children?: ReactNode;
 }) {
   const { token } = theme.useToken();
+  const t = useT();
 
   if (count <= 0) return null;
 
@@ -31,7 +33,7 @@ export function BulkActionBar({
         borderRadius: token.borderRadiusLG,
       }}
     >
-      <Typography.Text strong>Đã chọn {count}</Typography.Text>
+      <Typography.Text strong>{t("common.selected", { count })}</Typography.Text>
       {summary ? <Typography.Text>{summary}</Typography.Text> : null}
       <div style={{ flex: 1 }} />
       {children ? <Space wrap>{children}</Space> : null}

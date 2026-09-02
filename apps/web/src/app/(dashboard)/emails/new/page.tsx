@@ -14,6 +14,7 @@ import { useCustomers } from "@/lib/customers-store";
 import { isHtmlFile } from "@/lib/email-preview";
 import { useEmails } from "@/lib/emails-store";
 import type { EmailStatus } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 type EmailFormValues = {
   recipients: string[];
@@ -31,6 +32,7 @@ export default function ComposeEmailPage() {
 }
 
 function ComposeEmailPageContent() {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message, modal } = App.useApp();
@@ -76,7 +78,11 @@ function ComposeEmailPageContent() {
         addEmail(payload);
       }
       message.success(
-        nextStatus === "sent" ? "Đã gửi email" : nextStatus === "scheduled" ? "Đã lên lịch email" : "Đã lưu nháp",
+        nextStatus === "sent"
+          ? t("email.sent")
+          : nextStatus === "scheduled"
+            ? t("email.scheduled")
+            : t("email.draftSaved"),
       );
       router.push("/emails");
     } finally {
@@ -88,8 +94,8 @@ function ComposeEmailPageContent() {
     <>
       <PageHeader
         breadcrumbs={[
-          { title: "Email", href: "/emails" },
-          { title: existing ? existing.subject : "Soạn thư" },
+          { title: t("email.breadcrumb"), href: "/emails" },
+          { title: existing ? existing.subject : t("email.compose") },
         ]}
       />
       <Form
@@ -97,14 +103,18 @@ function ComposeEmailPageContent() {
         layout="vertical"
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
       >
-        <Form.Item label="Người nhận" required>
+        <Form.Item label={t("email.recipients")} required>
           <Space orientation="vertical" style={{ width: "100%" }} size={8}>
-            <Form.Item name="recipients" noStyle rules={[{ required: true, message: "Chọn người nhận" }]}>
+            <Form.Item
+              name="recipients"
+              noStyle
+              rules={[{ required: true, message: t("email.selectRecipients") }]}
+            >
               <Select
                 mode="multiple"
                 showSearch
                 optionFilterProp="label"
-                placeholder="Chọn khách hàng"
+                placeholder={t("email.selectCustomers")}
                 options={customers.map((c) => ({ value: c.email, label: `${c.name} (${c.email})` }))}
               />
             </Form.Item>
@@ -118,70 +128,71 @@ function ComposeEmailPageContent() {
                   ),
                 ];
                 if (emails.length === 0) {
-                  message.warning("Không có khách hàng nào có email");
+                  message.warning(t("email.noCustomerEmail"));
                   return;
                 }
                 form.setFieldValue("recipients", emails);
-                message.success(`Đã chọn ${emails.length} khách hàng`);
+                message.success(t("email.selectedN", { count: emails.length }));
               }}
             >
-              Gửi tất cả
+              {t("email.sendAll")}
             </Button>
           </Space>
         </Form.Item>
-        <Form.Item name="subject" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
+        <Form.Item
+          name="subject"
+          label={t("email.subject")}
+          rules={[{ required: true, message: t("email.enterSubject") }]}
+        >
           <Input />
         </Form.Item>
-        <Form.Item
-          label="Nội dung"
-          extra="Dán HTML hoặc tải file .html. Bấm Xem trước để kiểm tra giao diện."
-        >
+        <Form.Item label={t("email.body")} extra={t("email.bodyExtra")}>
           <Space wrap style={{ marginBottom: 8 }}>
             <Upload
               accept=".html,.htm,text/html"
               showUploadList={false}
               beforeUpload={(file) => {
                 if (!isHtmlFile(file)) {
-                  message.error("Chỉ nhận file .html");
+                  message.error(t("email.htmlOnly"));
                   return Upload.LIST_IGNORE;
                 }
                 if (file.size > 1024 * 1024) {
-                  message.error("File HTML tối đa 1 MB");
+                  message.error(t("email.htmlTooBig"));
                   return Upload.LIST_IGNORE;
                 }
                 void file.text().then((text) => {
                   form.setFieldValue("body", text);
-                  message.success(`Đã nạp ${file.name}`);
+                  message.success(t("email.loadedFile", { name: file.name }));
                 });
                 return false;
               }}
             >
-              <Button icon={<UploadOutlined />}>Tải file HTML</Button>
+              <Button icon={<UploadOutlined />}>{t("email.uploadHtml")}</Button>
             </Upload>
             <Button
               icon={<EyeOutlined />}
               onClick={() => {
                 if (!String(bodyWatch ?? "").trim()) {
-                  message.warning("Chưa có nội dung để xem trước.");
+                  message.warning(t("email.noPreview"));
                   return;
                 }
                 setPreviewOpen(true);
               }}
             >
-              Xem trước
+              {t("email.preview")}
             </Button>
           </Space>
           <Form.Item name="body" noStyle>
             <Input.TextArea
               rows={12}
-              placeholder="Dán HTML hoặc soạn nội dung…"
+              placeholder={t("email.bodyPlaceholder")}
               style={{ fontFamily: "monospace" }}
             />
           </Form.Item>
         </Form.Item>
         <Form.Item
           name="scheduledAt"
-          label="Lên lịch (tùy chọn)"
+          label={t("email.scheduleOptional")}
           getValueFromEvent={(d: dayjs.Dayjs | null) => (d ? d.format("YYYY-MM-DD HH:mm") : undefined)}
           getValueProps={(value: string | undefined) => ({
             value: value ? dayjs(value) : undefined,
@@ -194,13 +205,13 @@ function ComposeEmailPageContent() {
             onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/emails"))}
             disabled={saving}
           >
-            Hủy
+            {t("common.cancel")}
           </Button>
           <Button onClick={() => persist("draft")} loading={saving} disabled={saving}>
-            Lưu nháp
+            {t("email.saveDraft")}
           </Button>
           <Button type="primary" onClick={() => persist("sent")} loading={saving} disabled={saving}>
-            Gửi ngay
+            {t("email.sendNow")}
           </Button>
         </Space>
       </Form>

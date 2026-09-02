@@ -13,6 +13,7 @@ import {
 import { ds } from "@/lib/design-tokens";
 import { useOrders } from "@/lib/orders-store";
 import type { OrderStage } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 function cloneStages(list: OrderStageDefinition[]): OrderStageDefinition[] {
   return list.map((s) => ({ ...s }));
@@ -27,6 +28,7 @@ export function OrderStageSettingsDrawer({
   onClose: () => void;
   canEdit: boolean;
 }) {
+  const t = useT();
   const { message } = App.useApp();
   const { orders } = useOrders();
   const { stages, replaceStages } = useOrderStatusConfig();
@@ -51,7 +53,7 @@ export function OrderStageSettingsDrawer({
       (s) => s.key !== key && s.color.toLowerCase() === hex.toLowerCase(),
     );
     if (conflict) {
-      message.warning("Màu này đã được dùng cho giai đoạn khác");
+      message.warning(t("stage.colorTaken"));
       return;
     }
     markDraft(draft.map((s) => (s.key === key ? { ...s, color: hex } : s)));
@@ -60,7 +62,7 @@ export function OrderStageSettingsDrawer({
   const handleAdd = () => {
     const free = nextFreeStageColor(draft.map((s) => s.color));
     if (!free) {
-      message.warning("Đã hết màu trong palette — xóa hoặc đổi màu giai đoạn khác trước");
+      message.warning(t("stage.noColors"));
       return;
     }
     const existing = new Set(draft.map((s) => s.key));
@@ -70,17 +72,17 @@ export function OrderStageSettingsDrawer({
       n += 1;
       key = `giai_doan_${n}`;
     }
-    markDraft([...draft, { key, label: `Giai đoạn ${n}`, color: free }]);
+    markDraft([...draft, { key, label: t("stage.defaultName", { n }), color: free }]);
   };
 
   const handleRemove = (key: OrderStage) => {
     const inUse = countInStage(key);
     if (inUse > 0) {
-      message.warning(`Không thể xóa — còn ${inUse} đơn ở giai đoạn này`);
+      message.warning(t("stage.inUse", { count: inUse }));
       return;
     }
     if (draft.length <= 1) {
-      message.warning("Cần giữ ít nhất một giai đoạn");
+      message.warning(t("stage.needOne"));
       return;
     }
     markDraft(draft.filter((s) => s.key !== key));
@@ -92,22 +94,22 @@ export function OrderStageSettingsDrawer({
 
   const handleSave = () => {
     if (!dirty) {
-      message.info("Không có thay đổi");
+      message.info(t("common.noChange"));
       onClose();
       return;
     }
     if (draft.some((s) => !s.label.trim())) {
-      message.warning("Tên giai đoạn không được trống");
+      message.warning(t("stage.emptyName"));
       return;
     }
     const colors = draft.map((s) => s.color.toLowerCase());
     if (new Set(colors).size !== colors.length) {
-      message.warning("Mỗi giai đoạn phải có màu khác nhau");
+      message.warning(t("stage.uniqueColors"));
       return;
     }
     replaceStages(draft);
     setDirty(false);
-    message.success("Đã lưu giai đoạn");
+    message.success(t("stage.saved"));
     onClose();
   };
 
@@ -117,10 +119,10 @@ export function OrderStageSettingsDrawer({
       return;
     }
     Modal.confirm({
-      title: "Hủy?",
-      content: "Thay đổi sẽ không được lưu.",
-      okText: "Hủy",
-      cancelText: "Tiếp tục",
+      title: t("common.discardTitle"),
+      content: t("common.discardBody"),
+      okText: t("common.cancel"),
+      cancelText: t("common.continue"),
       onOk: () => {
         setDirty(false);
         onClose();
@@ -130,7 +132,7 @@ export function OrderStageSettingsDrawer({
 
   return (
     <Drawer
-      title="Giai đoạn"
+      title={t("nav.orderStatuses")}
       open={open}
       onClose={tryClose}
       width={420}
@@ -146,18 +148,18 @@ export function OrderStageSettingsDrawer({
             }}
           >
             <Popconfirm
-              title="Đặt lại danh sách mặc định?"
-              description="Chỉ áp dụng sau khi bấm Lưu."
-              okText="Đặt lại"
-              cancelText="Hủy"
+              title={t("stage.resetTitle")}
+              description={t("stage.resetBody")}
+              okText={t("common.reset")}
+              cancelText={t("common.cancel")}
               onConfirm={handleResetDraft}
             >
-              <Button type="text">Đặt lại mặc định</Button>
+              <Button type="text">{t("stage.resetDefault")}</Button>
             </Popconfirm>
             <Space size={8}>
-              <Button onClick={tryClose}>Hủy</Button>
+              <Button onClick={tryClose}>{t("common.cancel")}</Button>
               <Button type="primary" onClick={handleSave}>
-                Lưu
+                {t("common.save")}
               </Button>
             </Space>
           </div>
@@ -165,7 +167,7 @@ export function OrderStageSettingsDrawer({
       }
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm, marginTop: 0 }}>
-        Đổi tên, màu; thêm hoặc xóa — bấm Lưu để xác nhận. Mỗi giai đoạn một màu.
+        {t("stage.drawerHint")}
       </Typography.Paragraph>
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
         {draft.map((stage) => {
@@ -189,7 +191,7 @@ export function OrderStageSettingsDrawer({
               <Input
                 value={stage.label}
                 disabled={!canEdit}
-                placeholder="Tên giai đoạn"
+                placeholder={t("stage.namePh")}
                 onChange={(e) =>
                   markDraft(
                     draft.map((s) => (s.key === stage.key ? { ...s, label: e.target.value } : s)),
@@ -199,10 +201,10 @@ export function OrderStageSettingsDrawer({
               />
               {canEdit ? (
                 <Popconfirm
-                  title="Xóa giai đoạn này?"
-                  description={inUse > 0 ? `Còn ${inUse} đơn đang dùng.` : undefined}
-                  okText="Xóa"
-                  cancelText="Hủy"
+                  title={t("stage.deleteTitle")}
+                  description={inUse > 0 ? t("stage.deleteInUse", { count: inUse }) : undefined}
+                  okText={t("common.delete")}
+                  cancelText={t("common.cancel")}
                   okButtonProps={{ danger: true, disabled: inUse > 0 || draft.length <= 1 }}
                   onConfirm={() => handleRemove(stage.key)}
                 >
@@ -212,7 +214,7 @@ export function OrderStageSettingsDrawer({
                     size="small"
                     icon={<DeleteOutlined />}
                     disabled={draft.length <= 1}
-                    aria-label="Xóa giai đoạn"
+                    aria-label={t("stage.deleteAria")}
                   />
                 </Popconfirm>
               ) : null}
@@ -221,7 +223,7 @@ export function OrderStageSettingsDrawer({
         })}
         {canEdit ? (
           <Button type="dashed" block icon={<PlusOutlined />} onClick={handleAdd}>
-            Thêm giai đoạn
+            {t("stage.add")}
           </Button>
         ) : null}
       </Space>

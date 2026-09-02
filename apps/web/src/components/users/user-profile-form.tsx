@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 import { PermissionMatrix } from "@/components/users/permission-matrix";
 import { ds } from "@/lib/design-tokens";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
+import { useT } from "@/lib/use-t";
 import {
   emptyPagePermissions,
   type AppUser,
@@ -43,7 +44,7 @@ export type UserProfileFormValues = {
 export function UserProfileForm({
   user,
   onSubmit,
-  submitLabel = "Lưu",
+  submitLabel,
   showAvatar = true,
   showRole = false,
   showStatus = false,
@@ -79,6 +80,7 @@ export function UserProfileForm({
   loading?: boolean;
   onCancel?: () => void;
 }) {
+  const t = useT();
   const { modal } = App.useApp();
   const [form] = Form.useForm<UserProfileFormValues>();
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
@@ -86,6 +88,7 @@ export function UserProfileForm({
   const [customPerms, setCustomPerms] = useState<RolePagePermissions>(
     () => user?.customPermissions ?? emptyPagePermissions(),
   );
+  const resolvedSubmitLabel = submitLabel ?? t("common.save");
 
   useEffect(() => {
     form.setFieldsValue({
@@ -151,7 +154,7 @@ export function UserProfileForm({
               }}
             >
               <Button icon={<UploadOutlined />} size="small">
-                Tải ảnh đại diện
+                {t("profile.uploadAvatar")}
               </Button>
             </Upload>
             {avatar ? (
@@ -165,55 +168,67 @@ export function UserProfileForm({
                   form.setFieldValue("avatar", undefined);
                 }}
               >
-                Xóa ảnh
+                {t("profile.removeAvatar")}
               </Button>
             ) : null}
           </Space>
         </div>
       ) : null}
 
-      <Form.Item name="name" label="Họ tên" rules={[{ required: true, message: "Nhập họ tên" }]}>
-        <Input placeholder="Họ và tên" />
+      <Form.Item
+        name="name"
+        label={t("common.fullName")}
+        rules={[{ required: true, message: t("user.enterFullName") }]}
+      >
+        <Input placeholder={t("user.fullNamePh")} />
       </Form.Item>
       <Form.Item
         name="phone"
-        label="SĐT"
+        label={t("common.phone")}
         rules={[
           {
             validator: async (_, value) => {
               if (!value || !String(value).trim()) return;
               if (!/^[0-9+\s()-]{8,15}$/.test(String(value).trim())) {
-                throw new Error("SĐT không hợp lệ");
+                throw new Error(t("user.invalidPhone"));
               }
             },
           },
         ]}
       >
-        <Input placeholder="Số điện thoại" />
+        <Input placeholder={t("user.phonePh")} />
       </Form.Item>
       <Form.Item
         name="email"
-        label="Email"
+        label={t("common.email")}
         rules={[
-          { required: true, message: "Nhập email" },
-          { type: "email", message: "Email không hợp lệ" },
+          { required: true, message: t("auth.emailRequired") },
+          { type: "email", message: t("user.invalidEmail") },
         ]}
       >
-        <Input placeholder="Email" />
+        <Input placeholder={t("common.email")} />
       </Form.Item>
-      <Form.Item name="dateOfBirth" label="Ngày sinh">
-        <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" placeholder="Chọn ngày sinh" />
+      <Form.Item name="dateOfBirth" label={t("user.dob")}>
+        <DatePicker
+          style={{ width: "100%" }}
+          format="DD/MM/YYYY"
+          placeholder={t("user.selectDob")}
+        />
       </Form.Item>
-      <Form.Item name="address" label="Địa chỉ">
-        <Input.TextArea rows={2} placeholder="Địa chỉ" />
+      <Form.Item name="address" label={t("common.address")}>
+        <Input.TextArea rows={2} placeholder={t("common.address")} />
       </Form.Item>
 
       {showRole ? (
-        <Form.Item name="role" label="Vai trò" rules={[{ required: true, message: "Chọn vai trò" }]}>
+        <Form.Item
+          name="role"
+          label={t("common.role")}
+          rules={[{ required: true, message: t("user.selectRole") }]}
+        >
           <Select
             options={roleOptions.map((r) => ({
               value: r.key,
-              label: r.builtin ? r.label : `${r.label} (tùy chỉnh)`,
+              label: r.builtin ? r.label : `${r.label} ${t("user.customSuffix")}`,
             }))}
             onChange={(roleKey) => {
               if (useCustom) seedFromRole(roleKey);
@@ -222,11 +237,11 @@ export function UserProfileForm({
         </Form.Item>
       ) : null}
       {showStatus ? (
-        <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>
+        <Form.Item name="status" label={t("common.status")} rules={[{ required: true }]}>
           <Select
             options={[
-              { value: "active", label: "Hoạt động" },
-              { value: "inactive", label: "Ngừng" },
+              { value: "active", label: t("status.user.active") },
+              { value: "inactive", label: t("status.user.inactive") },
             ]}
           />
         </Form.Item>
@@ -243,12 +258,12 @@ export function UserProfileForm({
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
-              <Typography.Text strong>Phân quyền tùy chỉnh</Typography.Text>
+              <Typography.Text strong>{t("profile.customPerms")}</Typography.Text>
               <Typography.Paragraph
                 type="secondary"
                 style={{ margin: "4px 0 0", fontSize: ds.fontSize.caption }}
               >
-                Bật để ghi đè ma trận Xem/Sửa của vai trò — dùng cho case đặc biệt.
+                {t("user.customPermOverrideHint")}
               </Typography.Paragraph>
             </div>
             <Switch
@@ -268,7 +283,7 @@ export function UserProfileForm({
                   size="small"
                   onClick={() => seedFromRole(form.getFieldValue("role") ?? user?.role)}
                 >
-                  Sao chép từ vai trò
+                  {t("user.copyFromRole")}
                 </Button>
               </Space>
               <PermissionMatrix value={customPerms} onChange={setCustomPerms} />
@@ -280,11 +295,11 @@ export function UserProfileForm({
       <Space>
         {onCancel ? (
           <Button onClick={() => confirmDiscardIfDirty(modal, form, onCancel)} disabled={loading}>
-            Hủy
+            {t("common.cancel")}
           </Button>
         ) : null}
         <Button type="primary" htmlType="submit" loading={loading} disabled={loading}>
-          {submitLabel}
+          {resolvedSubmitLabel}
         </Button>
       </Space>
     </Form>

@@ -4,18 +4,20 @@ import { Card, Divider, InputNumber, Segmented, Switch, Typography } from "antd"
 import { PageHeader } from "@/components/shared/page-header";
 import { useAppConfig, type AppLocale } from "@/components/providers/antd-provider";
 import { useAppReminderConfig } from "@/lib/app-config-store";
+import { useT } from "@/lib/use-t";
 
 const APP_VERSION = "1.0.0";
 
 export default function ConfigPage() {
   const { locale, setLocale, theme, setTheme } = useAppConfig();
   const { config, setVatIssueWarnDays } = useAppReminderConfig();
+  const t = useT();
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Cấu hình" }]} />
+      <PageHeader breadcrumbs={[{ title: t("config.title") }]} />
       <div style={{ padding: 16, maxWidth: 600 }}>
-        <Card title="Language / Ngôn ngữ" size="small" style={{ marginBottom: 16 }}>
+        <Card title={t("config.language")} size="small" style={{ marginBottom: 16 }}>
           <Segmented
             value={locale}
             onChange={(v) => setLocale(v as AppLocale)}
@@ -27,17 +29,17 @@ export default function ConfigPage() {
           />
         </Card>
 
-        <Card title="Giao diện" size="small" style={{ marginBottom: 16 }}>
+        <Card title={t("config.appearance")} size="small" style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Typography.Text>Chế độ tối</Typography.Text>
+            <Typography.Text>{t("config.darkMode")}</Typography.Text>
             <Switch checked={theme === "dark"} onChange={(v) => setTheme(v ? "dark" : "light")} />
           </div>
         </Card>
 
-        <Card title="Nhắc hạn" size="small" style={{ marginBottom: 16 }}>
+        <Card title={t("config.reminders")} size="small" style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
-              <Typography.Text>Cảnh báo hạn xuất VAT (ngày)</Typography.Text>
+              <Typography.Text>{t("config.vatWarnDays")}</Typography.Text>
               <div style={{ marginTop: 8 }}>
                 <InputNumber
                   min={7}
@@ -50,10 +52,12 @@ export default function ConfigPage() {
           </div>
         </Card>
 
-        <Card title="Giới thiệu" size="small">
+        <Card title={t("config.about")} size="small">
           <Typography.Text>DNY CRM</Typography.Text>
           <Divider type="vertical" />
-          <Typography.Text type="secondary">Phiên bản {APP_VERSION}</Typography.Text>
+          <Typography.Text type="secondary">
+            {t("config.version")} {APP_VERSION}
+          </Typography.Text>
         </Card>
       </div>
     </>

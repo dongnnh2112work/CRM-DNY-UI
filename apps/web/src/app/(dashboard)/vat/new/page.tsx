@@ -11,6 +11,7 @@ import { useCustomers } from "@/lib/customers-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import type { Order } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 import { VAT_TAX_RATES, orderHasContractNumber, vatAmountsFromLines } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
 
@@ -31,6 +32,7 @@ export default function NewVatPage() {
 }
 
 function NewVatPageContent() {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message, modal } = App.useApp();
@@ -55,7 +57,7 @@ function NewVatPageContent() {
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
       if (!orderHasContractNumber(order)) {
-        message.warning("Chỉ xuất VAT cho đơn đã có số HĐ.");
+        message.warning(t("order.vatNeedsContract"));
         setSelectedOrder(null);
         form.setFieldValue("orderId", undefined);
         return;
@@ -72,7 +74,7 @@ function NewVatPageContent() {
         ],
       });
     },
-    [form, getCustomer, message, orders],
+    [form, getCustomer, message, orders, t],
   );
 
   useEffect(() => {
@@ -81,16 +83,16 @@ function NewVatPageContent() {
     if (form.getFieldValue("orderId")) return;
     const order = orders.find((o) => o.id === orderId);
     if (!order || !orderHasContractNumber(order)) {
-      if (order) message.warning("Đơn này chưa có số HĐ nên không xuất VAT được.");
+      if (order) message.warning(t("vat.noContractBody"));
       return;
     }
     form.setFieldValue("orderId", orderId);
     applyOrder(orderId);
-  }, [applyOrder, form, message, orders, searchParams]);
+  }, [applyOrder, form, message, orders, searchParams, t]);
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "VAT", href: "/vat" }, { title: "Hóa đơn mới" }]} />
+      <PageHeader breadcrumbs={[{ title: t("nav.vat"), href: "/vat" }, { title: t("vat.newTitle") }]} />
       <Form
         form={form}
         layout="vertical"
@@ -107,11 +109,11 @@ function NewVatPageContent() {
           try {
             const order = orders.find((o) => o.id === values.orderId);
             if (!order) {
-              message.error("Không tìm thấy đơn hàng");
+              message.error(t("vat.orderNotFound"));
               return;
             }
             if (!orderHasContractNumber(order)) {
-              message.error("Chỉ xuất VAT cho đơn đã có số HĐ.");
+              message.error(t("order.vatNeedsContract"));
               return;
             }
             const computed = vatAmountsFromLines(values.lines, values.taxRate);
@@ -136,74 +138,91 @@ function NewVatPageContent() {
                 },
               ],
             });
-            message.success("Đã tạo hóa đơn VAT (nháp)");
+            message.success(t("vat.createdDraft"));
             router.push("/vat");
           } finally {
             setSaving(false);
           }
         }}
       >
-        <Form.Item name="orderId" label="Chọn đơn hàng" rules={[{ required: true, message: "Chọn đơn hàng" }]} extra="Chỉ hiện đơn đã có số HĐ.">
+        <Form.Item
+          name="orderId"
+          label={t("vat.selectOrder")}
+          rules={[{ required: true, message: t("vat.selectOrder") }]}
+          extra={t("vat.selectOrderExtra")}
+        >
           <Select
             showSearch
             optionFilterProp="label"
             onChange={applyOrder}
-            notFoundContent={eligibleOrders.length === 0 ? "Không có đơn nào có số HĐ." : undefined}
+            notFoundContent={eligibleOrders.length === 0 ? t("vat.noOrdersWithContract") : undefined}
             options={eligibleOrders.map((o) => ({
               value: o.id,
-              label: `${o.orderNumber} · HĐ ${o.contractNumber} — ${o.customerName}`,
+              label: `${o.orderNumber}${t("vat.contractSuffix", { n: String(o.contractNumber) })} — ${o.customerName}`,
             }))}
           />
         </Form.Item>
         {selectedOrder && (
           <Alert
-            message={`Tự điền từ ${selectedOrder.orderNumber}${
-              selectedOrder.contractNumber != null ? ` · Số HĐ ${selectedOrder.contractNumber}` : ""
-            }`}
+            message={t("vat.autoFillFrom", {
+              orderNumber: selectedOrder.orderNumber,
+              contractSuffix:
+                selectedOrder.contractNumber != null
+                  ? t("vat.contractSuffix", { n: selectedOrder.contractNumber })
+                  : "",
+            })}
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
           />
         )}
-        <Form.Item name="customerName" label="Tên khách hàng">
+        <Form.Item name="customerName" label={t("vat.customerName")}>
           <Input disabled />
         </Form.Item>
-        <Form.Item label="Số HĐ">
+        <Form.Item label={t("common.contractNo")}>
           <Input disabled value={selectedOrder?.contractNumber != null ? String(selectedOrder.contractNumber) : "—"} />
         </Form.Item>
-        <Form.Item name="taxCode" label="Mã số thuế">
+        <Form.Item name="taxCode" label={t("common.taxCode")}>
           <Input />
         </Form.Item>
 
         <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
-          Nội dung hóa đơn
+          {t("vat.invoiceContent")}
         </Typography.Text>
         <Row gutter={16}>
           <Col span={16}>
-            <Form.Item name={["lines", 0, "description"]} label="Dòng 1" rules={[{ required: true, message: "Nhập nội dung dòng 1" }]}>
-              <Input placeholder="Mô tả hàng hóa / dịch vụ" />
+            <Form.Item
+              name={["lines", 0, "description"]}
+              label={t("vat.line1")}
+              rules={[{ required: true, message: t("vat.enterLine1") }]}
+            >
+              <Input placeholder={t("vat.line1Placeholder")} />
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item name={["lines", 0, "amount"]} label="Thành tiền">
+            <Form.Item name={["lines", 0, "amount"]} label={t("vat.lineAmount")}>
               <InputNumber {...vndInputProps} />
             </Form.Item>
           </Col>
         </Row>
         <Row gutter={16}>
           <Col span={16}>
-            <Form.Item name={["lines", 1, "description"]} label="Dòng 2">
-              <Input placeholder="Nội dung bổ sung (không bắt buộc)" />
+            <Form.Item name={["lines", 1, "description"]} label={t("vat.line2")}>
+              <Input placeholder={t("vat.line2Placeholder")} />
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item name={["lines", 1, "amount"]} label="Thành tiền">
+            <Form.Item name={["lines", 1, "amount"]} label={t("vat.lineAmount")}>
               <InputNumber {...vndInputProps} />
             </Form.Item>
           </Col>
         </Row>
 
-        <Form.Item name="taxRate" label="Thuế suất (%)" rules={[{ required: true, message: "Chọn thuế suất" }]}>
+        <Form.Item
+          name="taxRate"
+          label={t("vat.taxRate")}
+          rules={[{ required: true, message: t("vat.selectTaxRate") }]}
+        >
           <Select
             options={VAT_TAX_RATES.map((rate) => ({
               value: rate,
@@ -211,13 +230,13 @@ function NewVatPageContent() {
             }))}
           />
         </Form.Item>
-        <Form.Item label="Tiền hàng (trước thuế)">
+        <Form.Item label={t("vat.goodsAmount")}>
           <Input disabled value={formatVndDisplay(totals.amount)} />
         </Form.Item>
-        <Form.Item label="Tiền thuế">
+        <Form.Item label={t("vat.taxAmount")}>
           <Input disabled value={formatVndDisplay(totals.taxAmount)} />
         </Form.Item>
-        <Form.Item label="Tổng cộng">
+        <Form.Item label={t("vat.total")}>
           <Input disabled value={formatVndDisplay(totals.totalAmount)} />
         </Form.Item>
         <Space>
@@ -225,10 +244,10 @@ function NewVatPageContent() {
             onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/vat"))}
             disabled={saving}
           >
-            Hủy
+            {t("common.cancel")}
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            Tạo hóa đơn VAT
+            {t("common.createVat")}
           </Button>
         </Space>
       </Form>

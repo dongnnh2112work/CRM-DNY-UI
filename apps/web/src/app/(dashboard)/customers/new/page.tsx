@@ -14,8 +14,10 @@ import {
 } from "@/lib/customer-helpers";
 import { useCustomers } from "@/lib/customers-store";
 import { useServices } from "@/lib/services-store";
+import { useT } from "@/lib/use-t";
 
 export default function NewCustomerPage() {
+  const t = useT();
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { addCustomer, fieldDefs } = useCustomers();
@@ -26,7 +28,7 @@ export default function NewCustomerPage() {
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Khách hàng", href: "/customers" }, { title: "Tạo mới" }]} />
+      <PageHeader breadcrumbs={[{ title: t("common.customer"), href: "/customers" }, { title: t("common.new") }]} />
       <Form
         form={form}
         layout="vertical"
@@ -46,45 +48,45 @@ export default function NewCustomerPage() {
               usedServiceIds: values.usedServiceIds ?? [],
               customFields: collectCustomFields(values, extraFields),
             });
-            message.success("Đã tạo khách hàng");
+            message.success(t("customer.created"));
             router.push("/customers");
           } finally {
             setSaving(false);
           }
         }}
       >
-        <Form.Item name="name" label="Tên" rules={[{ required: true }]}>
+        <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="phone" label="SĐT" rules={[{ required: true }]}>
+        <Form.Item name="phone" label={t("field.phone")} rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="email" label="Email" rules={[{ type: "email" }]}>
+        <Form.Item name="email" label={t("field.email")} rules={[{ type: "email" }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="company" label="Công ty">
+        <Form.Item name="company" label={t("field.company")}>
           <Input />
         </Form.Item>
-        <Form.Item name="taxCode" label="Mã số thuế">
+        <Form.Item name="taxCode" label={t("field.taxCode")}>
           <Input />
         </Form.Item>
-        <Form.Item name="address" label="Địa chỉ">
+        <Form.Item name="address" label={t("field.address")}>
           <Input.TextArea rows={2} />
         </Form.Item>
-        <Form.Item name="owner" label="Phụ trách" initialValue="Le Staff A">
+        <Form.Item name="owner" label={t("field.owner")} initialValue="Le Staff A">
           <Select options={CUSTOMER_OWNER_OPTIONS} />
         </Form.Item>
         <Form.Item
           name="usedServiceIds"
-          label="Dịch vụ đã sử dụng"
-          extra="Ghi nhận dịch vụ khách đã dùng. Đơn hàng sau này sẽ bổ sung tự động."
+          label={t("customer.usedServices")}
+          extra={t("customer.usedServicesCreateExtra")}
         >
           <Select
             mode="multiple"
             allowClear
             showSearch
             optionFilterProp="label"
-            placeholder="Chọn dịch vụ"
+            placeholder={t("customer.selectService")}
             options={services.map((s) => ({ value: s.id, label: s.name }))}
           />
         </Form.Item>
@@ -94,10 +96,10 @@ export default function NewCustomerPage() {
             onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/customers"))}
             disabled={saving}
           >
-            Hủy
+            {t("common.cancel")}
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            Tạo khách hàng
+            {t("common.createCustomer")}
           </Button>
         </Space>
       </Form>

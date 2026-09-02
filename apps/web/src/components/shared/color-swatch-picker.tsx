@@ -5,6 +5,7 @@ import { Popover } from "antd";
 import { useMemo } from "react";
 import { ds } from "@/lib/design-tokens";
 import { STAGE_COLOR_PALETTE } from "@/lib/status-palette";
+import { useT } from "@/lib/use-t";
 
 export function ColorSwatchPicker({
   value,
@@ -17,6 +18,7 @@ export function ColorSwatchPicker({
   onChange: (hex: string) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   const taken = useMemo(
     () => new Set(takenColors.map((c) => c.toLowerCase())),
     [takenColors],
@@ -38,7 +40,7 @@ export function ColorSwatchPicker({
           <button
             key={hex}
             type="button"
-            aria-label={isTaken ? `${hex} (đã dùng)` : hex}
+            aria-label={isTaken ? t("common.colorInUse", { color: hex }) : hex}
             disabled={isTaken}
             onClick={(e) => {
               e.stopPropagation();
@@ -89,7 +91,7 @@ export function ColorSwatchPicker({
           flexShrink: 0,
           padding: 0,
         }}
-        aria-label="Chọn màu"
+        aria-label={t("common.chooseColor")}
       />
     </Popover>
   );

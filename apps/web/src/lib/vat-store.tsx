@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { tt } from "@/lib/i18n";
 import { MOCK_VAT_INVOICES } from "@/lib/mock-vat";
 import type { VatInvoice, VatStatus } from "@/lib/types";
 
@@ -67,7 +68,7 @@ export function VatProvider({ children }: { children: ReactNode }) {
 
   const addInvoice = useCallback((input: NewVatInvoiceInput) => {
     if (input.contractNumber == null || input.contractNumber < 1) {
-      throw new Error("Chỉ xuất VAT cho đơn có số HĐ");
+      throw new Error(tt("vat.storeNeedContract"));
     }
     let created: VatInvoice | undefined;
     setInvoices((prev) => {

@@ -18,6 +18,7 @@ import { deadlineFromService, nextContractNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
+import { useT } from "@/lib/use-t";
 
 const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
@@ -30,6 +31,7 @@ export default function NewOrderPage() {
 }
 
 function NewOrderPageContent() {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customerId") ?? undefined;
@@ -65,7 +67,7 @@ function NewOrderPageContent() {
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Đơn hàng", href: "/orders" }, { title: "Tạo đơn mới" }]} />
+      <PageHeader breadcrumbs={[{ title: t("common.order"), href: "/orders" }, { title: t("order.breadcrumbNew") }]} />
       <Form
         form={form}
         layout="vertical"
@@ -83,18 +85,18 @@ function NewOrderPageContent() {
               : undefined;
             const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
             if (!customer || !service || !assigned || !submitter) {
-              message.error("Thiếu thông tin bắt buộc");
+              message.error(t("common.requiredMissing"));
               return;
             }
 
             if (values.needsVat) {
               const hd = Number(values.contractNumber);
               if (!hd || hd < 1) {
-                message.error("Nhập số HĐ hợp lệ");
+                message.error(t("order.enterContractValid"));
                 return;
               }
               if (isContractTaken(hd)) {
-                message.error("Số HĐ đã tồn tại trên đơn khác");
+                message.error(t("order.contractTaken"));
                 return;
               }
             }
@@ -146,23 +148,23 @@ function NewOrderPageContent() {
               });
             }
 
-            message.success("Đã tạo đơn hàng");
+            message.success(t("order.created"));
             router.push(`/orders/${created.id}`);
           } catch (err) {
-            message.error(err instanceof Error ? err.message : "Không tạo được đơn");
+            message.error(err instanceof Error ? err.message : t("order.createFailed"));
           } finally {
             setSaving(false);
           }
         }}
       >
-        <Form.Item name="customerId" label="Khách hàng" rules={[{ required: true, message: "Chọn khách hàng" }]}>
+        <Form.Item name="customerId" label={t("common.customer")} rules={[{ required: true, message: t("order.selectCustomer") }]}>
           <Select
             showSearch
             optionFilterProp="label"
             options={customers.map((c) => ({ value: c.id, label: c.name }))}
           />
         </Form.Item>
-        <Form.Item name="serviceId" label="Dịch vụ (1 đơn / 1 dịch vụ)" rules={[{ required: true }]}>
+        <Form.Item name="serviceId" label={t("order.serviceOne")} rules={[{ required: true }]}>
           <Select
             onChange={onServiceChange}
             options={services
@@ -173,18 +175,18 @@ function NewOrderPageContent() {
               }))}
           />
         </Form.Item>
-        <Form.Item name="channel" label="Kênh" rules={[{ required: true }]}>
+        <Form.Item name="channel" label={t("common.channel")} rules={[{ required: true }]}>
           <Select
             options={[
-              { value: "direct", label: "Trực tiếp" },
-              { value: "website", label: "Website" },
-              { value: "referral", label: "Giới thiệu" },
-              { value: "ctv", label: "CTV" },
+              { value: "direct", label: t("channel.direct") },
+              { value: "website", label: t("channel.website") },
+              { value: "referral", label: t("channel.referral") },
+              { value: "ctv", label: t("channel.ctv") },
             ]}
           />
         </Form.Item>
         {channel === "ctv" && (
-          <Form.Item name="ctvId" label="Chọn CTV" rules={[{ required: true, message: "Chọn CTV" }]}>
+          <Form.Item name="ctvId" label={t("order.selectCtv")} rules={[{ required: true, message: t("order.selectCtv") }]}>
             <Select
               options={ctvs
                 .filter((c) => c.status === "active")
@@ -194,20 +196,20 @@ function NewOrderPageContent() {
         )}
         <Form.Item
           name="value"
-          label="Giá trị niêm yết (VND)"
-          rules={[{ required: true, message: "Nhập giá trị niêm yết" }]}
+          label={t("order.listPriceVnd")}
+          rules={[{ required: true, message: t("order.enterListPrice") }]}
           extra={
             selectedService
-              ? `Giá niêm yết dịch vụ gợi ý: ${formatVndDisplay(selectedService.unitPrice)}`
-              : "Giá niêm yết — cơ sở tính hoa hồng"
+              ? t("order.listPriceHint", { amount: formatVndDisplay(selectedService.unitPrice) })
+              : t("order.listPriceExtra")
           }
         >
           <InputNumber {...vndInputProps} />
         </Form.Item>
         <Form.Item
           name="commission"
-          label="Hoa hồng (VND)"
-          extra="Nhập số tiền hoa hồng của đơn này. Logic % theo tháng sẽ làm sau."
+          label={t("order.commissionVnd")}
+          extra={t("order.commissionExtra")}
         >
           <InputNumber {...vndInputProps} />
         </Form.Item>
@@ -215,19 +217,19 @@ function NewOrderPageContent() {
           <>
             <Form.Item
               name="ctvPrice"
-              label="Giá CTV (VND)"
+              label={t("order.ctvPriceVnd")}
               rules={[
-                { required: true, message: "Nhập giá CTV" },
+                { required: true, message: t("order.enterCtvPrice") },
                 {
                   validator: async (_, ctvVal) => {
                     if (ctvVal == null || value == null) return;
                     if (Number(ctvVal) < Number(value)) {
-                      throw new Error("Giá CTV thường ≥ giá niêm yết (Hoa hồng = Giá CTV − giá niêm yết)");
+                      throw new Error(t("order.ctvPriceHint"));
                     }
                   },
                 },
               ]}
-              extra="Hoa hồng = Giá CTV − giá niêm yết"
+              extra={t("order.ctvCommissionExtra")}
               dependencies={["value"]}
             >
               <InputNumber {...vndInputProps} />
@@ -239,17 +241,17 @@ function NewOrderPageContent() {
                 style={{ marginBottom: 16 }}
                 message={
                   <Typography.Text>
-                    Hoa hồng CTV dự kiến:{" "}
+                    {t("order.commissionExpected")}{" "}
                     <Typography.Text strong>{formatVndDisplay(ctvCommission)}</Typography.Text>
-                    <Typography.Text type="secondary"> (Giá CTV − giá niêm yết)</Typography.Text>
-                    {ctvCommission < 0 && " — kiểm tra lại giá"}
+                    <Typography.Text type="secondary"> ({t("order.ctvCommissionExtra")})</Typography.Text>
+                    {ctvCommission < 0 && t("order.checkPrice")}
                   </Typography.Text>
                 }
               />
             )}
           </>
         )}
-        <Form.Item name="assignedUserId" label="Phụ trách" rules={[{ required: true }]}>
+        <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
           <Select
             options={activeUsers
               .filter((u) => u.role === "staff")
@@ -258,15 +260,15 @@ function NewOrderPageContent() {
         </Form.Item>
         <Form.Item
           name="submitterId"
-          label="Người tạo / phụ trách hồ sơ"
-          rules={[{ required: true, message: "Chọn người tạo" }]}
+          label={t("order.submitterLabel")}
+          rules={[{ required: true, message: t("order.selectSubmitter") }]}
         >
           <Select options={activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))} />
         </Form.Item>
         <Form.Item
           name="reviewerId"
-          label="Người duyệt chi (tuỳ chọn)"
-          extra="Dùng khi nhân viên gửi yêu cầu duyệt chi trên đơn"
+          label={t("order.reviewerOptional")}
+          extra={t("order.reviewerExtra")}
         >
           <Select
             allowClear
@@ -275,12 +277,12 @@ function NewOrderPageContent() {
               .map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
           />
         </Form.Item>
-        <Form.Item name="deadline" label="Hạn xử lý đơn">
+        <Form.Item name="deadline" label={t("order.deadlineLabel")}>
           <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
         </Form.Item>
         <Form.Item
           name="zaloGroupUrl"
-          label="Group Zalo"
+          label={t("common.zaloGroup")}
           rules={[
             {
               validator: async (_, v) => {
@@ -289,7 +291,7 @@ function NewOrderPageContent() {
                 try {
                   new URL(s);
                 } catch {
-                  throw new Error("Nhập URL hợp lệ");
+                  throw new Error(t("order.invalidUrl"));
                 }
               },
             },
@@ -305,20 +307,20 @@ function NewOrderPageContent() {
               }
             }}
           >
-            Đơn có xuất hóa đơn VAT
+            {t("order.needsVat")}
           </Checkbox>
         </Form.Item>
         {needsVat ? (
           <Form.Item
             name="contractNumber"
-            label="Số HĐ (hợp đồng)"
-            rules={[{ required: true, message: "Nhập số HĐ" }]}
-            extra={`Gợi ý số tiếp theo: ${suggestedHd}. Số tự nhiên, không trùng đơn khác. VAT xuất trong 24h sau khi khách chuyển khoản.`}
+            label={t("order.contractLabel")}
+            rules={[{ required: true, message: t("order.enterContract") }]}
+            extra={t("order.contractHint", { n: suggestedHd })}
           >
             <InputNumber min={1} precision={0} style={{ width: "100%" }} />
           </Form.Item>
         ) : null}
-        <Form.Item name="notes" label="Ghi chú">
+        <Form.Item name="notes" label={t("common.note")}>
           <Input.TextArea rows={3} />
         </Form.Item>
         <Space>
@@ -326,10 +328,10 @@ function NewOrderPageContent() {
             onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/orders"))}
             disabled={saving}
           >
-            Hủy
+            {t("common.cancel")}
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            Tạo đơn hàng
+            {t("common.createOrder")}
           </Button>
         </Space>
       </Form>

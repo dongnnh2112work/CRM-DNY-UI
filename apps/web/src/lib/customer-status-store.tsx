@@ -9,7 +9,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useAppConfig } from "@/components/providers/antd-provider";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { tt, translateStatusLabel } from "@/lib/i18n";
 import { STATUS_CONFIG, type DisplayStatusMeta, type StatusTone } from "@/lib/status-config";
 import {
   STAGE_COLOR_PALETTE,
@@ -84,6 +86,7 @@ type Ctx = {
 export const CustomerStatusContext = createContext<Ctx | null>(null);
 
 export function CustomerStatusProvider({ children }: { children: ReactNode }) {
+  const { locale } = useAppConfig();
   const [statuses, setStatuses] = useState<CustomerStatusDefinition[]>(defaultStatuses);
   const [ready, setReady] = useState(false);
 
@@ -101,9 +104,14 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
 
   const getMeta = useCallback((status: string): DisplayStatusMeta => {
     const found = statuses.find((s) => s.key === status);
-    if (found) return { label: found.label, color: found.color };
+    if (found) {
+      return {
+        label: translateStatusLabel("customer", found.key, found.label),
+        color: found.color,
+      };
+    }
     return { label: status, color: STAGE_COLOR_PALETTE[0] };
-  }, [statuses]);
+  }, [statuses, locale]);
 
   const updateStatus = useCallback(
     (key: string, patch: Partial<Pick<CustomerStatusDefinition, "label" | "color">>) => {
@@ -146,11 +154,11 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   const removeStatus = useCallback((key: string) => {
     let result: { ok: true } | { ok: false; reason: string } = {
       ok: false,
-      reason: "Không tìm thấy trạng thái",
+      reason: tt("status.notFound"),
     };
     setStatuses((prev) => {
       if (prev.length <= 1) {
-        result = { ok: false, reason: "Cần giữ ít nhất một trạng thái" };
+        result = { ok: false, reason: tt("status.needOne") };
         return prev;
       }
       if (!prev.some((s) => s.key === key)) return prev;
@@ -161,8 +169,13 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const statusOptions = useMemo(
-    () => statuses.map((s) => ({ value: s.key, label: s.label, color: s.color })),
-    [statuses],
+    () =>
+      statuses.map((s) => ({
+        value: s.key,
+        label: translateStatusLabel("customer", s.key, s.label),
+        color: s.color,
+      })),
+    [statuses, locale],
   );
 
   const value = useMemo(

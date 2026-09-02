@@ -20,8 +20,10 @@ import { DataTable } from "@/components/shared/data-table";
 import { useManagedColumns } from "@/components/shared/column-manager-drawer";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
+import { translateSeedFieldLabel, translateStatusLabel } from "@/lib/i18n";
 import { tableColumnKey } from "@/lib/table-index-column";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { useT } from "@/lib/use-t";
 import type { StatusModule } from "@/lib/status-config";
 import type { FieldDefinition, FieldType } from "@/lib/types";
 
@@ -83,6 +85,12 @@ function defsEqual(a: FieldDefinition[], b: FieldDefinition[]) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function statusFallbackLabel(value: string) {
+  const customer = translateStatusLabel("customer", value);
+  if (customer !== value) return customer;
+  return translateStatusLabel("user", value);
+}
+
 export function DynamicTable<T extends object>({
   fieldDefs,
   onFieldDefsChange,
@@ -92,7 +100,7 @@ export function DynamicTable<T extends object>({
   onRow,
   extra = [],
   statusModule,
-  emptyDescription = "Chưa có dữ liệu.",
+  emptyDescription,
   emptyAction,
   enableRowSelection = false,
   selectedRowKeys,
@@ -102,6 +110,7 @@ export function DynamicTable<T extends object>({
   columnOverrides,
   columnManagerKey,
 }: DynamicTableProps<T>) {
+  const t = useT();
   const { message, modal } = App.useApp();
   const { token } = theme.useToken();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -124,12 +133,12 @@ export function DynamicTable<T extends object>({
             typeof col.title === "string" && col.title.trim()
               ? col.title
               : key === "action" || key === "actions"
-                ? "Thao tác"
+                ? t("common.actions")
                 : key;
           return { key, label };
         })
         .filter((i) => i.key),
-    [extra],
+    [extra, t],
   );
   const extraManagerId =
     columnManagerKey && extraItems.length > 0 ? `${columnManagerKey}-extra` : undefined;
@@ -161,7 +170,7 @@ export function DynamicTable<T extends object>({
     const cols: TableColumnsType<T> = committedVisibleDefs.map((def) => {
       const override = columnOverrides?.[def.key];
       return {
-        title: def.label,
+        title: translateSeedFieldLabel(def.label),
         dataIndex: def.key,
         key: def.key,
         width: override?.width,
@@ -196,19 +205,13 @@ export function DynamicTable<T extends object>({
               </Button>
             );
           }
-          if (def.type === "checkbox") return value ? "Có" : "Không";
+          if (def.type === "checkbox") return value ? t("common.yes") : t("common.no");
           if (def.key === "status" && typeof value === "string") {
             if (statusModule) {
               return <StatusBadge module={statusModule} status={value} />;
             }
             const color = value === "active" ? "success" : value === "lead" ? "processing" : "default";
-            const statusLabels: Record<string, string> = {
-              active: "Hoạt động",
-              lead: "Tiềm năng",
-              archived: "Lưu trữ",
-              inactive: "Ngừng",
-            };
-            const label = statusLabels[value] ?? String(value).toUpperCase();
+            const label = statusFallbackLabel(value);
             return <Tag color={color}>{label}</Tag>;
           }
           if (def.type === "number" && typeof value === "number") {
@@ -220,7 +223,9 @@ export function DynamicTable<T extends object>({
       };
     });
     return [...cols, ...visibleExtra];
-  }, [committedVisibleDefs, visibleExtra, statusModule, linkField, columnOverrides]);
+  }, [committedVisibleDefs, visibleExtra, statusModule, linkField, columnOverrides, t]);
+
+  const resolvedEmptyDescription = emptyDescription ?? t("common.noData");
 
   const toggleVisibility = (key: string) => {
     setDefs(defs.map((d) => (d.key === key ? { ...d, visible: !d.visible } : d)));
@@ -235,7 +240,7 @@ export function DynamicTable<T extends object>({
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_|_$/g, "");
     if (!key || defs.some((d) => d.key === key)) {
-      message.warning("Tên cột không hợp lệ hoặc đã tồn tại");
+      message.warning(t("col.invalidName"));
       return;
     }
     setDefs([
@@ -260,7 +265,7 @@ export function DynamicTable<T extends object>({
   const handleSave = () => {
     onFieldDefsChange?.(defs);
     extraManaged.save(extraDraft);
-    message.success("Đã lưu cấu hình cột");
+    message.success(t("common.savedColumns"));
     setDrawerOpen(false);
   };
 
@@ -277,10 +282,10 @@ export function DynamicTable<T extends object>({
       return;
     }
     modal.confirm({
-      title: "Hủy?",
-      content: "Thay đổi sẽ không được lưu.",
-      okText: "Hủy",
-      cancelText: "Tiếp tục",
+      title: t("common.discardTitle"),
+      content: t("common.discardBody"),
+      okText: t("common.cancel"),
+      cancelText: t("common.continue"),
       onOk: handleClose,
     });
   };
@@ -301,7 +306,7 @@ export function DynamicTable<T extends object>({
         columns={columns}
         dataSource={flatData as T[]}
         onRow={onRow}
-        emptyDescription={emptyDescription}
+        emptyDescription={resolvedEmptyDescription}
         emptyAction={emptyAction}
         enableRowSelection={enableRowSelection}
         selectedRowKeys={selectedRowKeys}
@@ -310,28 +315,28 @@ export function DynamicTable<T extends object>({
         toolbar={
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0" }}>
             <Button icon={<SettingOutlined />} size="small" onClick={() => setDrawerOpen(true)}>
-              Quản lý cột
+              {t("common.manageColumns")}
             </Button>
           </div>
         }
       />
       <Drawer
-        title="Quản lý cột"
+        title={t("common.manageColumns")}
         open={drawerOpen}
         onClose={requestClose}
         width={400}
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button onClick={requestClose}>Đóng</Button>
+            <Button onClick={requestClose}>{t("common.close")}</Button>
             <Button type="primary" disabled={!dirty} onClick={handleSave}>
-              Lưu
+              {t("common.save")}
             </Button>
           </div>
         }
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
           <span style={{ color: token.colorTextSecondary, fontSize: ds.fontSize.bodySm }}>
-            Ẩn/hiện, thêm hoặc xóa cột chỉ áp dụng sau khi bấm Lưu.
+            {t("col.saveHintEdit")}
           </span>
           {[...defs]
             .sort((a, b) => a.order - b.order)
@@ -340,22 +345,22 @@ export function DynamicTable<T extends object>({
             return (
               <div key={def.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Checkbox checked={def.visible} onChange={() => toggleVisibility(def.key)} />
-                <span style={{ flex: 1 }}>{def.label}</span>
+                <span style={{ flex: 1 }}>{translateSeedFieldLabel(def.label)}</span>
                 <Tag>{def.type}</Tag>
                 {isLocked ? (
-                  <Tooltip title="Cột hệ thống — không xóa được">
+                  <Tooltip title={t("col.systemLocked")}>
                     <Button size="small" type="text" disabled icon={<DeleteOutlined />} />
                   </Tooltip>
                 ) : (
                   <Popconfirm
-                    title={`Xóa cột “${def.label}”?`}
-                    description="Cột sẽ bị xóa sau khi bấm Lưu."
-                    okText="Xóa"
-                    cancelText="Hủy"
+                    title={t("col.deleteTitle", { label: def.label })}
+                    description={t("col.deleteBody")}
+                    okText={t("common.delete")}
+                    cancelText={t("common.cancel")}
                     okButtonProps={{ danger: true }}
                     onConfirm={() => removeField(def.key)}
                   >
-                    <Tooltip title="Xóa cột">
+                    <Tooltip title={t("col.deleteCol")}>
                       <Button size="small" type="text" danger icon={<DeleteOutlined />} />
                     </Tooltip>
                   </Popconfirm>
@@ -376,8 +381,8 @@ export function DynamicTable<T extends object>({
                 }
               />
               <span style={{ flex: 1 }}>{item.label}</span>
-              <Tag>cột bảng</Tag>
-              <Tooltip title="Cột hệ thống — không xóa được">
+              <Tag>{t("col.tableCol")}</Tag>
+              <Tooltip title={t("col.systemLocked")}>
                 <Button size="small" type="text" disabled icon={<DeleteOutlined />} />
               </Tooltip>
             </div>
@@ -386,21 +391,19 @@ export function DynamicTable<T extends object>({
           <div style={{ borderTop: `1px solid ${token.colorBorder}`, paddingTop: 12 }}>
             <Space.Compact style={{ width: "100%" }}>
               <Input
-                placeholder="Tên cột mới"
+                placeholder={t("col.newName")}
                 value={newFieldLabel}
                 onChange={(e) => setNewFieldLabel(e.target.value)}
                 onPressEnter={addField}
               />
               <Select value={newFieldType} onChange={setNewFieldType} style={{ width: 100 }}>
-                <Select.Option value="text">Chữ</Select.Option>
-                <Select.Option value="number">Số</Select.Option>
-                <Select.Option value="date">Ngày</Select.Option>
-                <Select.Option value="select">Chọn</Select.Option>
-                <Select.Option value="checkbox">Checkbox</Select.Option>
+                <Select.Option value="text">{t("col.typeText")}</Select.Option>
+                <Select.Option value="number">{t("col.typeNumber")}</Select.Option>
+                <Select.Option value="date">{t("col.typeDate")}</Select.Option>
+                <Select.Option value="select">{t("col.typeSelect")}</Select.Option>
+                <Select.Option value="checkbox">{t("col.typeCheckbox")}</Select.Option>
               </Select>
-              <Button onClick={addField}>
-                Thêm
-              </Button>
+              <Button onClick={addField}>{t("common.add")}</Button>
             </Space.Compact>
           </div>
         </Space>

@@ -9,6 +9,7 @@ import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
 import type { OrderAttachment } from "@/lib/types";
 import { ds } from "@/lib/design-tokens";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
+import { useT } from "@/lib/use-t";
 
 interface LicenseUploadProps {
   files: OrderAttachment[];
@@ -23,6 +24,7 @@ export function LicenseUpload({
   uploaderName = "Admin",
   compact = false,
 }: LicenseUploadProps) {
+  const t = useT();
   const { message } = App.useApp();
   const visible = (files ?? []).filter((a) => !a.deleted);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -31,7 +33,7 @@ export function LicenseUpload({
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
     const type = getAttachmentType(file.name);
     if (type === "other") {
-      message.error("Chỉ cho phép PDF, Word (.doc/.docx), Excel (.xls/.xlsx)");
+      message.error(t("file.allowedTypes"));
       return Upload.LIST_IGNORE;
     }
     setPendingFile(file);
@@ -57,7 +59,7 @@ export function LicenseUpload({
       expiresAt: values.expiresAt.format("YYYY-MM-DD"),
     };
     onChange([...(files ?? []), next]);
-    message.success(`Đã lưu giấy phép: ${pendingFile.name}`);
+    message.success(t("license.saved", { name: pendingFile.name }));
     setPendingFile(null);
     dateForm.resetFields();
   };
@@ -87,35 +89,35 @@ export function LicenseUpload({
           <InboxOutlined />
         </p>
         <p className="ant-upload-text" style={{ fontSize: compact ? ds.fontSize.caption : undefined }}>
-          Tải lên file giấy phép / văn bản được cấp phép
+          {t("license.uploadHint")}
         </p>
         <p className="ant-upload-hint" style={{ fontSize: ds.fontSize.caption }}>
-          Sau khi chọn file sẽ nhập ngày cấp / hết hạn. PDF / Word / Excel
+          {t("license.afterPickHint")}
         </p>
       </Upload.Dragger>
 
       <Modal
-        title="Thời hạn giấy phép"
+        title={t("license.datesTitle")}
         open={Boolean(pendingFile)}
         onCancel={() => {
           setPendingFile(null);
           dateForm.resetFields();
         }}
         onOk={confirmUpload}
-        okText="Lưu giấy phép"
+        okText={t("license.save")}
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
-          File: {pendingFile?.name}
+          {t("license.fileLabel", { name: pendingFile?.name ?? "" })}
         </Typography.Paragraph>
         <Form form={dateForm} layout="vertical">
-          <Form.Item name="issuedAt" label="Ngày cấp">
+          <Form.Item name="issuedAt" label={t("license.issuedAt")}>
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item
             name="expiresAt"
-            label="Ngày hết hạn"
-            rules={[{ required: true, message: "Chọn ngày hết hạn" }]}
+            label={t("license.expiresAt")}
+            rules={[{ required: true, message: t("license.selectExpiry") }]}
           >
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
           </Form.Item>
@@ -153,7 +155,7 @@ export function LicenseUpload({
                     <Space wrap>
                       <DatePicker
                         size="small"
-                        placeholder="Ngày cấp"
+                        placeholder={t("license.issuedAt")}
                         format="DD/MM/YYYY"
                         value={item.issuedAt ? dayjs(item.issuedAt) : null}
                         onChange={(d) =>
@@ -166,12 +168,12 @@ export function LicenseUpload({
                       />
                       <DatePicker
                         size="small"
-                        placeholder="Hết hạn"
+                        placeholder={t("license.expiresShort")}
                         format="DD/MM/YYYY"
                         value={item.expiresAt ? dayjs(item.expiresAt) : null}
                         onChange={(d) => {
                           if (!d) {
-                            message.warning("Cần ngày hết hạn");
+                            message.warning(t("license.needExpiry"));
                             return;
                           }
                           updateDates(item.id, item.issuedAt, d.format("YYYY-MM-DD"));

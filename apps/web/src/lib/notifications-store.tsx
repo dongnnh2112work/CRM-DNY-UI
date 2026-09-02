@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { tt } from "@/lib/i18n";
 import { orderJobOwnerIds, relatedUserIds, type NotificationDraft } from "@/lib/notification-targets";
 import { daysUntil, getOrderLicenseExpirySummary, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import type { AppNotification, Order, Service } from "@/lib/types";
@@ -155,8 +156,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           if (d < 0) {
             queue(order, {
               type: "order_overdue",
-              title: `Đơn ${order.orderNumber} quá hạn xử lý`,
-              body: `Deadline ${order.deadline} đã qua ${Math.abs(d)} ngày.`,
+              title: tt("notif.overdueTitle", { number: order.orderNumber }),
+              body: tt("notif.overdueBody", { date: order.deadline, n: Math.abs(d) }),
               href: `/orders/${order.id}`,
               orderId: order.id,
               dedupeKey: `order_overdue:${order.id}:${day}`,
@@ -169,8 +170,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           if (d >= 0 && d <= opts.vatWarnDays) {
             queue(order, {
               type: "vat_deadline_approaching",
-              title: `Sắp hết hạn xuất VAT — ${order.orderNumber}`,
-              body: `Hạn xuất VAT: ${order.vatIssueDeadline} (còn ${d} ngày).`,
+              title: tt("notif.vatTitle", { number: order.orderNumber }),
+              body: tt("notif.vatBody", { date: order.vatIssueDeadline, n: d }),
               href: `/orders/${order.id}`,
               orderId: order.id,
               dedupeKey: `vat_deadline:${order.id}:${day}`,
@@ -187,9 +188,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
             type: "license_expiring",
             title:
               lic.tone === "expired"
-                ? `Giấy phép hết hạn — ${order.orderNumber}`
-                : `Giấy phép sắp hết hạn — ${order.orderNumber}`,
-            body: `Khách ${order.customerName}: hạn GP ${lic.earliestExpiresAt ?? "—"}. Nhắc gia hạn.`,
+                ? tt("notif.licenseExpiredTitle", { number: order.orderNumber })
+                : tt("notif.licenseExpiringTitle", { number: order.orderNumber }),
+            body: tt("notif.licenseBody", {
+              name: order.customerName,
+              date: lic.earliestExpiresAt ?? "—",
+            }),
             href: `/orders/${order.id}`,
             orderId: order.id,
             dedupeKey: `license_expiring:${order.id}:${day}`,

@@ -6,9 +6,11 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { ds } from "@/lib/design-tokens";
 import { useNotifications } from "@/lib/notifications-store";
+import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 
 export default function NotificationsPage() {
+  const t = useT();
   const router = useRouter();
   const { token } = theme.useToken();
   const { currentUser } = useUsers();
@@ -17,8 +19,8 @@ export default function NotificationsPage() {
   if (!currentUser) {
     return (
       <EmptyState
-        description="Bạn chưa đăng nhập."
-        action={{ label: "Đăng nhập", href: "/login" }}
+        description={t("common.notLoggedIn")}
+        action={{ label: t("common.login"), href: "/login" }}
       />
     );
   }
@@ -27,13 +29,13 @@ export default function NotificationsPage() {
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Thông báo" }]}>
-        <Button onClick={() => markAllRead(currentUser.id)}>Đánh dấu đã đọc</Button>
+      <PageHeader breadcrumbs={[{ title: t("shell.notifications") }]}>
+        <Button onClick={() => markAllRead(currentUser.id)}>{t("shell.markAllRead")}</Button>
       </PageHeader>
       <div style={{ padding: 16 }}>
         <List
           dataSource={items}
-          locale={{ emptyText: "Chưa có thông báo." }}
+          locale={{ emptyText: t("notif.empty") }}
           renderItem={(item) => (
             <List.Item
               style={{
@@ -57,7 +59,7 @@ export default function NotificationsPage() {
                     </Typography.Text>
                     {!item.read ? (
                       <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                        Mới
+                        {t("notif.new")}
                       </Typography.Text>
                     ) : null}
                   </Space>

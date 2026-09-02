@@ -1,4 +1,5 @@
 import type { FormInstance } from "antd";
+import { tt } from "@/lib/i18n";
 
 type ConfirmFn = (config: {
   title: string;
@@ -11,10 +12,10 @@ type ConfirmFn = (config: {
 /** Shared copy when leaving a dirty form. */
 export function confirmDiscard(modal: { confirm: ConfirmFn }, onDiscard: () => void) {
   modal.confirm({
-    title: "Hủy?",
-    content: "Thay đổi sẽ không được lưu.",
-    okText: "Hủy",
-    cancelText: "Tiếp tục",
+    title: tt("common.discardTitle"),
+    content: tt("common.discardBody"),
+    okText: tt("common.cancel"),
+    cancelText: tt("common.continue"),
     onOk: onDiscard,
   });
 }

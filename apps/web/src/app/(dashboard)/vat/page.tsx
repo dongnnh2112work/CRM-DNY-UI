@@ -15,6 +15,7 @@ import { useOrders } from "@/lib/orders-store";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { VatInvoice, VatStatus } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 import { resolveContractNumber } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
 
@@ -27,6 +28,7 @@ function todayIso() {
 }
 
 export default function VatPage() {
+  const t = useT();
   const { message } = App.useApp();
   const { invoices, updateInvoice, deleteInvoices } = useVat();
   const { orders } = useOrders();
@@ -78,17 +80,17 @@ export default function VatPage() {
     setExporting(true);
     try {
       const exportRows = selectedInvoices().map((v) => ({
-        "Số HĐ": v.contractNumber ?? "",
-        "Khách hàng": v.customerName,
-        "Đơn hàng": v.orderNumber,
-        "Tiền hàng": v.amount,
-        Thuế: v.taxAmount,
-        Tổng: v.totalAmount,
-        "Ngày xuất": v.issueDate,
-        "Trạng thái": v.status,
+        [t("common.contractNo")]: v.contractNumber ?? "",
+        [t("common.customer")]: v.customerName,
+        [t("common.order")]: v.orderNumber,
+        [t("vat.goodsCol")]: v.amount,
+        [t("vat.taxCol")]: v.taxAmount,
+        [t("vat.totalCol")]: v.totalAmount,
+        [t("vat.issueDate")]: v.issueDate,
+        [t("common.status")]: v.status,
       }));
       await exportRowsToXlsx(`vat-selected-${Date.now()}.xlsx`, exportRows);
-      message.success(`Đã xuất ${selectedCount} hóa đơn VAT`);
+      message.success(t("vat.exported", { count: selectedCount }));
     } finally {
       setExporting(false);
     }
@@ -99,97 +101,100 @@ export default function VatPage() {
       .filter((v) => v.status === "draft")
       .map((v) => v.id);
     if (draftIds.length === 0) {
-      message.warning("Không có hóa đơn nháp trong các dòng đã chọn.");
+      message.warning(t("vat.noDrafts"));
       return;
     }
     for (const id of draftIds) updateInvoice(id, { status: "cancelled" });
-    message.success(`Đã hủy ${draftIds.length} hóa đơn nháp`);
+    message.success(t("vat.cancelledN", { count: draftIds.length }));
     clearSelection();
   };
 
   const bulkDelete = () => {
     deleteInvoices(selectedRowKeys.map(String));
-    message.success(`Đã xóa ${selectedCount} hóa đơn VAT`);
+    message.success(t("vat.deletedN", { count: selectedCount }));
     clearSelection();
   };
 
   const draftSelectedCount = selectedInvoices().filter((v) => v.status === "draft").length;
 
-  const columns: TableColumnsType<VatInvoice> = [
-    {
-      title: "Số HĐ",
-      dataIndex: "contractNumber",
-      align: "center",
-      sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
-      render: (v?: number) => (v != null ? v : "—"),
-    },
-    {
-      title: "Khách hàng",
-      dataIndex: "customerName",
-      sorter: (a, b) => compareText(a.customerName, b.customerName),
-    },
-    {
-      title: "Đơn hàng",
-      dataIndex: "orderNumber",
-      sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
-    },
-    {
-      title: "Tiền hàng",
-      dataIndex: "amount",
-      align: "center",
-      sorter: (a, b) => a.amount - b.amount,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Thuế",
-      dataIndex: "taxAmount",
-      align: "center",
-      sorter: (a, b) => a.taxAmount - b.taxAmount,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Tổng",
-      dataIndex: "totalAmount",
-      align: "center",
-      sorter: (a, b) => a.totalAmount - b.totalAmount,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Ngày xuất",
-      dataIndex: "issueDate",
-      sorter: (a, b) => compareText(a.issueDate, b.issueDate),
-    },
-    {
-      title: "Trạng thái",
-      dataIndex: "status",
-      sorter: (a, b) => compareText(a.status, b.status),
-      render: (s: VatStatus) => <StatusBadge module="vat" status={s} />,
-    },
-  ];
+  const columns: TableColumnsType<VatInvoice> = useMemo(
+    () => [
+      {
+        title: t("common.contractNo"),
+        dataIndex: "contractNumber",
+        align: "center",
+        sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
+        render: (v?: number) => (v != null ? v : "—"),
+      },
+      {
+        title: t("common.customer"),
+        dataIndex: "customerName",
+        sorter: (a, b) => compareText(a.customerName, b.customerName),
+      },
+      {
+        title: t("common.order"),
+        dataIndex: "orderNumber",
+        sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
+      },
+      {
+        title: t("vat.goodsCol"),
+        dataIndex: "amount",
+        align: "center",
+        sorter: (a, b) => a.amount - b.amount,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("vat.taxCol"),
+        dataIndex: "taxAmount",
+        align: "center",
+        sorter: (a, b) => a.taxAmount - b.taxAmount,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("vat.totalCol"),
+        dataIndex: "totalAmount",
+        align: "center",
+        sorter: (a, b) => a.totalAmount - b.totalAmount,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("vat.issueDate"),
+        dataIndex: "issueDate",
+        sorter: (a, b) => compareText(a.issueDate, b.issueDate),
+      },
+      {
+        title: t("common.status"),
+        dataIndex: "status",
+        sorter: (a, b) => compareText(a.status, b.status),
+        render: (s: VatStatus) => <StatusBadge module="vat" status={s} />,
+      },
+    ],
+    [t],
+  );
 
   return (
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Quản lý VAT" }]}
-        searchPlaceholder="Tìm trong bảng…"
+        breadcrumbs={[{ title: t("nav.vat") }]}
+        searchPlaceholder={t("common.searchTable")}
         onSearch={(v) => {
           setQuery(v);
           clearSelection();
         }}
         searchValue={query}
-        primaryAction={{ label: "+ Hóa đơn VAT mới", href: "/vat/new" }}
+        primaryAction={{ label: t("vat.newCta"), href: "/vat/new" }}
       />
       <div style={{ padding: "16px 16px 0" }}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={8}>
-            <StatCard title="Hóa đơn trong ngày" value={invoicesToday} prefix={<CalendarOutlined />} />
+            <StatCard title={t("vat.today")} value={invoicesToday} prefix={<CalendarOutlined />} />
           </Col>
           <Col xs={24} sm={8}>
-            <StatCard title="Hóa đơn nháp" value={draftCount} prefix={<FileTextOutlined />} />
+            <StatCard title={t("vat.drafts")} value={draftCount} prefix={<FileTextOutlined />} />
           </Col>
           <Col xs={24} sm={8}>
-            <StatCard title="Hóa đơn đã xuất" value={issuedCount} prefix={<CheckCircleOutlined />} />
+            <StatCard title={t("vat.issued")} value={issuedCount} prefix={<CheckCircleOutlined />} />
           </Col>
         </Row>
       </div>
@@ -203,39 +208,37 @@ export default function VatPage() {
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}
         emptyDescription={
-          query.trim() && invoices.length > 0
-            ? "Không tìm thấy kết quả phù hợp."
-            : "Chưa có hóa đơn VAT nào."
+          query.trim() && invoices.length > 0 ? t("common.noResults") : t("vat.empty")
         }
         emptyAction={
           query.trim() && invoices.length > 0
             ? undefined
-            : { label: "Tạo hóa đơn VAT", href: "/vat/new" }
+            : { label: t("common.createVat"), href: "/vat/new" }
         }
         bulkToolbar={
           <BulkActionBar count={selectedCount}>
             <Button size="small" onClick={bulkExport}>
-              Xuất Excel
+              {t("common.exportExcel")}
             </Button>
             <Popconfirm
-              title={`Hủy ${draftSelectedCount || selectedCount} hóa đơn nháp đã chọn?`}
-              description="Chỉ các bản ghi trạng thái Nháp (draft) sẽ chuyển sang Đã hủy. Bản ghi khác được bỏ qua."
-              okText="Hủy hóa đơn"
-              cancelText="Đóng"
+              title={t("vat.cancelN", { count: draftSelectedCount || selectedCount })}
+              description={t("vat.cancelBody")}
+              okText={t("vat.cancelOk")}
+              cancelText={t("common.close")}
               onConfirm={bulkCancelDrafts}
             >
-              <Button size="small">Hủy (chỉ nháp)</Button>
+              <Button size="small">{t("vat.cancelDraftOnly")}</Button>
             </Popconfirm>
             <Popconfirm
-              title={`Xóa ${selectedCount} hóa đơn VAT đã chọn?`}
-              description="Áp dụng mọi trạng thái. Chỉ các dòng đang chọn trên trang hiện tại."
-              okText="Xóa"
-              cancelText="Hủy"
+              title={t("vat.deleteN", { count: selectedCount })}
+              description={t("vat.deleteBody")}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
               onConfirm={bulkDelete}
             >
               <Button size="small" danger>
-                Xóa
+                {t("common.delete")}
               </Button>
             </Popconfirm>
           </BulkActionBar>

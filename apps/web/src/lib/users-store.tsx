@@ -1,15 +1,9 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useAppConfig } from "@/components/providers/antd-provider";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { translateRoleLabel, tt } from "@/lib/i18n";
 import { MOCK_USERS } from "@/lib/mock-users";
 import {
   BUILT_IN_ROLES,
@@ -73,6 +67,7 @@ function mergeStoredRoleMatrix(
 }
 
 export function UsersProvider({ children }: { children: ReactNode }) {
+  const { locale } = useAppConfig();
   const [users, setUsers] = useState<AppUser[]>(MOCK_USERS);
   const [roles, setRoles] = useState<RoleDefinition[]>(BUILT_IN_ROLES);
   const [rolePermissions, setRolePermissions] =
@@ -131,8 +126,11 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const getById = useCallback((id: string) => users.find((u) => u.id === id), [users]);
 
   const getRoleLabel = useCallback(
-    (roleKey: string) => roles.find((r) => r.key === roleKey)?.label ?? roleKey,
-    [roles],
+    (roleKey: string) => {
+      const stored = roles.find((r) => r.key === roleKey)?.label;
+      return translateRoleLabel(roleKey, stored);
+    },
+    [roles, locale],
   );
 
   const getEffectivePermissions = useCallback(
@@ -194,11 +192,11 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const deleteRole = useCallback(
     (roleKey: string) => {
       const def = roles.find((r) => r.key === roleKey);
-      if (!def) return { ok: false, reason: "Không tìm thấy vai trò." };
-      if (def.builtin) return { ok: false, reason: "Không thể xóa vai trò hệ thống." };
+      if (!def) return { ok: false, reason: tt("user.roleNotFound") };
+      if (def.builtin) return { ok: false, reason: tt("user.cannotDeleteBuiltin") };
       const inUse = users.some((u) => u.role === roleKey);
       if (inUse) {
-        return { ok: false, reason: "Còn người dùng đang dùng vai trò này. Đổi role trước khi xóa." };
+        return { ok: false, reason: tt("user.roleInUse") };
       }
       setRoles((prev) => prev.filter((r) => r.key !== roleKey));
       setRolePermissions((prev) => {

@@ -18,12 +18,14 @@ import { useOrders } from "@/lib/orders-store";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
+import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
 }
 
 export default function ExpenseApprovalsPage() {
+  const t = useT();
   const { message } = App.useApp();
   const { currentUser, getEffectivePermissions } = useUsers();
   const { expenses, reviewExpense } = useExpenses();
@@ -71,134 +73,139 @@ export default function ExpenseApprovalsPage() {
     return filtered.filter((e) => ids.has(e.id)).reduce((sum, e) => sum + (e.amount || 0), 0);
   }, [filtered, selectedRowKeys]);
 
+  const columns: TableColumnsType<OrderExpense> = useMemo(
+    () => [
+      {
+        title: t("common.project"),
+        key: "project",
+        sorter: (a, b) => compareText(expenseProjectLabel(a), expenseProjectLabel(b)),
+        render: (_, r) => {
+          const label = expenseProjectLabel(r);
+          return r.orderId ? <Link href={`/orders/${r.orderId}`}>{label}</Link> : label;
+        },
+      },
+      { title: t("common.content"), dataIndex: "title", ellipsis: true },
+      {
+        title: t("common.amount"),
+        dataIndex: "amount",
+        align: "center",
+        sorter: (a, b) => a.amount - b.amount,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("common.payee"),
+        dataIndex: "payeeName",
+        ellipsis: true,
+        render: (v?: string) => v || "—",
+      },
+      {
+        title: t("expense.accountNo"),
+        dataIndex: "bankAccount",
+        render: (v?: string) => v || "—",
+      },
+      {
+        title: t("common.bank"),
+        dataIndex: "bankName",
+        ellipsis: true,
+        render: (v?: string) => v || "—",
+      },
+      {
+        title: t("common.status"),
+        dataIndex: "status",
+        render: (s: string) => <StatusBadge module="approvalRequest" status={s} />,
+      },
+      { title: t("common.requester"), dataIndex: "requestedByName" },
+      { title: t("expense.requestedAt"), dataIndex: "requestedAt" },
+      {
+        title: t("common.actions"),
+        key: "actions",
+        render: (_, r) => {
+          if (r.status !== "pending") {
+            return r.reviewedByName ? (
+              <Tag>
+                {r.status === "approved"
+                  ? t("expense.approvedBy", { name: r.reviewedByName })
+                  : t("expense.rejectedBy", { name: r.reviewedByName })}
+              </Tag>
+            ) : (
+              "—"
+            );
+          }
+          if (!canApprove || !currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
+          return (
+            <Space>
+              <Popconfirm
+                title={t("expense.approveTitle")}
+                okText={t("common.approve")}
+                cancelText={t("common.cancel")}
+                onConfirm={() => {
+                  reviewExpense(r.id, "approved", {
+                    id: currentUser.id,
+                    name: currentUser.name,
+                  });
+                  addNotifications(
+                    [r.requestedById, r.orderId ? getOrder(r.orderId)?.reviewerId : undefined],
+                    expenseReviewedDraft(r, "approved", currentUser.name),
+                    currentUser.id,
+                  );
+                  message.success(t("expense.approved"));
+                }}
+              >
+                <Button size="small" type="primary">
+                  {t("common.approve")}
+                </Button>
+              </Popconfirm>
+              <Popconfirm
+                title={t("expense.rejectTitle")}
+                okText={t("common.reject")}
+                cancelText={t("common.cancel")}
+                okButtonProps={{ danger: true }}
+                onConfirm={() => {
+                  reviewExpense(r.id, "rejected", {
+                    id: currentUser.id,
+                    name: currentUser.name,
+                  });
+                  addNotifications(
+                    [r.requestedById, r.orderId ? getOrder(r.orderId)?.reviewerId : undefined],
+                    expenseReviewedDraft(r, "rejected", currentUser.name),
+                    currentUser.id,
+                  );
+                  message.success(t("expense.rejected"));
+                }}
+              >
+                <Button size="small" danger>
+                  {t("common.reject")}
+                </Button>
+              </Popconfirm>
+            </Space>
+          );
+        },
+      },
+    ],
+    [t, canApprove, currentUser, reviewExpense, addNotifications, getOrder, message],
+  );
+
   if (!currentUser || !canView) {
     return (
       <EmptyState
-        description="Bạn không có quyền xem Đề nghị thanh toán. Bật Xem trên trang Đề nghị thanh toán trong phân quyền vai trò."
-        action={{ label: "Quản lý người dùng", href: "/users" }}
+        description={t("expense.forbidden")}
+        action={{ label: t("nav.users"), href: "/users" }}
       />
     );
   }
-
-  const columns: TableColumnsType<OrderExpense> = [
-    {
-      title: "Dự án",
-      key: "project",
-      sorter: (a, b) => compareText(expenseProjectLabel(a), expenseProjectLabel(b)),
-      render: (_, r) => {
-        const label = expenseProjectLabel(r);
-        return r.orderId ? <Link href={`/orders/${r.orderId}`}>{label}</Link> : label;
-      },
-    },
-    { title: "Nội dung", dataIndex: "title", ellipsis: true },
-    {
-      title: "Số tiền",
-      dataIndex: "amount",
-      align: "center",
-      sorter: (a, b) => a.amount - b.amount,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Thanh toán cho",
-      dataIndex: "payeeName",
-      ellipsis: true,
-      render: (v?: string) => v || "—",
-    },
-    {
-      title: "STK",
-      dataIndex: "bankAccount",
-      render: (v?: string) => v || "—",
-    },
-    {
-      title: "Ngân hàng",
-      dataIndex: "bankName",
-      ellipsis: true,
-      render: (v?: string) => v || "—",
-    },
-    {
-      title: "Trạng thái",
-      dataIndex: "status",
-      render: (s: string) => <StatusBadge module="approvalRequest" status={s} />,
-    },
-    { title: "Người đề nghị", dataIndex: "requestedByName" },
-    { title: "Ngày gửi", dataIndex: "requestedAt" },
-    {
-      title: "Thao tác",
-      key: "actions",
-      render: (_, r) => {
-        if (r.status !== "pending") {
-          return r.reviewedByName ? (
-            <Tag>
-              {r.status === "approved" ? "Duyệt bởi" : "Từ chối bởi"} {r.reviewedByName}
-            </Tag>
-          ) : (
-            "—"
-          );
-        }
-        if (!canApprove) return <Tag>Chỉ xem</Tag>;
-        return (
-          <Space>
-            <Popconfirm
-              title="Duyệt đề nghị thanh toán này?"
-              okText="Duyệt"
-              cancelText="Hủy"
-              onConfirm={() => {
-                reviewExpense(r.id, "approved", {
-                  id: currentUser.id,
-                  name: currentUser.name,
-                });
-                addNotifications(
-                  [r.requestedById, r.orderId ? getOrder(r.orderId)?.reviewerId : undefined],
-                  expenseReviewedDraft(r, "approved", currentUser.name),
-                  currentUser.id,
-                );
-                message.success("Đã duyệt đề nghị");
-              }}
-            >
-              <Button size="small" type="primary">
-                Duyệt
-              </Button>
-            </Popconfirm>
-            <Popconfirm
-              title="Từ chối đề nghị thanh toán?"
-              okText="Từ chối"
-              cancelText="Hủy"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => {
-                reviewExpense(r.id, "rejected", {
-                  id: currentUser.id,
-                  name: currentUser.name,
-                });
-                addNotifications(
-                  [r.requestedById, r.orderId ? getOrder(r.orderId)?.reviewerId : undefined],
-                  expenseReviewedDraft(r, "rejected", currentUser.name),
-                  currentUser.id,
-                );
-                message.success("Đã từ chối");
-              }}
-            >
-              <Button size="small" danger>
-                Từ chối
-              </Button>
-            </Popconfirm>
-          </Space>
-        );
-      },
-    },
-  ];
 
   return (
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Đề nghị thanh toán" }]}
-        searchPlaceholder="Tìm đề nghị thanh toán…"
+        breadcrumbs={[{ title: t("nav.expenses") }]}
+        searchPlaceholder={t("expense.search")}
         onSearch={(v) => {
           setQuery(v);
           setSelectedRowKeys([]);
         }}
         searchValue={query}
-        primaryAction={{ label: "+ Tạo đề nghị thanh toán", onClick: () => setCreateOpen(true) }}
+        primaryAction={{ label: t("expense.newCta"), onClick: () => setCreateOpen(true) }}
       >
         <Select
           value={statusFilter}
@@ -208,10 +215,10 @@ export default function ExpenseApprovalsPage() {
             setSelectedRowKeys([]);
           }}
           options={[
-            { value: "pending", label: "Chờ duyệt" },
-            { value: "approved", label: "Đã duyệt" },
-            { value: "rejected", label: "Từ chối" },
-            { value: "all", label: "Tất cả" },
+            { value: "pending", label: t("status.approval.pending_review") },
+            { value: "approved", label: t("common.approved") },
+            { value: "rejected", label: t("common.reject") },
+            { value: "all", label: t("common.all") },
           ]}
         />
       </PageHeader>
@@ -226,20 +233,20 @@ export default function ExpenseApprovalsPage() {
         bulkToolbar={
           <BulkActionBar
             count={selectedRowKeys.length}
-            summary={`Tổng đã chọn: ${formatVndDisplay(selectedSum)}`}
+            summary={t("expense.selectedSum", { amount: formatVndDisplay(selectedSum) })}
           />
         }
         emptyDescription={
           query.trim() && expenses.length > 0
-            ? "Không tìm thấy kết quả phù hợp."
+            ? t("common.noResults")
             : statusFilter === "pending"
-              ? "Không có đề nghị đang chờ duyệt."
-              : "Chưa có đề nghị thanh toán."
+              ? t("expense.emptyPending")
+              : t("expense.empty")
         }
         emptyAction={
           query.trim() && expenses.length > 0
             ? undefined
-            : { label: "Tạo đề nghị thanh toán", onClick: () => setCreateOpen(true) }
+            : { label: t("expense.create"), onClick: () => setCreateOpen(true) }
         }
       />
       <PaymentRequestDrawer open={createOpen} onClose={() => setCreateOpen(false)} />

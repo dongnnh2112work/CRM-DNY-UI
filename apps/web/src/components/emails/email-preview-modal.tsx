@@ -3,6 +3,7 @@
 import { Button, Modal, Typography, theme } from "antd";
 import { ds } from "@/lib/design-tokens";
 import { toEmailPreviewHtml } from "@/lib/email-preview";
+import { useT } from "@/lib/use-t";
 
 export function EmailPreviewModal({
   open,
@@ -15,21 +16,22 @@ export function EmailPreviewModal({
   subject?: string;
   body?: string;
 }) {
+  const t = useT();
   const { token } = theme.useToken();
   const html = toEmailPreviewHtml(body ?? "");
 
   return (
     <Modal
-      title="Xem trước email"
+      title={t("email.previewTitle")}
       open={open}
       onCancel={onClose}
-      footer={<Button onClick={onClose}>Đóng</Button>}
+      footer={<Button onClick={onClose}>{t("common.close")}</Button>}
       width={800}
       centered
       destroyOnHidden
     >
       <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-        Tiêu đề
+        {t("email.subject")}
       </Typography.Text>
       <Typography.Paragraph strong style={{ marginTop: 4, marginBottom: 16 }}>
         {subject?.trim() || "—"}
@@ -44,13 +46,13 @@ export function EmailPreviewModal({
       >
         {html ? (
           <iframe
-            title="Xem trước email"
+            title={t("email.previewTitle")}
             sandbox=""
             srcDoc={html}
             style={{ width: "100%", height: 480, border: 0, background: "#fff" }}
           />
         ) : (
-          <div style={{ padding: 24, color: token.colorTextSecondary }}>Chưa có nội dung.</div>
+          <div style={{ padding: 24, color: token.colorTextSecondary }}>{t("email.noContent")}</div>
         )}
       </div>
     </Modal>

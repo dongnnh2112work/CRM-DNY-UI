@@ -4,6 +4,7 @@ import { GoogleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Button, Divider, Form, Input, Typography, theme } from "antd";
 import { useRouter } from "next/navigation";
 import { useUsers } from "@/lib/users-store";
+import { useT } from "@/lib/use-t";
 
 const DEFAULT_LOGIN_USER_ID = "u2";
 
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { token } = theme.useToken();
   const { loginAs } = useUsers();
+  const t = useT();
 
   const enterApp = () => {
     loginAs(DEFAULT_LOGIN_USER_ID);
@@ -42,7 +44,7 @@ export default function LoginPage() {
           <Typography.Title level={3} style={{ margin: 0, fontWeight: 700, letterSpacing: "-0.5px" }}>
             DNY CRM
           </Typography.Title>
-          <Typography.Text type="secondary">Hệ thống quản lý dịch vụ pháp lý</Typography.Text>
+          <Typography.Text type="secondary">{t("auth.tagline")}</Typography.Text>
         </div>
 
         <Button
@@ -57,30 +59,30 @@ export default function LoginPage() {
           icon={<GoogleOutlined />}
           onClick={enterApp}
         >
-          Đăng nhập bằng Google
+          {t("auth.loginGoogle")}
         </Button>
 
         <Divider plain style={{ borderColor: token.colorBorder, color: token.colorTextTertiary }}>
-          hoặc đăng nhập bằng email
+          {t("auth.orEmail")}
         </Divider>
 
         <Form layout="vertical" onFinish={enterApp} requiredMark={false}>
-          <Form.Item name="email" rules={[{ required: true, type: "email", message: "Vui lòng nhập email" }]}>
+          <Form.Item name="email" rules={[{ required: true, type: "email", message: t("auth.emailRequired") }]}>
             <Input
               prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}
-              placeholder="Email"
+              placeholder={t("auth.email")}
               size="large"
             />
           </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: "Vui lòng nhập mật khẩu" }]}>
+          <Form.Item name="password" rules={[{ required: true, message: t("auth.passwordRequired") }]}>
             <Input.Password
               prefix={<LockOutlined style={{ color: token.colorTextTertiary }} />}
-              placeholder="Mật khẩu"
+              placeholder={t("auth.password")}
               size="large"
             />
           </Form.Item>
           <Button type="primary" htmlType="submit" size="large" block>
-            Đăng nhập
+            {t("auth.login")}
           </Button>
         </Form>
       </div>

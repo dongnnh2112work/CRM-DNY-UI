@@ -6,6 +6,7 @@ import { useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { ds } from "@/lib/design-tokens";
 import { tableIndexColumn } from "@/lib/table-index-column";
+import { useT } from "@/lib/use-t";
 
 interface ExcelImportModalProps {
   open: boolean;
@@ -15,6 +16,7 @@ interface ExcelImportModalProps {
 }
 
 export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: ExcelImportModalProps) {
+  const t = useT();
   const [preview, setPreview] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
 
@@ -43,15 +45,15 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
 
   return (
     <Modal
-      title="Nhập từ Excel"
+      title={t("import.title")}
       open={open}
       onCancel={() => { setPreview([]); setColumns([]); onClose(); }}
       width={720}
       footer={
         <Space>
-          <Button onClick={onClose}>Hủy</Button>
+          <Button onClick={onClose}>{t("common.cancel")}</Button>
           <Button type="primary" disabled={preview.length === 0} onClick={handleConfirm}>
-            Nhập {preview.length} dòng
+            {t("import.rows", { count: preview.length })}
           </Button>
         </Space>
       }
@@ -59,17 +61,17 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
       {preview.length === 0 ? (
         <Upload.Dragger beforeUpload={handleFile} accept=".xlsx,.xls,.csv" showUploadList={false}>
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">Nhấn hoặc kéo thả file .xlsx / .csv vào đây</p>
+          <p className="ant-upload-text">{t("import.drop")}</p>
           {expectedColumns && (
             <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-              Cột mong đợi: {expectedColumns.join(", ")}
+              {t("import.expected", { cols: expectedColumns.join(", ") })}
             </Typography.Text>
           )}
         </Upload.Dragger>
       ) : (
         <>
           <Typography.Text type="secondary">
-            Xem trước ({preview.length} dòng đầu):
+            {t("import.preview", { count: preview.length })}
           </Typography.Text>
           <Table
             rowKey={(_, i) => String(i)}

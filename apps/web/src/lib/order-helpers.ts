@@ -1,4 +1,5 @@
 import type { Order, OrderAttachment } from "@/lib/types";
+import { tt } from "@/lib/i18n";
 
 export const DEFAULT_LICENSE_WARN_MONTHS = 2;
 
@@ -83,7 +84,7 @@ export function getOrderLicenseExpirySummary(
     .sort();
 
   if (dates.length === 0) {
-    return { tone: "none", label: "Chưa có GP" };
+    return { tone: "none", label: tt("license.none") };
   }
 
   const earliest = dates[0];
@@ -91,20 +92,20 @@ export function getOrderLicenseExpirySummary(
   today.setHours(0, 0, 0, 0);
   const exp = new Date(`${earliest}T00:00:00`);
   if (Number.isNaN(exp.getTime())) {
-    return { tone: "none", label: "Chưa có GP" };
+    return { tone: "none", label: tt("license.none") };
   }
 
   if (exp.getTime() < today.getTime()) {
-    return { tone: "expired", label: "Hết hạn", earliestExpiresAt: earliest };
+    return { tone: "expired", label: tt("license.expired"), earliestExpiresAt: earliest };
   }
 
   const warnUntil = new Date(today);
   warnUntil.setMonth(warnUntil.getMonth() + warnMonths);
   if (exp.getTime() <= warnUntil.getTime()) {
-    return { tone: "expiring", label: "Sắp hết hạn", earliestExpiresAt: earliest };
+    return { tone: "expiring", label: tt("license.expiring"), earliestExpiresAt: earliest };
   }
 
-  return { tone: "ok", label: "Còn hạn", earliestExpiresAt: earliest };
+  return { tone: "ok", label: tt("license.ok"), earliestExpiresAt: earliest };
 }
 
 export function licenseExpiryTagColor(tone: LicenseExpiryTone): string {

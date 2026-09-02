@@ -1,4 +1,5 @@
 import type { TableColumnsType } from "antd";
+import { tt } from "@/lib/i18n";
 
 export const INDEX_COLUMN_KEY = "__stt";
 
@@ -15,7 +16,7 @@ export function tableColumnKey<T>(col: TableColumn<T>): string {
 /** Cột số thứ tự — không đưa vào Quản lý cột. */
 export function tableIndexColumn<T extends object>(offset = 0): TableColumn<T> {
   return {
-    title: "STT",
+    title: tt("common.stt"),
     key: INDEX_COLUMN_KEY,
     width: 64,
     align: "center",

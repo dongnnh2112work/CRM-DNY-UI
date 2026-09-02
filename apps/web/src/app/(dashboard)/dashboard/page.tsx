@@ -8,6 +8,7 @@ import {
 } from "@ant-design/icons";
 import { Card, Col, Row, Space, Typography, theme } from "antd";
 import Link from "next/link";
+import { useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -30,6 +31,7 @@ import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
+import { useT } from "@/lib/use-t";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
 
 const d = MOCK_DASHBOARD;
@@ -40,17 +42,6 @@ function formatVndAxisTick(value: number) {
   if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
   return String(value);
 }
-
-function formatMonth(month: string) {
-  const [, m] = month.split("-");
-  const n = Number(m);
-  return Number.isFinite(n) ? `Thg ${n}` : month;
-}
-
-const revenueData = d.revenue.byMonth.map((item) => ({
-  ...item,
-  label: formatMonth(item.month),
-}));
 
 /** Đồng bộ với cấu hình giai đoạn trên Quản lý đơn hàng */
 function buildOrderStatusChart(
@@ -78,6 +69,7 @@ function buildOrderStatusChart(
 }
 
 export default function DashboardPage() {
+  const t = useT();
   const { token } = theme.useToken();
   const { orders } = useOrders();
   const { payments } = usePayments();
@@ -87,28 +79,41 @@ export default function DashboardPage() {
   const orderStatusData = buildOrderStatusChart(orders, stageOptions);
   const totalOrders = orders.length;
 
+  const revenueData = useMemo(
+    () =>
+      d.revenue.byMonth.map((item) => {
+        const [, m] = item.month.split("-");
+        const n = Number(m);
+        return {
+          ...item,
+          label: Number.isFinite(n) ? t("common.monthShort", { n }) : item.month,
+        };
+      }),
+    [t],
+  );
+
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Tổng quan" }]} />
+      <PageHeader breadcrumbs={[{ title: t("nav.dashboard") }]} />
       <div style={{ padding: 16 }}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Doanh thu (tháng này)"
+              title={t("dash.revenueMonth")}
               value={d.revenue.thisMonth}
               prefix={<DollarOutlined />}
               suffix="₫"
             />
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <StatCard title="Tổng đơn hàng" value={totalOrders} prefix={<ProjectOutlined />} />
+            <StatCard title={t("dash.totalOrders")} value={totalOrders} prefix={<ProjectOutlined />} />
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <StatCard title="Tổng khách hàng" value={d.customers.total} prefix={<TeamOutlined />} />
+            <StatCard title={t("dash.totalCustomers")} value={d.customers.total} prefix={<TeamOutlined />} />
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Hoa hồng đã trả"
+              title={t("dash.commissionPaid")}
               value={d.commission.totalPaid}
               prefix={<TrophyOutlined />}
               suffix="₫"
@@ -118,7 +123,7 @@ export default function DashboardPage() {
 
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={14}>
-            <Card title="Doanh thu theo tháng" size="small">
+            <Card title={t("dash.revenueByMonth")} size="small">
               <div style={{ width: "100%", height: 280 }}>
                 <ResponsiveContainer>
                   <BarChart data={revenueData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -127,8 +132,8 @@ export default function DashboardPage() {
                     <YAxis tickFormatter={formatVndAxisTick} tickLine={false} width={48} />
                     <Tooltip
                       cursor={false}
-                      formatter={(value) => [formatVndDisplay(Number(value)), "Doanh thu"]}
-                      labelFormatter={(label) => `Tháng: ${label}`}
+                      formatter={(value) => [formatVndDisplay(Number(value)), t("dash.revenue")]}
+                      labelFormatter={(label) => t("common.monthLabel", { label: String(label) })}
                       contentStyle={{
                         background: token.colorBgElevated,
                         border: `1px solid ${token.colorBorder}`,
@@ -147,7 +152,7 @@ export default function DashboardPage() {
           </Col>
 
           <Col xs={24} lg={10}>
-            <Card title="Đơn hàng theo trạng thái" size="small">
+            <Card title={t("dash.ordersByStatus")} size="small">
               <div style={{ width: "100%", height: 280 }}>
                 <ResponsiveContainer>
                   <PieChart>
@@ -184,7 +189,7 @@ export default function DashboardPage() {
                             }}
                           >
                             <span style={{ color: item.payload?.fill ?? item.color }}>
-                              {status}: {count} đơn
+                              {t("dash.orderCount", { status, count: String(count) })}
                             </span>
                           </div>
                         );
@@ -200,7 +205,11 @@ export default function DashboardPage() {
 
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={12}>
-            <Card title="Đơn hàng gần đây" size="small" extra={<Link href="/orders">Xem tất cả</Link>}>
+            <Card
+              title={t("dash.recentOrders")}
+              size="small"
+              extra={<Link href="/orders">{t("common.viewAll")}</Link>}
+            >
               <Space direction="vertical" style={{ width: "100%" }} size={8}>
                 {recentOrders.map((o) => (
                   <div
@@ -225,7 +234,11 @@ export default function DashboardPage() {
             </Card>
           </Col>
           <Col xs={24} lg={12}>
-            <Card title="Thanh toán sắp tới" size="small" extra={<Link href="/payments">Xem tất cả</Link>}>
+            <Card
+              title={t("dash.upcomingPayments")}
+              size="small"
+              extra={<Link href="/payments">{t("common.viewAll")}</Link>}
+            >
               <Space direction="vertical" style={{ width: "100%" }} size={8}>
                 {upcomingPayments.map((p) => (
                   <div
@@ -240,7 +253,7 @@ export default function DashboardPage() {
                     <div>
                       <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
                       <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
-                        {p.customerName} · Còn lại: {formatVndDisplay(p.remaining)}
+                        {p.customerName} · {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
                       </div>
                     </div>
                     <StatusBadge module="payment" status={p.status} />

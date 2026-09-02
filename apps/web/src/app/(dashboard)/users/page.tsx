@@ -32,6 +32,7 @@ import {
 } from "@/lib/types";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
+import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 
 function compareText(a: string, b: string) {
@@ -46,6 +47,7 @@ function formatDob(iso?: string) {
 }
 
 export default function UsersPage() {
+  const t = useT();
   const { message } = App.useApp();
   const {
     users,
@@ -127,7 +129,7 @@ export default function UsersPage() {
       render: (_, r) => <Avatar size="small" src={r.avatar} icon={<UserOutlined />} />,
     },
     {
-      title: "Họ tên",
+      title: t("common.fullName"),
       dataIndex: "name",
       sorter: (a, b) => compareText(a.name, b.name),
       render: (name: string, record) => (
@@ -141,24 +143,24 @@ export default function UsersPage() {
       ),
     },
     {
-      title: "SĐT",
+      title: t("common.phone"),
       dataIndex: "phone",
       sorter: (a, b) => compareText(a.phone ?? "", b.phone ?? ""),
       render: (v?: string) => v || "—",
     },
     {
-      title: "Email",
+      title: t("common.email"),
       dataIndex: "email",
       sorter: (a, b) => compareText(a.email, b.email),
     },
     {
-      title: "Ngày sinh",
+      title: t("user.dob"),
       dataIndex: "dateOfBirth",
       sorter: (a, b) => compareText(a.dateOfBirth ?? "", b.dateOfBirth ?? ""),
       render: (v?: string) => formatDob(v),
     },
     {
-      title: "Địa chỉ",
+      title: t("common.address"),
       dataIndex: "address",
       ellipsis: true,
       render: (v?: string) =>
@@ -171,7 +173,7 @@ export default function UsersPage() {
         ),
     },
     {
-      title: "Vai trò",
+      title: t("common.role"),
       dataIndex: "role",
       sorter: (a, b) => compareText(getRoleLabel(a.role), getRoleLabel(b.role)),
       render: (r: UserRole, record) => (
@@ -180,7 +182,7 @@ export default function UsersPage() {
             <Tag color="blue">{getRoleLabel(r)}</Tag>
           </Button>
           {record.useCustomPermissions ? (
-            <Tooltip title="Đang dùng phân quyền tùy chỉnh (ghi đè vai trò)">
+            <Tooltip title={t("user.customPermHint")}>
               <Tag color="orange">Custom</Tag>
             </Tooltip>
           ) : null}
@@ -188,7 +190,7 @@ export default function UsersPage() {
       ),
     },
     {
-      title: "Trạng thái",
+      title: t("common.status"),
       dataIndex: "status",
       sorter: (a, b) => compareText(a.status, b.status),
       render: (s: string) => <StatusBadge module="user" status={s} />,
@@ -199,11 +201,11 @@ export default function UsersPage() {
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Quản lý người dùng" }]}
-        searchPlaceholder="Tìm trong bảng…"
+        breadcrumbs={[{ title: t("nav.users") }]}
+        searchPlaceholder={t("common.searchTable")}
         onSearch={setQuery}
         searchValue={query}
-        primaryAction={{ label: "+ Người dùng mới", onClick: openCreate }}
+        primaryAction={{ label: t("user.newCta"), onClick: openCreate }}
       />
       <DataTable<AppUser>
         rowKey="id"
@@ -211,19 +213,17 @@ export default function UsersPage() {
         dataSource={filtered}
         columnManagerKey="users"
         emptyDescription={
-          query.trim() && users.length > 0
-            ? "Không tìm thấy kết quả phù hợp."
-            : "Chưa có người dùng nào."
+          query.trim() && users.length > 0 ? t("common.noResults") : t("user.empty")
         }
         emptyAction={
           query.trim() && users.length > 0
             ? undefined
-            : { label: "Tạo người dùng", onClick: openCreate }
+            : { label: t("common.createUser"), onClick: openCreate }
         }
       />
 
       <Modal
-        title={editUser ? editUser.name : "Người dùng mới"}
+        title={editUser ? editUser.name : t("user.newTitle")}
         open={profileOpen}
         onCancel={closeProfile}
         footer={null}
@@ -233,9 +233,7 @@ export default function UsersPage() {
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}>
-          {editUser
-            ? "Xem và chỉnh sửa thông tin. Có thể bật phân quyền tùy chỉnh cho case đặc biệt."
-            : "Điền thông tin để tạo người dùng mới."}
+          {editUser ? t("user.editHint") : t("user.createHint")}
         </Typography.Paragraph>
         <UserProfileForm
           key={editUser?.id ?? "new"}
@@ -255,7 +253,7 @@ export default function UsersPage() {
           showCustomPermissions={Boolean(editUser)}
           roleOptions={roles}
           rolePermissionsLookup={rolePermissions}
-          submitLabel={editUser ? "Lưu" : "Tạo người dùng"}
+          submitLabel={editUser ? t("common.save") : t("common.createUser")}
           loading={saving}
           onCancel={closeProfile}
           onSubmit={async (values) => {
@@ -276,7 +274,7 @@ export default function UsersPage() {
                     ? values.customPermissions
                     : undefined,
                 });
-                message.success("Đã cập nhật người dùng");
+                message.success(t("user.updated"));
               } else {
                 createUser({
                   name: values.name,
@@ -289,7 +287,7 @@ export default function UsersPage() {
                   status: "active",
                   authMethod: "email",
                 });
-                message.success("Đã tạo người dùng");
+                message.success(t("user.created"));
               }
               closeProfile();
             } finally {
@@ -300,20 +298,20 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        title="Phân quyền theo vai trò"
+        title={t("user.rolePerms")}
         open={!!permRole}
         onCancel={() => setPermRole(null)}
         width={640}
         centered
-        okText="Lưu ma trận"
-        cancelText="Hủy"
+        okText={t("user.saveMatrix")}
+        cancelText={t("common.cancel")}
         confirmLoading={savingPerms}
         onOk={() => {
           if (!permRole || !draftPerms) return;
           setSavingPerms(true);
           try {
             updateRolePermissions(permRole, draftPerms);
-            message.success(`Đã lưu phân quyền ${getRoleLabel(permRole)}`);
+            message.success(t("user.savedPerms", { role: getRoleLabel(permRole) }));
             setPermRole(null);
           } finally {
             setSavingPerms(false);
@@ -321,8 +319,7 @@ export default function UsersPage() {
         }}
       >
         <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
-          Chọn / thêm vai trò, rồi chỉnh <strong>Xem</strong> và <strong>Sửa</strong> theo từng trang.
-          Bật Sửa sẽ tự bật Xem.
+          {t("user.rolePermsHint")}
         </Typography.Paragraph>
 
         <Space wrap style={{ width: "100%", marginBottom: 12 }} align="start">
@@ -331,16 +328,16 @@ export default function UsersPage() {
             value={permRole ?? undefined}
             options={roles.map((r) => ({
               value: r.key,
-              label: r.builtin ? r.label : `${r.label} (tùy chỉnh)`,
+              label: r.builtin ? r.label : `${r.label} ${t("user.customSuffix")}`,
             }))}
             onChange={(key) => openRolePerms(key)}
           />
           {selectedRoleDef && !selectedRoleDef.builtin ? (
             <Popconfirm
-              title={`Xóa vai trò “${selectedRoleDef.label}”?`}
-              description="Chỉ xóa được khi không còn user nào dùng role này."
-              okText="Xóa"
-              cancelText="Hủy"
+              title={t("user.deleteRoleTitle", { label: selectedRoleDef.label })}
+              description={t("user.deleteRoleBody")}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
               onConfirm={() => {
                 const res = deleteRole(selectedRoleDef.key);
@@ -348,12 +345,12 @@ export default function UsersPage() {
                   message.warning(res.reason);
                   return;
                 }
-                message.success("Đã xóa vai trò");
+                message.success(t("user.roleDeleted"));
                 setPermRole("staff");
               }}
             >
               <Button danger size="small">
-                Xóa vai trò
+                {t("user.deleteRole")}
               </Button>
             </Popconfirm>
           ) : null}
@@ -361,13 +358,13 @@ export default function UsersPage() {
 
         <Space.Compact style={{ width: "100%", marginBottom: 16 }}>
           <Input
-            placeholder="Tên vai trò mới (vd: Sales Lead)"
+            placeholder={t("user.newRolePlaceholder")}
             value={newRoleLabel}
             onChange={(e) => setNewRoleLabel(e.target.value)}
             onPressEnter={() => {
               if (!newRoleLabel.trim()) return;
               const created = createRole(newRoleLabel, permRole ?? "staff");
-              message.success(`Đã tạo vai trò ${created.label}`);
+              message.success(t("user.roleCreated", { label: created.label }));
               setNewRoleLabel("");
               openRolePerms(created.key);
             }}
@@ -377,16 +374,16 @@ export default function UsersPage() {
             icon={<PlusOutlined />}
             onClick={() => {
               if (!newRoleLabel.trim()) {
-                message.warning("Nhập tên vai trò");
+                message.warning(t("user.enterRoleName"));
                 return;
               }
               const created = createRole(newRoleLabel, permRole ?? "staff");
-              message.success(`Đã tạo vai trò ${created.label}`);
+              message.success(t("user.roleCreated", { label: created.label }));
               setNewRoleLabel("");
               openRolePerms(created.key);
             }}
           >
-            Thêm vai trò
+            {t("user.addRole")}
           </Button>
         </Space.Compact>
 

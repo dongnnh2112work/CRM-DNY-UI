@@ -10,6 +10,7 @@ import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import type { Order } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
+import { useT } from "@/lib/use-t";
 
 type FormValues = {
   project?: string;
@@ -35,6 +36,7 @@ export function PaymentRequestDrawer({
   /** Khi tạo từ hồ sơ — không chọn dự án */
   lockedOrder?: Pick<Order, "id" | "orderNumber" | "customerName" | "reviewerId">;
 }) {
+  const t = useT();
   const { message, modal } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const { currentUser } = useUsers();
@@ -71,16 +73,16 @@ export function PaymentRequestDrawer({
 
   return (
     <Drawer
-      title="Tạo đề nghị thanh toán"
+      title={t("expense.create")}
       open={open}
       onClose={() => confirmDiscardIfDirty(modal, form, close)}
       width={480}
       destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button onClick={() => confirmDiscardIfDirty(modal, form, close)}>Hủy</Button>
+          <Button onClick={() => confirmDiscardIfDirty(modal, form, close)}>{t("common.cancel")}</Button>
           <Button type="primary" onClick={() => form.submit()}>
-            Gửi đề nghị
+            {t("expense.sendRequest")}
           </Button>
         </div>
       }
@@ -90,7 +92,7 @@ export function PaymentRequestDrawer({
         layout="vertical"
         onFinish={(values) => {
           if (!currentUser) {
-            message.error("Chưa đăng nhập");
+            message.error(t("expense.notLoggedIn"));
             return;
           }
           let orderId: string | undefined;
@@ -106,7 +108,7 @@ export function PaymentRequestDrawer({
           } else {
             const typed = (values.project ?? "").trim();
             if (!typed) {
-              message.error("Nhập hoặc chọn dự án");
+              message.error(t("expense.needProject"));
               return;
             }
             const matched = orders.find(
@@ -142,27 +144,27 @@ export function PaymentRequestDrawer({
             [currentUser.id, reviewerId],
             expensePendingDraft(created, currentUser.name),
           );
-          message.success("Đã gửi đề nghị thanh toán — chờ duyệt");
+          message.success(t("expense.sent"));
           close();
         }}
       >
-        <Form.Item label="Người đề nghị">
+        <Form.Item label={t("common.requester")}>
           <Input value={currentUser?.name ?? ""} disabled />
         </Form.Item>
         {lockedOrder ? (
-          <Form.Item label="Dự án">
+          <Form.Item label={t("common.project")}>
             <Input value={orderProjectLabel(lockedOrder)} disabled />
           </Form.Item>
         ) : (
           <Form.Item
             name="project"
-            label="Dự án"
-            rules={[{ required: true, message: "Chọn hồ sơ hoặc nhập dự án" }]}
-            extra="Chọn hồ sơ có sẵn, hoặc nhập dự án khác (VD: Mua văn phòng phẩm)."
+            label={t("common.project")}
+            rules={[{ required: true, message: t("expense.selectProject") }]}
+            extra={t("expense.projectExtra")}
           >
             <AutoComplete
               options={projectOptions}
-              placeholder="Hồ sơ hoặc dự án khác…"
+              placeholder={t("expense.projectPlaceholder")}
               filterOption={(input, option) =>
                 String(option?.value ?? "")
                   .toLowerCase()
@@ -173,28 +175,40 @@ export function PaymentRequestDrawer({
         )}
         <Form.Item
           name="payeeName"
-          label="Thanh toán cho"
-          rules={[{ required: true, message: "Nhập người / đơn vị nhận" }]}
+          label={t("common.payee")}
+          rules={[{ required: true, message: t("expense.enterPayee") }]}
         >
-          <Input placeholder="Tên người hoặc đơn vị nhận tiền" />
+          <Input placeholder={t("expense.payeePlaceholder")} />
         </Form.Item>
         <Form.Item
           name="bankAccount"
-          label="Số tài khoản"
-          rules={[{ required: true, message: "Nhập số tài khoản" }]}
+          label={t("expense.accountNo")}
+          rules={[{ required: true, message: t("expense.enterAccount") }]}
         >
-          <Input placeholder="Số tài khoản nhận" />
+          <Input placeholder={t("expense.accountPlaceholder")} />
         </Form.Item>
-        <Form.Item name="bankName" label="Ngân hàng" rules={[{ required: true, message: "Nhập ngân hàng" }]}>
-          <Input placeholder="VD: Vietcombank, Techcombank…" />
+        <Form.Item
+          name="bankName"
+          label={t("common.bank")}
+          rules={[{ required: true, message: t("expense.enterBank") }]}
+        >
+          <Input placeholder={t("expense.bankPlaceholder")} />
         </Form.Item>
-        <Form.Item name="title" label="Nội dung" rules={[{ required: true, message: "Nhập nội dung" }]}>
-          <Input placeholder="Nội dung thanh toán" />
+        <Form.Item
+          name="title"
+          label={t("common.content")}
+          rules={[{ required: true, message: t("common.enterContent") }]}
+        >
+          <Input placeholder={t("expense.contentPlaceholder")} />
         </Form.Item>
-        <Form.Item name="amount" label="Số tiền (VND)" rules={[{ required: true, message: "Nhập số tiền" }]}>
+        <Form.Item
+          name="amount"
+          label={t("common.amount")}
+          rules={[{ required: true, message: t("common.enterAmount") }]}
+        >
           <InputNumber {...vndInputProps} />
         </Form.Item>
-        <Form.Item name="note" label="Ghi chú">
+        <Form.Item name="note" label={t("common.note")}>
           <Input.TextArea rows={2} />
         </Form.Item>
       </Form>

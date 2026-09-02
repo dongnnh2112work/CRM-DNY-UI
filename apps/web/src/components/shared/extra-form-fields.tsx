@@ -2,20 +2,25 @@
 
 import { Checkbox, DatePicker, Form, Input, InputNumber, Select } from "antd";
 import dayjs from "dayjs";
+import { translateSeedFieldLabel } from "@/lib/i18n";
 import type { FieldDefinition } from "@/lib/types";
 import { vndInputProps } from "@/lib/format-vnd";
+import { useT } from "@/lib/use-t";
 
 export function ExtraFormFields({ fields }: { fields: FieldDefinition[] }) {
+  const t = useT();
   if (fields.length === 0) return null;
 
   return (
     <>
-      {fields.map((def) => (
+      {fields.map((def) => {
+        const label = translateSeedFieldLabel(def.label);
+        return (
         <Form.Item
           key={def.key}
           name={def.key}
-          label={def.label}
-          rules={def.required ? [{ required: true, message: `Nhập ${def.label}` }] : undefined}
+          label={label}
+          rules={def.required ? [{ required: true, message: t("common.enterField", { label }) }] : undefined}
           valuePropName={def.type === "checkbox" ? "checked" : "value"}
           {...(def.type === "date"
             ? {
@@ -41,7 +46,8 @@ export function ExtraFormFields({ fields }: { fields: FieldDefinition[] }) {
             <Input.TextArea rows={2} />
           )}
         </Form.Item>
-      ))}
+        );
+      })}
     </>
   );
 }

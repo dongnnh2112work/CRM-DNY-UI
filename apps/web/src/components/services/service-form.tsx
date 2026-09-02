@@ -9,6 +9,7 @@ import { vndInputProps } from "@/lib/format-vnd";
 import { DEFAULT_LICENSE_WARN_MONTHS, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import { getServiceFormExtraFields, splitServiceFormValues } from "@/lib/service-fields";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 const CATEGORIES = ["Work Permit", "Visa", "License", "Legal", "Other"];
 
@@ -17,7 +18,7 @@ export function ServiceForm({
   fieldDefs,
   onSubmit,
   onCancel,
-  submitLabel = "Lưu",
+  submitLabel,
   loading = false,
 }: {
   service?: Service | null;
@@ -36,9 +37,11 @@ export function ServiceForm({
   submitLabel?: string;
   loading?: boolean;
 }) {
+  const t = useT();
   const { modal } = App.useApp();
   const [form] = Form.useForm();
   const extraFields = getServiceFormExtraFields(fieldDefs);
+  const resolvedSubmitLabel = submitLabel ?? t("common.save");
 
   useEffect(() => {
     if (service) {
@@ -67,39 +70,47 @@ export function ServiceForm({
         await onSubmit({ ...core, customFields });
       }}
     >
-      <Form.Item name="name" label="Tên dịch vụ" rules={[{ required: true, message: "Nhập tên" }]}>
+      <Form.Item name="name" label={t("service.name")} rules={[{ required: true, message: t("common.enterName") }]}>
         <Input />
       </Form.Item>
-      <Form.Item name="code" label="Mã" rules={[{ required: true, message: "Nhập mã" }]}>
+      <Form.Item name="code" label={t("common.code")} rules={[{ required: true, message: t("common.enterCode") }]}>
         <Input style={{ fontFamily: "monospace" }} />
       </Form.Item>
-      <Form.Item name="category" label="Danh mục" rules={[{ required: true, message: "Chọn danh mục" }]}>
+      <Form.Item
+        name="category"
+        label={t("common.category")}
+        rules={[{ required: true, message: t("common.selectCategory") }]}
+      >
         <Select options={CATEGORIES.map((c) => ({ value: c, label: c }))} />
       </Form.Item>
-      <Form.Item name="unitPrice" label="Đơn giá (VND)" rules={[{ required: true, message: "Nhập đơn giá" }]}>
+      <Form.Item
+        name="unitPrice"
+        label={t("common.unitPriceVnd")}
+        rules={[{ required: true, message: t("common.enterUnitPrice") }]}
+      >
         <InputNumber {...vndInputProps} />
       </Form.Item>
       <Form.Item
         name="processingDays"
-        label="Thời gian xử lý (ngày)"
-        rules={[{ required: true, message: "Nhập số ngày" }]}
+        label={t("common.processingDays")}
+        rules={[{ required: true, message: t("common.enterDays") }]}
       >
         <InputNumber style={{ width: "100%" }} min={1} />
       </Form.Item>
       <Form.Item
         name="licenseExpiryWarnMonths"
-        label="Cảnh báo giấy phép trước (tháng)"
-        rules={[{ required: true, message: "Nhập số tháng" }]}
-        extra="Tag “Sắp hết hạn” và thông báo khi GP của đơn dùng dịch vụ này còn trong khoảng này."
+        label={t("service.licenseWarnMonths")}
+        rules={[{ required: true, message: t("service.enterMonths") }]}
+        extra={t("service.licenseWarnExtra")}
       >
         <InputNumber style={{ width: "100%" }} min={1} max={6} />
       </Form.Item>
       {service ? (
-        <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>
+        <Form.Item name="status" label={t("common.status")} rules={[{ required: true }]}>
           <Select
             options={[
-              { value: "active", label: "Hoạt động" },
-              { value: "inactive", label: "Ngừng" },
+              { value: "active", label: t("status.service.active") },
+              { value: "inactive", label: t("status.service.inactive") },
             ]}
           />
         </Form.Item>
@@ -109,7 +120,7 @@ export function ServiceForm({
         <>
           <Divider style={{ margin: "8px 0 16px" }}>
             <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
-              Trường tùy chỉnh
+              {t("service.customFields")}
             </Typography.Text>
           </Divider>
           <ServiceExtraFormFields fields={extraFields} />
@@ -119,11 +130,11 @@ export function ServiceForm({
       <Space>
         {onCancel ? (
           <Button onClick={() => confirmDiscardIfDirty(modal, form, onCancel)} disabled={loading}>
-            Hủy
+            {t("common.cancel")}
           </Button>
         ) : null}
         <Button type="primary" htmlType="submit" loading={loading} disabled={loading}>
-          {submitLabel}
+          {resolvedSubmitLabel}
         </Button>
       </Space>
     </Form>

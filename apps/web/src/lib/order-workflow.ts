@@ -1,4 +1,5 @@
 import type { AppUser, BuiltInUserRole, Order, OrderStage } from "./types";
+import { tt } from "@/lib/i18n";
 
 /**
  * Toggle later when business rules change.
@@ -56,7 +57,7 @@ export function canMoveToCompleted(order: Pick<Order, "licenseAttachments">): bo
 }
 
 export function getLicenseBlockMessage(): string {
-  return "Chuyển sang Hoàn thành bắt buộc tải lên file giấy phép / văn bản được cấp phép ở ô upload riêng.";
+  return tt("workflow.completeNeedsLicense");
 }
 
 export function getAttachmentType(filename: string): "pdf" | "word" | "excel" | "other" {

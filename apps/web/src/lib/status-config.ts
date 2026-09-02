@@ -3,6 +3,8 @@
  * Rule tones: success | warning | danger(error) | info(processing) | neutral(default)
  */
 
+import { translateStatusLabel } from "@/lib/i18n";
+
 export type StatusTone = "success" | "warning" | "error" | "processing" | "default";
 
 export type StatusModule =
@@ -88,12 +90,16 @@ export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
 };
 
 export function getStatusMeta(module: StatusModule, status: string): StatusMeta {
-  return STATUS_CONFIG[module][status] ?? { label: status, color: "default" };
+  const fallback = STATUS_CONFIG[module][status];
+  return {
+    label: translateStatusLabel(module, status, fallback?.label),
+    color: fallback?.color ?? "default",
+  };
 }
 
 export function getStatusOptions(module: StatusModule): { value: string; label: string }[] {
   return Object.entries(STATUS_CONFIG[module]).map(([value, meta]) => ({
     value,
-    label: meta.label,
+    label: translateStatusLabel(module, value, meta.label),
   }));
 }

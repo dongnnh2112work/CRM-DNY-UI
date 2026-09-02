@@ -2,6 +2,8 @@
 
 import { Checkbox, Table } from "antd";
 import { SYSTEM_PAGES, type PageAccess, type RolePagePermissions, type SystemPageKey } from "@/lib/types";
+import { PAGE_NAV_KEY } from "@/lib/i18n";
+import { useT } from "@/lib/use-t";
 
 /** Editable View/Edit matrix for a role or per-user override. */
 export function PermissionMatrix({
@@ -13,6 +15,7 @@ export function PermissionMatrix({
   onChange: (next: RolePagePermissions) => void;
   size?: "small" | "middle";
 }) {
+  const t = useT();
   const setAccess = (page: SystemPageKey, field: keyof PageAccess, checked: boolean) => {
     const current = { ...value[page] };
     if (field === "edit") {
@@ -31,9 +34,9 @@ export function PermissionMatrix({
       size={size}
       pagination={false}
       columns={[
-        { title: "Trang", dataIndex: "label", key: "label" },
+        { title: t("perm.page"), dataIndex: "label", key: "label" },
         {
-          title: "Xem",
+          title: t("perm.view"),
           key: "view",
           width: 88,
           align: "center",
@@ -45,7 +48,7 @@ export function PermissionMatrix({
           ),
         },
         {
-          title: "Sửa",
+          title: t("perm.edit"),
           key: "edit",
           width: 88,
           align: "center",
@@ -57,7 +60,10 @@ export function PermissionMatrix({
           ),
         },
       ]}
-      dataSource={SYSTEM_PAGES.map((p) => ({ key: p.key, label: p.label }))}
+      dataSource={SYSTEM_PAGES.map((p) => ({
+        key: p.key,
+        label: t(PAGE_NAV_KEY[p.key] ?? "nav.config"),
+      }))}
     />
   );
 }

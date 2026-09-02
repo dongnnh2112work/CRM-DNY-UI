@@ -2,6 +2,7 @@
 
 import { UploadOutlined, UserOutlined } from "@ant-design/icons";
 import { Avatar, Button, Space, Upload } from "antd";
+import { useT } from "@/lib/use-t";
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -21,6 +22,8 @@ export function ProfileAvatarUpload({
   size?: number;
   onChange: (next: string | undefined) => void;
 }) {
+  const t = useT();
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
       <Avatar size={size} src={avatar} icon={<UserOutlined />} />
@@ -35,7 +38,7 @@ export function ProfileAvatarUpload({
           }}
         >
           <Button icon={<UploadOutlined />} size="small">
-            Tải ảnh đại diện
+            {t("profile.uploadAvatar")}
           </Button>
         </Upload>
         {avatar ? (
@@ -46,7 +49,7 @@ export function ProfileAvatarUpload({
             style={{ padding: 0 }}
             onClick={() => onChange(undefined)}
           >
-            Xóa ảnh
+            {t("profile.removeAvatar")}
           </Button>
         ) : null}
       </Space>

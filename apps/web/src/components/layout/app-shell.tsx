@@ -23,9 +23,10 @@ import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space,
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useAppReminderConfig } from "@/lib/app-config-store";
 import { ds } from "@/lib/design-tokens";
 import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
-import { useAppReminderConfig } from "@/lib/app-config-store";
+import { useT } from "@/lib/use-t";
 import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
@@ -35,33 +36,13 @@ import type { AppNotification } from "@/lib/types";
 
 const { Header, Sider, Content } = Layout;
 
-const MENU_ITEMS = [
-  { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">Tổng quan</Link> },
-  { type: "divider" as const },
-  { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">Quản lý đơn hàng</Link> },
-  { key: "/customers", icon: <TeamOutlined />, label: <Link href="/customers">Quản lý khách hàng</Link> },
-  { type: "divider" as const },
-  { key: "/payments", icon: <DollarOutlined />, label: <Link href="/payments">Quản lý thanh toán</Link> },
-  {
-    key: "/expense-approvals",
-    icon: <AccountBookOutlined />,
-    label: <Link href="/expense-approvals">Đề nghị thanh toán</Link>,
-  },
-  { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">Quản lý VAT</Link> },
-  { type: "divider" as const },
-  { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">Quản lý dịch vụ</Link> },
-  { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">Quản lý email</Link> },
-  { type: "divider" as const },
-  { key: "/users", icon: <UserOutlined />, label: <Link href="/users">Quản lý người dùng</Link> },
-  { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">Cấu hình</Link> },
-];
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { message } = App.useApp();
   const { token } = theme.useToken();
   const { theme: appTheme, setTheme } = useAppConfig();
+  const t = useT();
   const { currentUser, logout, getById: getUser } = useUsers();
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
@@ -92,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           recipientCount: 1,
           status: "sent",
           sentAt: new Date().toISOString().slice(0, 10),
-          body: `<p>${n.body}</p><p><a href="${n.href ?? "#"}">Xem chi tiết</a></p>`,
+          body: `<p>${n.body}</p><p><a href="${n.href ?? "#"}">${t("shell.viewDetails")}</a></p>`,
         });
       },
     });
@@ -106,16 +87,41 @@ export function AppShell({ children }: { children: ReactNode }) {
     scanOrderAlerts,
     addEmail,
     getUser,
+    t,
   ]);
 
+  const menuItems = useMemo(
+    () => [
+      { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">{t("nav.dashboard")}</Link> },
+      { type: "divider" as const },
+      { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
+      { key: "/customers", icon: <TeamOutlined />, label: <Link href="/customers">{t("nav.customers")}</Link> },
+      { type: "divider" as const },
+      { key: "/payments", icon: <DollarOutlined />, label: <Link href="/payments">{t("nav.payments")}</Link> },
+      {
+        key: "/expense-approvals",
+        icon: <AccountBookOutlined />,
+        label: <Link href="/expense-approvals">{t("nav.expenses")}</Link>,
+      },
+      { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">{t("nav.vat")}</Link> },
+      { type: "divider" as const },
+      { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">{t("nav.services")}</Link> },
+      { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">{t("nav.emails")}</Link> },
+      { type: "divider" as const },
+      { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.users")}</Link> },
+      { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> },
+    ],
+    [t],
+  );
+
   const selectedKey = useMemo(() => {
-    const keys = MENU_ITEMS.filter((i) => "key" in i).map((i) => (i as { key: string }).key);
+    const keys = menuItems.filter((i) => "key" in i).map((i) => (i as { key: string }).key);
     return (
       keys
         .filter((k) => pathname === k || pathname.startsWith(k + "/"))
         .sort((a, b) => b.length - a.length)[0] ?? "/dashboard"
     );
-  }, [pathname]);
+  }, [pathname, menuItems]);
 
   const searchTarget = useMemo(() => getHeaderSearchTarget(pathname), [pathname]);
 
@@ -123,13 +129,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     const q = value.trim();
     if (!q) return;
     if (!searchTarget.listPath) {
-      message.info("Trang này không có danh sách để tìm.");
+      message.info(t("shell.searchNone"));
       return;
     }
     router.push(listSearchHref(searchTarget.listPath, q));
   };
 
-  const displayName = currentUser?.name ?? "Khách";
+  const displayName = currentUser?.name ?? t("shell.guest");
 
   return (
     <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
@@ -165,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           mode="inline"
           theme={isDark ? "dark" : "light"}
           selectedKeys={[selectedKey]}
-          items={MENU_ITEMS}
+          items={menuItems}
           style={{
             background: "transparent",
             borderInlineEnd: "none",
@@ -195,7 +201,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             style={{ borderRadius: token.borderRadius }}
           />
           <Input.Search
-            placeholder={searchTarget.placeholder}
+            placeholder={t(searchTarget.placeholderKey)}
             allowClear
             style={{ maxWidth: 360, flex: 1 }}
             onSearch={onSearch}
@@ -230,22 +236,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                       padding: "4px 8px 8px",
                     }}
                   >
-                    <Typography.Text strong>Thông báo</Typography.Text>
+                    <Typography.Text strong>{t("shell.notifications")}</Typography.Text>
                     <Space size={4}>
                       {userId ? (
                         <Button type="link" size="small" onClick={() => markAllRead(userId)}>
-                          Đọc tất cả
+                          {t("shell.markAllRead")}
                         </Button>
                       ) : null}
                       <Button type="link" size="small" onClick={() => router.push("/notifications")}>
-                        Xem tất cả
+                        {t("shell.viewAll")}
                       </Button>
                     </Space>
                   </div>
                   <List
                     size="small"
                     dataSource={myNotifs}
-                    locale={{ emptyText: "Chưa có thông báo" }}
+                    locale={{ emptyText: t("shell.noNotifications") }}
                     renderItem={(item) => (
                       <List.Item
                         style={{
@@ -291,7 +297,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   {
                     key: "profile",
                     icon: <UserOutlined />,
-                    label: "Cập nhật thông tin",
+                    label: t("shell.profile"),
                     onClick: () => router.push("/profile"),
                     disabled: !currentUser,
                   },
@@ -299,11 +305,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   {
                     key: "logout",
                     icon: <LogoutOutlined />,
-                    label: "Đăng xuất",
+                    label: t("shell.logout"),
                     danger: true,
                     onClick: () => {
                       logout();
-                      message.success("Đã đăng xuất");
+                      message.success(t("shell.loggedOut"));
                       router.push("/login");
                     },
                   },

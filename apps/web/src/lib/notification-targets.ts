@@ -1,4 +1,5 @@
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { tt } from "@/lib/i18n";
 import type { AppNotificationType, Order, OrderExpense } from "@/lib/types";
 
 export type NotificationDraft = {
@@ -35,7 +36,7 @@ export function taskAssignedDraft(
 ): NotificationDraft {
   return {
     type: "task_assigned",
-    title: `Được giao đơn ${order.orderNumber}`,
+    title: tt("notif.assignedTitle", { number: order.orderNumber }),
     body: `${order.customerName} — ${order.serviceName}`,
     href: `/orders/${order.id}`,
     orderId: order.id,
@@ -47,11 +48,15 @@ export function expensePendingDraft(
   expense: Pick<OrderExpense, "id" | "title" | "amount" | "orderId" | "orderNumber" | "projectName">,
   requesterName: string,
 ): NotificationDraft {
-  const project = expense.projectName || expense.orderNumber || "đề nghị";
+  const project = expense.projectName || expense.orderNumber || tt("expense.fallbackProject");
   return {
     type: "expense_pending",
-    title: `Đề nghị thanh toán — ${project}`,
-    body: `${requesterName}: ${expense.title} (${formatVndDisplay(expense.amount)})`,
+    title: tt("notif.expensePendingTitle", { project }),
+    body: tt("notif.expenseBody", {
+      name: requesterName,
+      title: expense.title,
+      amount: formatVndDisplay(expense.amount),
+    }),
     href: expense.orderId ? `/orders/${expense.orderId}` : "/expense-approvals",
     orderId: expense.orderId,
     dedupeKey: `expense_pending:${expense.id}`,
@@ -64,11 +69,18 @@ export function expenseReviewedDraft(
   reviewerName: string,
 ): NotificationDraft {
   const approved = status === "approved";
-  const project = expense.projectName || expense.orderNumber || "đề nghị";
+  const project = expense.projectName || expense.orderNumber || tt("expense.fallbackProject");
   return {
     type: "expense_reviewed",
-    title: approved ? `Đã duyệt đề nghị — ${project}` : `Từ chối đề nghị — ${project}`,
-    body: `${reviewerName} ${approved ? "đã duyệt" : "đã từ chối"}: ${expense.title} (${formatVndDisplay(expense.amount)})`,
+    title: approved
+      ? tt("notif.expenseApprovedTitle", { project })
+      : tt("notif.expenseRejectedTitle", { project }),
+    body: tt("notif.expenseReviewedBody", {
+      name: reviewerName,
+      action: approved ? tt("notif.didApprove") : tt("notif.didReject"),
+      title: expense.title,
+      amount: formatVndDisplay(expense.amount),
+    }),
     href: expense.orderId ? `/orders/${expense.orderId}` : "/expense-approvals",
     orderId: expense.orderId,
     dedupeKey: `expense_reviewed:${expense.id}:${status}`,

@@ -10,6 +10,7 @@ import {
 } from "@/components/shared/column-manager-drawer";
 import { EmptyState } from "@/components/shared/empty-state";
 import { tableIndexColumn, tableColumnKey, type TableColumn } from "@/lib/table-index-column";
+import { useT } from "@/lib/use-t";
 
 export type DataTableEmptyAction = {
   label: string;
@@ -74,12 +75,12 @@ const DEFAULT_PAGINATION: { pageSize: number; showSizeChanger: boolean } = {
   showSizeChanger: true,
 };
 
-function getColumnLabel<T>(col: TableColumn<T>): string {
+function getColumnLabel<T>(col: TableColumn<T>, actionsLabel: string, columnLabel: string): string {
   if (typeof col.title === "string" && col.title.trim()) return col.title;
   const key = tableColumnKey(col);
   if (key === "avatar") return "Avatar";
-  if (key === "action" || key === "actions") return "Thao tác";
-  return key || "Cột";
+  if (key === "action" || key === "actions") return actionsLabel;
+  return key || columnLabel;
 }
 
 export function DataTable<T extends object>({
@@ -91,7 +92,7 @@ export function DataTable<T extends object>({
   size = "middle",
   pagination,
   scroll = { x: true },
-  emptyDescription = "Chưa có dữ liệu.",
+  emptyDescription,
   emptyAction,
   enableRowSelection = false,
   selectedRowKeys,
@@ -106,15 +107,16 @@ export function DataTable<T extends object>({
   padded = true,
   columnManagerKey,
 }: DataTableProps<T>) {
+  const t = useT();
   const [managerOpen, setManagerOpen] = useState(false);
   const [pageState, setPageState] = useState({ current: 1, pageSize: DEFAULT_PAGINATION.pageSize });
 
   const managerItems: ColumnManagerItem[] = useMemo(
     () =>
       (columns as TableColumn<T>[])
-        .map((col) => ({ key: tableColumnKey(col), label: getColumnLabel(col) }))
+        .map((col) => ({ key: tableColumnKey(col), label: getColumnLabel(col, t("common.actions"), t("common.column")) }))
         .filter((item) => item.key),
-    [columns],
+    [columns, t],
   );
 
   const { committed, save, isVisible } = useManagedColumns(columnManagerKey, managerItems);
@@ -138,7 +140,7 @@ export function DataTable<T extends object>({
     pagination === false ? 0 : (pageState.current - 1) * pageState.pageSize;
   const columnsWithIndex = useMemo(
     () => [tableIndexColumn<T>(indexOffset), ...(visibleColumns as TableColumn<T>[])],
-    [visibleColumns, indexOffset],
+    [visibleColumns, indexOffset, t],
   );
   const rowSelection: TableProps<T>["rowSelection"] =
     rowSelectionProp ??
@@ -186,7 +188,7 @@ export function DataTable<T extends object>({
       rowSelection={rowSelection}
       locale={{
         emptyText: (
-          <EmptyState compact description={emptyDescription} action={emptyAction} />
+          <EmptyState compact description={emptyDescription ?? t("common.noData")} action={emptyAction} />
         ),
       }}
     />
@@ -202,7 +204,7 @@ export function DataTable<T extends object>({
         <div style={{ padding: "8px 16px 0" }}>
           <Input.Search
             allowClear
-            placeholder={search.placeholder ?? "Tìm kiếm…"}
+            placeholder={search.placeholder ?? t("common.search")}
             value={search.value}
             onChange={(e) => search.onChange(e.target.value)}
             style={{ maxWidth: 320 }}

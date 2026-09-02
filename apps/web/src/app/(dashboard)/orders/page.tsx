@@ -40,6 +40,7 @@ import { matchesTableQuery } from "@/lib/table-search";
 import type { Order, OrderStage } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { useServices } from "@/lib/services-store";
+import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -48,6 +49,7 @@ function compareText(a: string, b: string) {
 const emptyFlow: OrderCashflow = { thu: 0, chi: 0, net: 0, months: [] };
 
 export default function OrdersPage() {
+  const t = useT();
   const { message, modal } = App.useApp();
   const { orders, updateOrder } = useOrders();
   const { payments } = usePayments();
@@ -149,13 +151,13 @@ export default function OrdersPage() {
     if (newStage === order.stage) return;
     const nextLabel = getMeta("orderStage", newStage).label;
     modal.confirm({
-      title: `Đổi giai đoạn sang “${nextLabel}”?`,
+      title: t("order.changeStage", { label: nextLabel }),
       content: `${order.orderNumber} · ${order.customerName}`,
-      okText: "Xác nhận",
-      cancelText: "Hủy",
+      okText: t("common.confirm"),
+      cancelText: t("common.cancel"),
       onOk: () => {
         handleMove(order.id, newStage);
-        message.success("Đã cập nhật giai đoạn");
+        message.success(t("order.stageUpdated"));
       },
     });
   };
@@ -166,25 +168,25 @@ export default function OrdersPage() {
       const rows = orders
         .filter((o) => selectedRowKeys.includes(o.id))
         .map((o) => ({
-          "Mã hồ sơ": o.orderNumber,
-          "Khách hàng": o.customerName,
-          "Dịch vụ": o.serviceName,
-          "Giai đoạn": o.stage,
-          "Giá trị": o.value,
-          "Phụ trách": o.assignedUserName,
-          [`Thu ${formatYearMonth(cashflowMonth)}`]: cashflowForMonth(
+          [t("common.dossier")]: o.orderNumber,
+          [t("common.customer")]: o.customerName,
+          [t("common.service")]: o.serviceName,
+          [t("common.stage")]: o.stage,
+          [t("common.value")]: o.value,
+          [t("common.owner")]: o.assignedUserName,
+          [t("order.thuForMonth", { label: formatYearMonth(cashflowMonth) })]: cashflowForMonth(
             cashflowByOrder.get(o.id) ?? emptyFlow,
             cashflowMonth,
           ).thu,
-          [`Chi ${formatYearMonth(cashflowMonth)}`]: cashflowForMonth(
+          [t("order.chiForMonth", { label: formatYearMonth(cashflowMonth) })]: cashflowForMonth(
             cashflowByOrder.get(o.id) ?? emptyFlow,
             cashflowMonth,
           ).chi,
-          "Thu cả đơn": cashflowByOrder.get(o.id)?.thu ?? 0,
-          "Chi cả đơn": cashflowByOrder.get(o.id)?.chi ?? 0,
+          [t("order.thuTotal")]: cashflowByOrder.get(o.id)?.thu ?? 0,
+          [t("order.chiTotal")]: cashflowByOrder.get(o.id)?.chi ?? 0,
         }));
       await exportRowsToXlsx(`orders-selected-${Date.now()}.xlsx`, rows);
-      message.success(`Đã xuất ${selectedCount} đơn hàng`);
+      message.success(t("order.exported", { count: selectedCount }));
     } finally {
       setExporting(false);
     }
@@ -193,7 +195,7 @@ export default function OrdersPage() {
   const bulkAssign = () => {
     const user = staffUsers.find((u) => u.id === assignUserId);
     if (!user) {
-      message.warning("Chọn nhân viên phụ trách");
+      message.warning(t("common.selectStaffOwner"));
       return;
     }
     selectedRowKeys.forEach((id) => {
@@ -215,7 +217,7 @@ export default function OrdersPage() {
         );
       }
     });
-    message.success(`Đã gán ${selectedCount} đơn cho ${user.name}`);
+    message.success(t("order.assigned", { count: selectedCount, name: user.name }));
     setAssignOpen(false);
     setAssignUserId(undefined);
     clearSelection();
@@ -224,28 +226,27 @@ export default function OrdersPage() {
   const months = [...new Set(orders.map((o) => o.month))].sort();
   const hasActiveFilters = Boolean(query.trim()) || userFilter !== "all" || monthFilter !== "all";
   const listEmptyDescription =
-    hasActiveFilters && orders.length > 0
-      ? "Không tìm thấy kết quả phù hợp."
-      : "Chưa có đơn hàng nào.";
+    hasActiveFilters && orders.length > 0 ? t("common.noResults") : t("order.empty");
   const listEmptyAction =
     hasActiveFilters && orders.length > 0
       ? undefined
-      : { label: "Tạo đơn hàng", href: "/orders/new" };
+      : { label: t("common.createOrder"), href: "/orders/new" };
 
-  const columns: TableColumnsType<Order> = [
+  const columns: TableColumnsType<Order> = useMemo(
+    () => [
     {
-      title: "Mã hồ sơ",
+      title: t("common.dossier"),
       dataIndex: "orderNumber",
       sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
       render: (v, r) => <Link href={`/orders/${r.id}`}>{v}</Link>,
     },
     {
-      title: "Khách hàng",
+      title: t("common.customer"),
       dataIndex: "customerName",
       sorter: (a, b) => compareText(a.customerName, b.customerName),
     },
     {
-      title: "Dịch vụ",
+      title: t("common.service"),
       dataIndex: "serviceName",
       sorter: (a, b) => compareText(a.serviceName, b.serviceName),
     },
@@ -256,7 +257,7 @@ export default function OrdersPage() {
       render: (url?: string) => <ZaloGroupLink url={url} variant="tag" />,
     },
     {
-      title: "Giai đoạn",
+      title: t("common.stage"),
       dataIndex: "stage",
       sorter: (a, b) => compareText(a.stage, b.stage),
       render: (s: OrderStage, r) => (
@@ -269,32 +270,32 @@ export default function OrdersPage() {
       ),
     },
     {
-      title: "Số HĐ",
+      title: t("common.contractNo"),
       dataIndex: "contractNumber",
       align: "center",
       sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
       render: (v?: number) => (v != null ? v : "—"),
     },
     {
-      title: "Xuất VAT",
+      title: t("order.issueVat"),
       dataIndex: "needsVat",
       filters: [
-        { text: "Có VAT", value: true },
-        { text: "Không VAT", value: false },
+        { text: t("common.withVat"), value: true },
+        { text: t("common.withoutVat"), value: false },
       ],
       onFilter: (value, record) => record.needsVat === value,
       render: (v: boolean) => (
-        <Tag color={v ? "blue" : "default"}>{v ? "Có VAT" : "Không VAT"}</Tag>
+        <Tag color={v ? "blue" : "default"}>{v ? t("common.withVat") : t("common.withoutVat")}</Tag>
       ),
     },
     {
-      title: "Thời hạn GP",
+      title: t("license.expiry"),
       key: "licenseExpiry",
       filters: [
-        { text: "Hết hạn", value: "expired" },
-        { text: "Sắp hết hạn", value: "expiring" },
-        { text: "Còn hạn", value: "ok" },
-        { text: "Chưa có GP", value: "none" },
+        { text: t("license.expired"), value: "expired" },
+        { text: t("license.expiring"), value: "expiring" },
+        { text: t("license.ok"), value: "ok" },
+        { text: t("license.none"), value: "none" },
       ],
       filterMultiple: true,
       onFilter: (value, record) =>
@@ -306,7 +307,7 @@ export default function OrdersPage() {
       },
     },
     {
-      title: "File",
+      title: t("common.file"),
       key: "files",
       align: "center",
       sorter: (a, b) =>
@@ -314,14 +315,14 @@ export default function OrdersPage() {
       render: (_, r) => r.attachments.filter((a) => !a.deleted).length,
     },
     {
-      title: "Giá trị",
+      title: t("common.value"),
       dataIndex: "value",
       align: "center",
       sorter: (a, b) => a.value - b.value,
       render: (v: number) => formatVndDisplay(v),
     },
     {
-      title: `Thu/chi ${formatYearMonth(cashflowMonth)}`,
+      title: t("order.cashflowMonthCol", { label: formatYearMonth(cashflowMonth) }),
       key: "cashflowMonth",
       align: "right",
       sorter: (a, b) =>
@@ -333,7 +334,7 @@ export default function OrdersPage() {
       },
     },
     {
-      title: "Thu/chi cả đơn",
+      title: t("order.cashflowCol"),
       key: "cashflowTotal",
       align: "right",
       sorter: (a, b) => (cashflowByOrder.get(a.id)?.thu ?? 0) - (cashflowByOrder.get(b.id)?.thu ?? 0),
@@ -343,24 +344,26 @@ export default function OrdersPage() {
       },
     },
     {
-      title: "Phụ trách",
+      title: t("common.owner"),
       dataIndex: "assignedUserName",
       sorter: (a, b) => compareText(a.assignedUserName, b.assignedUserName),
     },
-  ];
+  ],
+    [t, stageOptions, requestStageChange, cashflowByOrder, cashflowMonth, services],
+  );
 
   return (
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Quản lý đơn hàng" }]}
-        searchPlaceholder="Tìm trong bảng…"
+        breadcrumbs={[{ title: t("nav.orders") }]}
+        searchPlaceholder={t("common.searchTable")}
         onSearch={(v) => {
           setQuery(v);
           clearSelection();
         }}
         searchValue={query}
-        primaryAction={{ label: "+ Đơn hàng mới", href: "/orders/new" }}
+        primaryAction={{ label: t("order.newCta"), href: "/orders/new" }}
       >
         <Select
           value={userFilter}
@@ -370,7 +373,7 @@ export default function OrdersPage() {
           }}
           style={{ width: 180 }}
           options={[
-            { value: "all", label: "Tất cả nhân viên" },
+            { value: "all", label: t("common.allStaff") },
             ...MOCK_USERS.filter((u) => u.role === "staff").map((u) => ({ value: u.id, label: u.name })),
           ]}
         />
@@ -381,7 +384,7 @@ export default function OrdersPage() {
             clearSelection();
           }}
           style={{ width: 140 }}
-          options={[{ value: "all", label: "Tất cả tháng" }, ...months.map((m) => ({ value: m, label: m }))]}
+          options={[{ value: "all", label: t("common.allMonths") }, ...months.map((m) => ({ value: m, label: m }))]}
         />
         <Segmented
           value={viewMode}
@@ -396,7 +399,7 @@ export default function OrdersPage() {
         />
         {canViewStages ? (
           <Button icon={<BgColorsOutlined />} onClick={() => setStageDrawerOpen(true)}>
-            Giai đoạn
+            {t("nav.orderStatuses")}
           </Button>
         ) : null}
       </PageHeader>
@@ -421,10 +424,10 @@ export default function OrdersPage() {
           bulkToolbar={
             <BulkActionBar count={selectedCount}>
               <Button size="small" onClick={bulkExport}>
-                Xuất Excel
+                {t("common.exportExcel")}
               </Button>
               <Button size="small" onClick={() => setAssignOpen(true)}>
-                Gán phụ trách
+                {t("common.assign")}
               </Button>
             </BulkActionBar>
           }
@@ -432,16 +435,16 @@ export default function OrdersPage() {
       )}
 
       <Modal
-        title={`Gán phụ trách cho ${selectedCount} đơn`}
+        title={t("order.assignTitle", { count: selectedCount })}
         open={assignOpen}
         onCancel={() => setAssignOpen(false)}
         onOk={bulkAssign}
-        okText="Gán"
-        cancelText="Hủy"
+        okText={t("common.assign")}
+        cancelText={t("common.cancel")}
       >
         <Select
           style={{ width: "100%" }}
-          placeholder="Chọn nhân viên"
+          placeholder={t("common.selectStaff")}
           value={assignUserId}
           onChange={setAssignUserId}
           options={staffUsers.map((u) => ({ value: u.id, label: u.name }))}

@@ -29,6 +29,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ProfileAvatarUpload } from "@/components/users/profile-avatar-upload";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
+import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 
 function formatDate(iso?: string) {
@@ -38,8 +39,8 @@ function formatDate(iso?: string) {
   return `${d}/${m}/${y}`;
 }
 
-function authMethodLabel(method: "google" | "email") {
-  return method === "google" ? "Google" : "Email / mật khẩu";
+function authMethodLabel(method: "google" | "email", t: ReturnType<typeof useT>) {
+  return method === "google" ? "Google" : t("profile.authEmailPassword");
 }
 
 function Surface({ children, style }: { children: ReactNode; style?: CSSProperties }) {
@@ -78,6 +79,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 export default function ProfilePage() {
+  const t = useT();
   const { message } = App.useApp();
   const { token } = theme.useToken();
   const { currentUser, updateUser, getRoleLabel } = useUsers();
@@ -86,24 +88,24 @@ export default function ProfilePage() {
   if (!currentUser) {
     return (
       <EmptyState
-        description="Bạn chưa đăng nhập."
-        action={{ label: "Đăng nhập", href: "/login" }}
+        description={t("common.notLoggedIn")}
+        action={{ label: t("common.login"), href: "/login" }}
       />
     );
   }
 
   const roleLabel = getRoleLabel(currentUser.role);
-  const phoneDisplay = currentUser.phone?.trim() || "Chưa có";
-  const addressDisplay = currentUser.address?.trim() || "Chưa có";
+  const phoneDisplay = currentUser.phone?.trim() || t("common.none");
+  const addressDisplay = currentUser.address?.trim() || t("common.none");
 
   const updateAvatar = (next: string | undefined) => {
     updateUser(currentUser.id, { avatar: next });
-    message.success(next ? "Đã cập nhật ảnh đại diện" : "Đã xóa ảnh đại diện");
+    message.success(next ? t("profile.avatarUpdated") : t("profile.avatarRemoved"));
   };
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Thông tin cá nhân" }]} />
+      <PageHeader breadcrumbs={[{ title: t("profile.title") }]} />
 
       <div style={{ padding: 16 }}>
         <Surface style={{ marginBottom: 16 }}>
@@ -130,7 +132,7 @@ export default function ProfilePage() {
                   <Tag color="blue">{roleLabel}</Tag>
                   <StatusBadge module="user" status={currentUser.status} />
                   {currentUser.useCustomPermissions ? (
-                    <Tag color="orange">Phân quyền tùy chỉnh</Tag>
+                    <Tag color="orange">{t("profile.customPerms")}</Tag>
                   ) : null}
                 </Space>
                 <Space
@@ -148,11 +150,11 @@ export default function ProfilePage() {
                   </span>
                   <span>
                     <SafetyCertificateOutlined style={{ marginRight: 6 }} />
-                    {authMethodLabel(currentUser.authMethod)}
+                    {authMethodLabel(currentUser.authMethod, t)}
                   </span>
                   <span>
                     <CalendarOutlined style={{ marginRight: 6 }} />
-                    Tham gia {formatDate(currentUser.createdAt)}
+                    {t("profile.joined")} {formatDate(currentUser.createdAt)}
                   </span>
                 </Space>
               </div>
@@ -164,36 +166,36 @@ export default function ProfilePage() {
           <Col xs={24} lg={8}>
             <Space direction="vertical" size={16} style={{ width: "100%" }}>
               <Surface>
-                <SectionTitle>Liên hệ</SectionTitle>
+                <SectionTitle>{t("profile.contact")}</SectionTitle>
                 <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Email">{currentUser.email}</Descriptions.Item>
-                  <Descriptions.Item label="SĐT">{phoneDisplay}</Descriptions.Item>
-                  <Descriptions.Item label="Địa chỉ">{addressDisplay}</Descriptions.Item>
+                  <Descriptions.Item label={t("common.email")}>{currentUser.email}</Descriptions.Item>
+                  <Descriptions.Item label={t("common.phone")}>{phoneDisplay}</Descriptions.Item>
+                  <Descriptions.Item label={t("common.address")}>{addressDisplay}</Descriptions.Item>
                 </Descriptions>
               </Surface>
 
               <Surface>
-                <SectionTitle>Vai trò & quyền</SectionTitle>
+                <SectionTitle>{t("profile.roleAndPerms")}</SectionTitle>
                 <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Vai trò">{roleLabel}</Descriptions.Item>
-                  <Descriptions.Item label="Trạng thái">
+                  <Descriptions.Item label={t("common.role")}>{roleLabel}</Descriptions.Item>
+                  <Descriptions.Item label={t("common.status")}>
                     <StatusBadge module="user" status={currentUser.status} />
                   </Descriptions.Item>
-                  <Descriptions.Item label="Phân quyền">
+                  <Descriptions.Item label={t("profile.permissions")}>
                     {currentUser.useCustomPermissions
-                      ? "Tùy chỉnh (ghi đè vai trò)"
-                      : "Theo ma trận vai trò"}
+                      ? t("profile.customOverride")
+                      : t("profile.fromRoleMatrix")}
                   </Descriptions.Item>
                 </Descriptions>
               </Surface>
 
               <Surface>
-                <SectionTitle>Tài khoản</SectionTitle>
+                <SectionTitle>{t("profile.account")}</SectionTitle>
                 <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Đăng nhập">
-                    {authMethodLabel(currentUser.authMethod)}
+                  <Descriptions.Item label={t("profile.loginMethod")}>
+                    {authMethodLabel(currentUser.authMethod, t)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Ngày tạo">
+                  <Descriptions.Item label={t("common.createdAt")}>
                     {formatDate(currentUser.createdAt)}
                   </Descriptions.Item>
                   <Descriptions.Item label="ID">
@@ -214,7 +216,7 @@ export default function ProfilePage() {
                     key: "personal",
                     label: (
                       <span>
-                        <IdcardOutlined /> Thông tin cá nhân
+                        <IdcardOutlined /> {t("profile.personalTab")}
                       </span>
                     ),
                     children: (
@@ -223,13 +225,13 @@ export default function ProfilePage() {
                           type="secondary"
                           style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}
                         >
-                          Cập nhật thông tin liên hệ. Ảnh đại diện chỉnh ở phần đầu trang.
+                          {t("profile.contactHint")}
                         </Typography.Paragraph>
                         <UserProfileForm
                           key={currentUser.id}
                           user={currentUser}
                           showAvatar={false}
-                          submitLabel="Lưu"
+                          submitLabel={t("common.save")}
                           loading={saving}
                           onSubmit={async (values) => {
                             setSaving(true);
@@ -241,7 +243,7 @@ export default function ProfilePage() {
                                 dateOfBirth: values.dateOfBirth,
                                 address: values.address,
                               });
-                              message.success("Đã cập nhật thông tin");
+                              message.success(t("profile.updated"));
                             } finally {
                               setSaving(false);
                             }
@@ -254,7 +256,7 @@ export default function ProfilePage() {
                     key: "account",
                     label: (
                       <span>
-                        <SafetyCertificateOutlined /> Tài khoản
+                        <SafetyCertificateOutlined /> {t("profile.account")}
                       </span>
                     ),
                     children: (
@@ -263,7 +265,7 @@ export default function ProfilePage() {
                           type="secondary"
                           style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}
                         >
-                          Thông tin tài khoản chỉ xem. Vai trò và trạng thái do quản trị viên quản lý.
+                          {t("profile.accountReadOnlyHint")}
                         </Typography.Paragraph>
                         <Descriptions
                           bordered
@@ -271,19 +273,19 @@ export default function ProfilePage() {
                           column={1}
                           labelStyle={{ width: 160 }}
                         >
-                          <Descriptions.Item label="Họ tên">{currentUser.name}</Descriptions.Item>
-                          <Descriptions.Item label="Email">{currentUser.email}</Descriptions.Item>
-                          <Descriptions.Item label="Vai trò">{roleLabel}</Descriptions.Item>
-                          <Descriptions.Item label="Trạng thái">
+                          <Descriptions.Item label={t("common.fullName")}>{currentUser.name}</Descriptions.Item>
+                          <Descriptions.Item label={t("common.email")}>{currentUser.email}</Descriptions.Item>
+                          <Descriptions.Item label={t("common.role")}>{roleLabel}</Descriptions.Item>
+                          <Descriptions.Item label={t("common.status")}>
                             <StatusBadge module="user" status={currentUser.status} />
                           </Descriptions.Item>
-                          <Descriptions.Item label="Phương thức đăng nhập">
-                            {authMethodLabel(currentUser.authMethod)}
+                          <Descriptions.Item label={t("profile.loginMethodLabel")}>
+                            {authMethodLabel(currentUser.authMethod, t)}
                           </Descriptions.Item>
-                          <Descriptions.Item label="Phân quyền tùy chỉnh">
-                            {currentUser.useCustomPermissions ? "Đang bật" : "Không"}
+                          <Descriptions.Item label={t("profile.customPerms")}>
+                            {currentUser.useCustomPermissions ? t("profile.on") : t("common.no")}
                           </Descriptions.Item>
-                          <Descriptions.Item label="Ngày tạo tài khoản">
+                          <Descriptions.Item label={t("profile.accountCreated")}>
                             {formatDate(currentUser.createdAt)}
                           </Descriptions.Item>
                         </Descriptions>
@@ -294,7 +296,7 @@ export default function ProfilePage() {
                     key: "security",
                     label: (
                       <span>
-                        <LockOutlined /> Bảo mật
+                        <LockOutlined /> {t("profile.securityTab")}
                       </span>
                     ),
                     children: (
@@ -303,36 +305,34 @@ export default function ProfilePage() {
                           type="secondary"
                           style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}
                         >
-                          Bạn đang đăng nhập bằng{" "}
-                          <Typography.Text strong>
-                            {authMethodLabel(currentUser.authMethod)}
-                          </Typography.Text>
-                          . Đổi mật khẩu sẽ kết nối SSO/backend khi hệ thống sẵn sàng.
+                          {t("profile.securityHint", {
+                            method: authMethodLabel(currentUser.authMethod, t),
+                          })}
                         </Typography.Paragraph>
                         <Form
                           layout="vertical"
                           onFinish={() => {
-                            message.info("Chức năng đổi mật khẩu sẽ kết nối SSO/backend.");
+                            message.info(t("profile.passwordHint"));
                           }}
                         >
                           <Form.Item
                             name="currentPassword"
-                            label="Mật khẩu hiện tại"
-                            rules={[{ required: true, message: "Nhập mật khẩu hiện tại" }]}
+                            label={t("profile.currentPassword")}
+                            rules={[{ required: true, message: t("profile.enterCurrentPassword") }]}
                           >
                             <Input.Password
                               disabled={currentUser.authMethod === "google"}
                               placeholder={
                                 currentUser.authMethod === "google"
-                                  ? "Tài khoản Google — không dùng mật khẩu"
+                                  ? t("profile.googleNoPassword")
                                   : "••••••••"
                               }
                             />
                           </Form.Item>
                           <Form.Item
                             name="newPassword"
-                            label="Mật khẩu mới"
-                            rules={[{ required: true, message: "Nhập mật khẩu mới" }]}
+                            label={t("profile.newPassword")}
+                            rules={[{ required: true, message: t("profile.enterNewPassword") }]}
                           >
                             <Input.Password
                               disabled={currentUser.authMethod === "google"}
@@ -341,16 +341,16 @@ export default function ProfilePage() {
                           </Form.Item>
                           <Form.Item
                             name="confirmPassword"
-                            label="Xác nhận mật khẩu mới"
+                            label={t("profile.confirmPassword")}
                             dependencies={["newPassword"]}
                             rules={[
-                              { required: true, message: "Xác nhận mật khẩu mới" },
+                              { required: true, message: t("profile.confirmPassword") },
                               ({ getFieldValue }) => ({
                                 validator(_, value) {
                                   if (!value || getFieldValue("newPassword") === value) {
                                     return Promise.resolve();
                                   }
-                                  return Promise.reject(new Error("Mật khẩu không khớp"));
+                                  return Promise.reject(new Error(t("profile.passwordMismatch")));
                                 },
                               }),
                             ]}
@@ -365,7 +365,7 @@ export default function ProfilePage() {
                             htmlType="submit"
                             disabled={currentUser.authMethod === "google"}
                           >
-                            Đổi mật khẩu
+                            {t("profile.changePassword")}
                           </Button>
                         </Form>
                       </div>

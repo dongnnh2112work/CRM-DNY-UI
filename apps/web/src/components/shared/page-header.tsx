@@ -4,6 +4,7 @@ import { Breadcrumb, Button, Input, theme } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { useT } from "@/lib/use-t";
 
 export function PageHeader({
   breadcrumbs,
@@ -23,6 +24,7 @@ export function PageHeader({
 }) {
   const router = useRouter();
   const { token } = theme.useToken();
+  const t = useT();
   const items = breadcrumbs.map((b) => ({
     title: b.href ? <Link href={b.href}>{b.title}</Link> : b.title,
   }));
@@ -39,7 +41,7 @@ export function PageHeader({
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         {onSearch !== undefined && (
           <Input.Search
-            placeholder={searchPlaceholder ?? "Tìm kiếm…"}
+            placeholder={searchPlaceholder ?? t("common.search")}
             allowClear
             style={{ width: 280 }}
             value={searchValue}

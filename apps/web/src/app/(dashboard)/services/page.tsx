@@ -11,8 +11,10 @@ import { ds } from "@/lib/design-tokens";
 import { SERVICE_LOCKED_FIELD_KEYS, serviceMatchesQuery } from "@/lib/service-fields";
 import { useServices } from "@/lib/services-store";
 import type { Service } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 export default function ServicesPage() {
+  const t = useT();
   const { message } = App.useApp();
   const { services, fieldDefs, saveFieldDefs, setServiceStatus, deleteService, addService, updateService } =
     useServices();
@@ -50,15 +52,15 @@ export default function ServicesPage() {
     selectedRowKeys.forEach((id) => setServiceStatus(String(id), status));
     message.success(
       status === "active"
-        ? `Đã kích hoạt ${selectedCount} dịch vụ`
-        : `Đã ngừng ${selectedCount} dịch vụ`,
+        ? t("service.activatedN", { count: selectedCount })
+        : t("service.deactivatedN", { count: selectedCount }),
     );
     clearSelection();
   };
 
   const bulkDelete = () => {
     selectedRowKeys.forEach((id) => deleteService(String(id)));
-    message.success(`Đã xóa ${selectedCount} dịch vụ`);
+    message.success(t("service.deletedN", { count: selectedCount }));
     clearSelection();
   };
 
@@ -66,14 +68,14 @@ export default function ServicesPage() {
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Quản lý dịch vụ" }]}
-        searchPlaceholder="Tìm trong bảng…"
+        breadcrumbs={[{ title: t("nav.services") }]}
+        searchPlaceholder={t("common.searchTable")}
         onSearch={(v) => {
           setQuery(v);
           clearSelection();
         }}
         searchValue={query}
-        primaryAction={{ label: "+ Dịch vụ mới", onClick: openCreate }}
+        primaryAction={{ label: t("service.newCta"), onClick: openCreate }}
       />
       <DynamicTable<Service>
         fieldDefs={fieldDefs}
@@ -90,49 +92,47 @@ export default function ServicesPage() {
         bulkToolbar={
           <BulkActionBar count={selectedCount}>
             <Popconfirm
-              title={`Kích hoạt ${selectedCount} dịch vụ đã chọn?`}
-              okText="Kích hoạt"
-              cancelText="Hủy"
+              title={t("service.activateN", { count: selectedCount })}
+              okText={t("common.activate")}
+              cancelText={t("common.cancel")}
               onConfirm={() => bulkSetStatus("active")}
             >
-              <Button size="small">Đặt hoạt động</Button>
+              <Button size="small">{t("service.setActive")}</Button>
             </Popconfirm>
             <Popconfirm
-              title={`Ngừng hoạt động ${selectedCount} dịch vụ đã chọn?`}
-              okText="Ngừng"
-              cancelText="Hủy"
+              title={t("service.deactivateN", { count: selectedCount })}
+              okText={t("common.deactivate")}
+              cancelText={t("common.cancel")}
               onConfirm={() => bulkSetStatus("inactive")}
             >
-              <Button size="small">Ngừng hoạt động</Button>
+              <Button size="small">{t("common.deactivate")}</Button>
             </Popconfirm>
             <Popconfirm
-              title={`Xóa ${selectedCount} dịch vụ đã chọn?`}
-              description="Thao tác không hoàn tác trong phiên demo. Chỉ áp dụng các dòng đang chọn trên trang hiện tại."
-              okText="Xóa"
-              cancelText="Hủy"
+              title={t("service.deleteN", { count: selectedCount })}
+              description={t("service.deleteNBody")}
+              okText={t("common.delete")}
+              cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
               onConfirm={bulkDelete}
             >
               <Button size="small" danger>
-                Xóa
+                {t("common.delete")}
               </Button>
             </Popconfirm>
           </BulkActionBar>
         }
         emptyDescription={
-          query.trim() && services.length > 0
-            ? "Không tìm thấy kết quả phù hợp."
-            : "Chưa có dịch vụ nào."
+          query.trim() && services.length > 0 ? t("common.noResults") : t("service.empty")
         }
         emptyAction={
           query.trim() && services.length > 0
             ? undefined
-            : { label: "Tạo dịch vụ", onClick: openCreate }
+            : { label: t("common.createService"), onClick: openCreate }
         }
       />
 
       <Modal
-        title={editService ? editService.name : "Dịch vụ mới"}
+        title={editService ? editService.name : t("service.newTitle")}
         open={formOpen}
         onCancel={closeForm}
         footer={null}
@@ -142,15 +142,13 @@ export default function ServicesPage() {
         styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0, fontSize: ds.fontSize.bodySm }}>
-          {editService
-            ? "Xem và chỉnh sửa thông tin dịch vụ. Bấm lưu để cập nhật."
-            : "Điền thông tin để tạo dịch vụ mới."}
+          {editService ? t("service.editHint") : t("service.createHint")}
         </Typography.Paragraph>
         <ServiceForm
           key={`${editService?.id ?? "new"}-${fieldDefs.map((d) => `${d.key}:${d.visible}`).join("|")}`}
           service={editService}
           fieldDefs={fieldDefs}
-          submitLabel={editService ? "Lưu" : "Tạo dịch vụ"}
+          submitLabel={editService ? t("common.save") : t("common.createService")}
           loading={saving}
           onCancel={closeForm}
           onSubmit={async (payload) => {
@@ -158,10 +156,10 @@ export default function ServicesPage() {
             try {
               if (editService) {
                 updateService(editService.id, payload);
-                message.success("Đã cập nhật dịch vụ");
+                message.success(t("service.updated"));
               } else {
                 addService(payload);
-                message.success("Đã tạo dịch vụ");
+                message.success(t("service.created"));
               }
               closeForm();
             } finally {

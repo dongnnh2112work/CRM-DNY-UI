@@ -14,12 +14,14 @@ import { usePayments } from "@/lib/payments-store";
 import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { PaymentRecord, PaymentStatus } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
 }
 
 export default function PaymentsPage() {
+  const t = useT();
   const { message } = App.useApp();
   const { payments } = usePayments();
   const [query, setQuery] = useState("");
@@ -61,74 +63,77 @@ export default function PaymentsPage() {
       const rows = payments
         .filter((p) => selectedRowKeys.includes(p.id))
         .map((p) => ({
-          "Mã đơn": p.orderNumber,
-          "Khách hàng": p.customerName,
-          Tổng: p.totalAmount,
-          "Đã TT": p.paidAmount,
-          "Còn lại": p.remaining,
-          "Trạng thái": p.status,
+          [t("payment.orderNo")]: p.orderNumber,
+          [t("common.customer")]: p.customerName,
+          [t("payment.total")]: p.totalAmount,
+          [t("payment.paid")]: p.paidAmount,
+          [t("payment.remaining")]: p.remaining,
+          [t("common.status")]: p.status,
         }));
       await exportRowsToXlsx(`payments-selected-${Date.now()}.xlsx`, rows);
-      message.success(`Đã xuất ${selectedCount} bản ghi thanh toán`);
+      message.success(t("payment.exported", { count: selectedCount }));
     } finally {
       setExporting(false);
     }
   };
 
-  const columns: TableColumnsType<PaymentRecord> = [
-    {
-      title: "Mã đơn",
-      dataIndex: "orderNumber",
-      sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
-      render: (v, r) => <Link href={`/payments/${r.id}`}>{v}</Link>,
-    },
-    {
-      title: "Khách hàng",
-      dataIndex: "customerName",
-      sorter: (a, b) => compareText(a.customerName, b.customerName),
-    },
-    {
-      title: "Tổng",
-      dataIndex: "totalAmount",
-      align: "center",
-      sorter: (a, b) => a.totalAmount - b.totalAmount,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Đã TT",
-      dataIndex: "paidAmount",
-      align: "center",
-      sorter: (a, b) => a.paidAmount - b.paidAmount,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Còn lại",
-      dataIndex: "remaining",
-      align: "center",
-      sorter: (a, b) => a.remaining - b.remaining,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Trạng thái",
-      dataIndex: "status",
-      sorter: (a, b) => compareText(a.status, b.status),
-      render: (s: PaymentStatus) => <StatusBadge module="payment" status={s} />,
-    },
-    {
-      title: "Đợt TT",
-      key: "inst",
-      align: "center",
-      sorter: (a, b) => a.installments.length - b.installments.length,
-      render: (_, r) => r.installments.length,
-    },
-  ];
+  const columns: TableColumnsType<PaymentRecord> = useMemo(
+    () => [
+      {
+        title: t("payment.orderNo"),
+        dataIndex: "orderNumber",
+        sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
+        render: (v, r) => <Link href={`/payments/${r.id}`}>{v}</Link>,
+      },
+      {
+        title: t("common.customer"),
+        dataIndex: "customerName",
+        sorter: (a, b) => compareText(a.customerName, b.customerName),
+      },
+      {
+        title: t("payment.total"),
+        dataIndex: "totalAmount",
+        align: "center",
+        sorter: (a, b) => a.totalAmount - b.totalAmount,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("payment.paid"),
+        dataIndex: "paidAmount",
+        align: "center",
+        sorter: (a, b) => a.paidAmount - b.paidAmount,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("payment.remaining"),
+        dataIndex: "remaining",
+        align: "center",
+        sorter: (a, b) => a.remaining - b.remaining,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("common.status"),
+        dataIndex: "status",
+        sorter: (a, b) => compareText(a.status, b.status),
+        render: (s: PaymentStatus) => <StatusBadge module="payment" status={s} />,
+      },
+      {
+        title: t("payment.installments"),
+        key: "inst",
+        align: "center",
+        sorter: (a, b) => a.installments.length - b.installments.length,
+        render: (_, r) => r.installments.length,
+      },
+    ],
+    [t],
+  );
 
   return (
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
       <PageHeader
-        breadcrumbs={[{ title: "Quản lý thanh toán" }]}
-        searchPlaceholder="Tìm trong bảng…"
+        breadcrumbs={[{ title: t("payment.title") }]}
+        searchPlaceholder={t("common.searchTable")}
         onSearch={(v) => {
           setQuery(v);
           clearSelection();
@@ -142,7 +147,7 @@ export default function PaymentsPage() {
             clearSelection();
           }}
           style={{ width: 180 }}
-          options={[{ value: "all", label: "Tất cả trạng thái" }, ...getStatusOptions("payment")]}
+          options={[{ value: "all", label: t("common.allStatuses") }, ...getStatusOptions("payment")]}
         />
       </PageHeader>
       <DataTable<PaymentRecord>
@@ -156,18 +161,18 @@ export default function PaymentsPage() {
         onSelectedRowKeysChange={setSelectedRowKeys}
         emptyDescription={
           hasActiveFilters && payments.length > 0
-            ? "Không tìm thấy kết quả phù hợp."
-            : "Chưa có bản ghi thanh toán nào."
+            ? t("common.noResults")
+            : t("payment.empty")
         }
         emptyAction={
           hasActiveFilters && payments.length > 0
             ? undefined
-            : { label: "Tạo đơn hàng", href: "/orders/new" }
+            : { label: t("common.createOrder"), href: "/orders/new" }
         }
         bulkToolbar={
           <BulkActionBar count={selectedCount}>
             <Button size="small" onClick={bulkExport}>
-              Xuất Excel
+              {t("common.exportExcel")}
             </Button>
           </BulkActionBar>
         }

@@ -52,10 +52,18 @@ import { useServices } from "@/lib/services-store";
 import type { Order, OrderStage } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { orderHasContractNumber } from "@/lib/vat-helpers";
+import { useT } from "@/lib/use-t";
+import { hasMessageKey, type MessageKey } from "@/lib/i18n";
 
 const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
+function channelLabel(t: (key: MessageKey) => string, channel: string) {
+  const key = `channel.${channel}` as MessageKey;
+  return hasMessageKey(key) ? t(key) : channel;
+}
+
 export default function OrderDetailPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -104,8 +112,8 @@ export default function OrderDetailPage() {
   if (!order) {
     return (
       <EmptyState
-        description="Không tìm thấy đơn hàng."
-        action={{ label: "Quay lại danh sách", href: "/orders" }}
+        description={t("common.notFoundOrder")}
+        action={{ label: t("common.back"), href: "/orders" }}
       />
     );
   }
@@ -128,25 +136,25 @@ export default function OrderDetailPage() {
       approvalStatus: "none",
       pendingTransition: undefined,
     });
-    message.success("Đã cập nhật giai đoạn");
+    message.success(t("order.stageUpdated"));
   };
 
   const requestStageChange = (newStage: OrderStage) => {
     if (newStage === order.stage) return;
     const nextLabel = stageOptions.find((s) => s.value === newStage)?.label ?? newStage;
     modal.confirm({
-      title: `Đổi giai đoạn sang “${nextLabel}”?`,
-      okText: "Xác nhận",
-      cancelText: "Hủy",
+      title: t("order.changeStage", { label: nextLabel }),
+      okText: t("common.confirm"),
+      cancelText: t("common.cancel"),
       onOk: () => applyStage(newStage),
     });
   };
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Đơn hàng", href: "/orders" }, { title: order.orderNumber }]}>
+      <PageHeader breadcrumbs={[{ title: t("common.order"), href: "/orders" }, { title: order.orderNumber }]}>
         <Space wrap>
-          <Button onClick={() => setEditOpen(true)}>Sửa</Button>
+          <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
           <Button
             type="primary"
             onClick={() => {
@@ -154,43 +162,43 @@ export default function OrderDetailPage() {
               else router.push("/payments");
             }}
           >
-            Thanh toán
-            {payment ? ` (${formatVndDisplay(payment.remaining)} còn lại)` : ""}
+            {t("order.payment")}
+            {payment ? t("order.remainingAmount", { amount: formatVndDisplay(payment.remaining) }) : ""}
           </Button>
-          <Tooltip title={!orderHasContractNumber(order) ? "Chỉ xuất VAT cho đơn đã có số HĐ." : undefined}>
+          <Tooltip title={!orderHasContractNumber(order) ? t("order.vatNeedsContract") : undefined}>
             <span>
               <Button
                 disabled={!orderHasContractNumber(order)}
                 onClick={() => router.push(`/vat/new?orderId=${order.id}`)}
               >
-                Tạo VAT
+                {t("common.createVat")}
               </Button>
             </span>
           </Tooltip>
           <Popconfirm
-            title="Hủy đơn này?"
-            description="Đơn sẽ chuyển sang giai đoạn Đã hủy."
-            okText="Hủy đơn"
-            cancelText="Đóng"
+            title={t("order.cancelTitle")}
+            description={t("order.cancelBody")}
+            okText={t("order.cancelOk")}
+            cancelText={t("common.close")}
             okButtonProps={{ danger: true }}
             onConfirm={() => {
               applyStage("cancelled");
             }}
           >
-            <Button danger>Hủy đơn</Button>
+            <Button danger>{t("order.cancelOk")}</Button>
           </Popconfirm>
           <Popconfirm
-            title="Xóa đơn hàng?"
-            okText="Xóa"
-            cancelText="Hủy"
+            title={t("order.deleteTitle")}
+            okText={t("common.delete")}
+            cancelText={t("common.cancel")}
             okButtonProps={{ danger: true }}
             onConfirm={() => {
               deleteOrder(order.id);
-              message.success("Đã xóa đơn");
+              message.success(t("order.deleted"));
               router.push("/orders");
             }}
           >
-            <Button danger>Xóa</Button>
+            <Button danger>{t("common.delete")}</Button>
           </Popconfirm>
         </Space>
       </PageHeader>
@@ -206,27 +214,31 @@ export default function OrderDetailPage() {
             onChange={(v) => requestStageChange(v as OrderStage)}
           />
           <Tag color={order.needsVat ? "blue" : "default"}>
-            {order.needsVat ? "Có VAT" : "Không VAT"}
+            {order.needsVat ? t("common.withVat") : t("common.withoutVat")}
           </Tag>
-          {order.contractNumber != null ? <Tag>Số HĐ: {order.contractNumber}</Tag> : null}
+          {order.contractNumber != null ? (
+            <Tag>{t("order.contractTag", { n: order.contractNumber })}</Tag>
+          ) : null}
           <Tag color={licenseExpiryTagColor(licenseSummary.tone)}>
             {licenseSummary.label}
             {licenseSummary.earliestExpiresAt ? ` · ${licenseSummary.earliestExpiresAt}` : ""}
           </Tag>
-          <Tag>{workFileCount} hồ sơ</Tag>
-          {licenseFileCount > 0 && <Tag color="green">{licenseFileCount} giấy phép</Tag>}
+          <Tag>{t("order.workFilesTag", { count: workFileCount })}</Tag>
+          {licenseFileCount > 0 && (
+            <Tag color="green">{t("order.licenseCountTag", { count: licenseFileCount })}</Tag>
+          )}
         </Space>
 
         <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small" style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="Khách hàng">
+          <Descriptions.Item label={t("common.customer")}>
             <Link href={`/customers/${order.customerId}`}>{order.customerName}</Link>
           </Descriptions.Item>
-          <Descriptions.Item label="Dịch vụ">{order.serviceName}</Descriptions.Item>
-          <Descriptions.Item label="Giá trị niêm yết">{formatVndDisplay(order.value)}</Descriptions.Item>
-          <Descriptions.Item label="Hoa hồng">
+          <Descriptions.Item label={t("common.service")}>{order.serviceName}</Descriptions.Item>
+          <Descriptions.Item label={t("order.listPriceVnd")}>{formatVndDisplay(order.value)}</Descriptions.Item>
+          <Descriptions.Item label={t("common.commission")}>
             {order.commission != null ? formatVndDisplay(order.commission) : "—"}
           </Descriptions.Item>
-          <Descriptions.Item label="Group Zalo">
+          <Descriptions.Item label={t("common.zaloGroup")}>
             {order.zaloGroupUrl ? (
               <Typography.Link href={order.zaloGroupUrl} target="_blank" rel="noopener noreferrer">
                 {order.zaloGroupUrl}
@@ -235,32 +247,30 @@ export default function OrderDetailPage() {
               "—"
             )}
           </Descriptions.Item>
-          <Descriptions.Item label="Kênh">{order.channel.toUpperCase()}</Descriptions.Item>
-          <Descriptions.Item label="Xuất VAT">{order.needsVat ? "Có" : "Không"}</Descriptions.Item>
-          <Descriptions.Item label="Số HĐ">
+          <Descriptions.Item label={t("common.channel")}>{channelLabel(t, order.channel)}</Descriptions.Item>
+          <Descriptions.Item label={t("order.issueVat")}>{order.needsVat ? t("common.yes") : t("common.no")}</Descriptions.Item>
+          <Descriptions.Item label={t("common.contractNo")}>
             {order.contractNumber != null ? order.contractNumber : "—"}
           </Descriptions.Item>
-          <Descriptions.Item label="Hạn xử lý">{order.deadline ?? "—"}</Descriptions.Item>
-          {order.ctvName && (
-            <Descriptions.Item label="CTV">{order.ctvName}</Descriptions.Item>
-          )}
+          <Descriptions.Item label={t("common.deadline")}>{order.deadline ?? "—"}</Descriptions.Item>
+          {order.ctvName && <Descriptions.Item label={t("common.ctv")}>{order.ctvName}</Descriptions.Item>}
           {order.channel === "ctv" && order.ctvPrice != null && (
             <>
-              <Descriptions.Item label="Giá CTV">{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
-              <Descriptions.Item label="Hoa hồng CTV">
+              <Descriptions.Item label={t("common.ctvPrice")}>{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
+              <Descriptions.Item label={t("order.ctvCommission")}>
                 <Tag color="green">{formatVndDisplay(order.ctvPrice - order.value)}</Tag>
                 <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: ds.fontSize.caption }}>
-                  Giá CTV − giá niêm yết
+                  {t("order.ctvCommissionExtra")}
                 </Typography.Text>
               </Descriptions.Item>
             </>
           )}
-          <Descriptions.Item label="Phụ trách">{order.assignedUserName}</Descriptions.Item>
-          <Descriptions.Item label="Người tạo">{order.submitterName}</Descriptions.Item>
-          <Descriptions.Item label="Người duyệt chi">{order.reviewerName ?? "—"}</Descriptions.Item>
-          <Descriptions.Item label="Ngày tạo">{order.createdAt}</Descriptions.Item>
+          <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
+          <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
+          <Descriptions.Item label={t("common.reviewer")}>{order.reviewerName ?? "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("common.createdAt")}>{order.createdAt}</Descriptions.Item>
           {order.notes && (
-            <Descriptions.Item label="Ghi chú" span={2}>
+            <Descriptions.Item label={t("common.note")} span={2}>
               {order.notes}
             </Descriptions.Item>
           )}
@@ -270,12 +280,12 @@ export default function OrderDetailPage() {
           items={[
             {
               key: "expenses",
-              label: "Thu chi",
+              label: t("order.expensesTab"),
               children: <OrderExpensesPanel order={order} />,
             },
             {
               key: "documents",
-              label: `Hồ sơ làm việc (${workFileCount})`,
+              label: t("order.workFiles", { count: workFileCount }),
               children: (
                 <OrderDocuments
                   attachments={order.attachments}
@@ -286,12 +296,10 @@ export default function OrderDetailPage() {
             },
             {
               key: "license",
-              label: `Giấy phép final (${licenseFileCount})`,
+              label: t("order.licenseFiles", { count: licenseFileCount }),
               children: (
                 <div>
-                  <Typography.Paragraph type="secondary">
-                    Mỗi giấy phép có ngày cấp / hết hạn. File giấy phép không bắt buộc khi chuyển Hoàn thành.
-                  </Typography.Paragraph>
+                  <Typography.Paragraph type="secondary">{t("license.tabHint")}</Typography.Paragraph>
                   <LicenseUpload
                     files={order.licenseAttachments ?? []}
                     onChange={(licenseAttachments) => persist({ ...order, licenseAttachments })}
@@ -305,7 +313,7 @@ export default function OrderDetailPage() {
       </div>
 
       <Modal
-        title={`Sửa đơn ${order.orderNumber}`}
+        title={t("order.editTitle", { number: order.orderNumber })}
         open={editOpen}
         onCancel={() => setEditOpen(false)}
         footer={null}
@@ -328,18 +336,18 @@ export default function OrderDetailPage() {
                 : undefined;
               const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
               if (!customer || !service || !assigned || !submitter) {
-                message.error("Thiếu thông tin bắt buộc");
+                message.error(t("common.requiredMissing"));
                 return;
               }
 
               if (values.needsVat) {
                 const hd = Number(values.contractNumber);
                 if (!hd || hd < 1) {
-                  message.error("Nhập số HĐ hợp lệ");
+                  message.error(t("order.enterContractValid"));
                   return;
                 }
                 if (isContractTaken(hd, order.id) || isContractNumberTaken(orders, hd, order.id)) {
-                  message.error("Số HĐ đã tồn tại trên đơn khác");
+                  message.error(t("order.contractTaken"));
                   return;
                 }
               }
@@ -379,21 +387,21 @@ export default function OrderDetailPage() {
                   currentUser?.id,
                 );
               }
-              message.success("Đã cập nhật đơn hàng");
+              message.success(t("order.updated"));
               setEditOpen(false);
             } finally {
               setSaving(false);
             }
           }}
         >
-          <Form.Item name="customerId" label="Khách hàng" rules={[{ required: true }]}>
+          <Form.Item name="customerId" label={t("common.customer")} rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="label"
               options={customers.map((c) => ({ value: c.id, label: c.name }))}
             />
           </Form.Item>
-          <Form.Item name="serviceId" label="Dịch vụ" rules={[{ required: true }]}>
+          <Form.Item name="serviceId" label={t("common.service")} rules={[{ required: true }]}>
             <Select
               onChange={(id) => {
                 const svc = services.find((s) => s.id === id);
@@ -408,40 +416,40 @@ export default function OrderDetailPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="channel" label="Kênh" rules={[{ required: true }]}>
+          <Form.Item name="channel" label={t("common.channel")} rules={[{ required: true }]}>
             <Select
               options={[
-                { value: "direct", label: "Trực tiếp" },
-                { value: "website", label: "Website" },
-                { value: "referral", label: "Giới thiệu" },
-                { value: "ctv", label: "CTV" },
+                { value: "direct", label: t("channel.direct") },
+                { value: "website", label: t("channel.website") },
+                { value: "referral", label: t("channel.referral") },
+                { value: "ctv", label: t("channel.ctv") },
               ]}
             />
           </Form.Item>
           {channelEdit === "ctv" ? (
             <>
-              <Form.Item name="ctvId" label="CTV" rules={[{ required: true }]}>
+              <Form.Item name="ctvId" label={t("common.ctv")} rules={[{ required: true }]}>
                 <Select options={ctvs.map((c) => ({ value: c.id, label: c.name }))} />
               </Form.Item>
-              <Form.Item name="ctvPrice" label="Giá CTV" rules={[{ required: true }]}>
+              <Form.Item name="ctvPrice" label={t("common.ctvPrice")} rules={[{ required: true }]}>
                 <InputNumber {...vndInputProps} />
               </Form.Item>
             </>
           ) : null}
-          <Form.Item name="value" label="Giá trị niêm yết" rules={[{ required: true }]}>
+          <Form.Item name="value" label={t("common.listPrice")} rules={[{ required: true }]}>
             <InputNumber {...vndInputProps} />
           </Form.Item>
-          <Form.Item name="assignedUserId" label="Phụ trách" rules={[{ required: true }]}>
+          <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
             <Select
               options={activeUsers
                 .filter((u) => u.role === "staff")
                 .map((u) => ({ value: u.id, label: u.name }))}
             />
           </Form.Item>
-          <Form.Item name="submitterId" label="Người tạo" rules={[{ required: true }]}>
+          <Form.Item name="submitterId" label={t("common.submitter")} rules={[{ required: true }]}>
             <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
           </Form.Item>
-          <Form.Item name="reviewerId" label="Người duyệt chi">
+          <Form.Item name="reviewerId" label={t("common.reviewer")}>
             <Select
               allowClear
               options={activeUsers
@@ -449,12 +457,12 @@ export default function OrderDetailPage() {
                 .map((u) => ({ value: u.id, label: u.name }))}
             />
           </Form.Item>
-          <Form.Item name="deadline" label="Hạn xử lý đơn">
+          <Form.Item name="deadline" label={t("order.deadlineLabel")}>
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item
             name="zaloGroupUrl"
-            label="Group Zalo"
+            label={t("common.zaloGroup")}
             rules={[
               {
                 validator: async (_, v) => {
@@ -463,7 +471,7 @@ export default function OrderDetailPage() {
                   try {
                     new URL(s);
                   } catch {
-                    throw new Error("Nhập URL hợp lệ");
+                    throw new Error(t("order.invalidUrl"));
                   }
                 },
               },
@@ -479,19 +487,19 @@ export default function OrderDetailPage() {
                 }
               }}
             >
-              Đơn có xuất hóa đơn VAT
+              {t("order.needsVat")}
             </Checkbox>
           </Form.Item>
           {needsVatEdit ? (
             <Form.Item
               name="contractNumber"
-              label="Số HĐ"
-              rules={[{ required: true, message: "Nhập số HĐ" }]}
+              label={t("common.contractNo")}
+              rules={[{ required: true, message: t("order.enterContract") }]}
             >
               <InputNumber min={1} precision={0} style={{ width: "100%" }} />
             </Form.Item>
           ) : null}
-          <Form.Item name="notes" label="Ghi chú">
+          <Form.Item name="notes" label={t("common.note")}>
             <Input.TextArea rows={2} />
           </Form.Item>
           <Space>
@@ -499,10 +507,10 @@ export default function OrderDetailPage() {
               onClick={() => confirmDiscardIfDirty(modal, form, () => setEditOpen(false))}
               disabled={saving}
             >
-              Hủy
+              {t("common.cancel")}
             </Button>
             <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-              Lưu
+              {t("common.save")}
             </Button>
           </Space>
         </Form>

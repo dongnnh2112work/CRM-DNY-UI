@@ -9,6 +9,7 @@ import {
   saveColumnVisibility,
   type ColumnVisibility,
 } from "@/lib/column-visibility";
+import { useT } from "@/lib/use-t";
 
 export type ColumnManagerItem = {
   key: string;
@@ -45,10 +46,11 @@ export function useManagedColumns(managerId: string | undefined, items: ColumnMa
 }
 
 export function ColumnManagerButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0" }}>
       <Button icon={<SettingOutlined />} size="small" onClick={onClick}>
-        Quản lý cột
+        {t("common.manageColumns")}
       </Button>
     </div>
   );
@@ -69,6 +71,7 @@ export function ColumnManagerDrawer({
 }) {
   const { message, modal } = App.useApp();
   const { token } = theme.useToken();
+  const t = useT();
   const [draft, setDraft] = useState<ColumnVisibility>(value);
 
   useEffect(() => {
@@ -79,7 +82,7 @@ export function ColumnManagerDrawer({
 
   const handleSave = () => {
     onSave(draft);
-    message.success("Đã lưu cấu hình cột");
+    message.success(t("common.savedColumns"));
     onClose();
   };
 
@@ -94,32 +97,32 @@ export function ColumnManagerDrawer({
       return;
     }
     modal.confirm({
-      title: "Hủy?",
-      content: "Thay đổi sẽ không được lưu.",
-      okText: "Hủy",
-      cancelText: "Tiếp tục",
+      title: t("common.discardTitle"),
+      content: t("common.discardBody"),
+      okText: t("common.cancel"),
+      cancelText: t("common.continue"),
       onOk: discard,
     });
   };
 
   return (
     <Drawer
-      title="Quản lý cột"
+      title={t("common.manageColumns")}
       open={open}
       onClose={requestClose}
       width={400}
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button onClick={requestClose}>Đóng</Button>
+          <Button onClick={requestClose}>{t("common.close")}</Button>
           <Button type="primary" disabled={!dirty} onClick={handleSave}>
-            Lưu
+            {t("common.save")}
           </Button>
         </div>
       }
     >
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
         <span style={{ color: token.colorTextSecondary, fontSize: ds.fontSize.bodySm }}>
-          Ẩn/hiện cột chỉ áp dụng sau khi bấm Lưu.
+          {t("col.saveHint")}
         </span>
         {items.map((item) => (
           <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>

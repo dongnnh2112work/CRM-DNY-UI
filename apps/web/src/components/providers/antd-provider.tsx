@@ -5,10 +5,15 @@ import { App, ConfigProvider, theme as antTheme } from "antd";
 import enUS from "antd/locale/en_US";
 import viVN from "antd/locale/vi_VN";
 import zhCN from "antd/locale/zh_CN";
+import dayjs from "dayjs";
+import "dayjs/locale/en";
+import "dayjs/locale/vi";
+import "dayjs/locale/zh-cn";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ds, fontStack } from "@/lib/design-tokens";
+import { setI18nLocale, type AppLocale } from "@/lib/i18n";
 
-export type AppLocale = "vi" | "en" | "zh";
+export type { AppLocale };
 export type AppTheme = "light" | "dark";
 
 interface AppConfig {
@@ -28,6 +33,14 @@ const AppConfigContext = createContext<AppConfig>({
 export const useAppConfig = () => useContext(AppConfigContext);
 
 const LOCALE_MAP = { vi: viVN, en: enUS, zh: zhCN };
+const DAYJS_LOCALE = { vi: "vi", en: "en", zh: "zh-cn" } as const;
+
+function applyDocumentLocale(locale: AppLocale) {
+  setI18nLocale(locale);
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = locale === "zh" ? "zh-CN" : locale;
+  dayjs.locale(DAYJS_LOCALE[locale]);
+}
 
 function buildTheme(mode: AppTheme) {
   const isDark = mode === "dark";
@@ -169,7 +182,10 @@ export function AntdProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedLocale = localStorage.getItem("app_locale") as AppLocale | null;
     const savedTheme = (localStorage.getItem("app_theme") as AppTheme | null) ?? "light";
-    if (savedLocale) setLocale(savedLocale);
+    if (savedLocale === "vi" || savedLocale === "en" || savedLocale === "zh") {
+      setLocale(savedLocale);
+      applyDocumentLocale(savedLocale);
+    }
     setTheme(savedTheme);
     applyDocumentTheme(savedTheme);
   }, []);
@@ -177,6 +193,7 @@ export function AntdProvider({ children }: { children: ReactNode }) {
   const handleSetLocale = (l: AppLocale) => {
     setLocale(l);
     localStorage.setItem("app_locale", l);
+    applyDocumentLocale(l);
   };
 
   const handleSetTheme = (t: AppTheme) => {

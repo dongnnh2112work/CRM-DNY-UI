@@ -9,6 +9,7 @@ import { canApprove, canRequestTransition, hasLicenseDocument } from "@/lib/orde
 import { MOCK_USERS } from "@/lib/mock-users";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { useUsers } from "@/lib/users-store";
+import { useT } from "@/lib/use-t";
 
 /** Fallback submitter mock when acting as submitter in demos */
 export const MOCK_CURRENT_SUBMITTER = MOCK_USERS[2];
@@ -20,6 +21,7 @@ interface OrderApprovalPanelProps {
 }
 
 export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: OrderApprovalPanelProps) {
+  const t = useT();
   const { message } = App.useApp();
   const { currentUser } = useUsers();
   const { stageOptions, getMeta } = useOrderStatusConfig();
@@ -42,15 +44,15 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
 
   const handleRequest = (values: { toStage: OrderStage; note?: string }) => {
     if (!canActAsSubmitter && !canRequestTransition(order, actor.id)) {
-      message.error("Chỉ người gửi mới có thể yêu cầu đổi giai đoạn");
+      message.error(t("approval.onlySubmitter"));
       return;
     }
     if (order.approvalStatus === "pending_review") {
-      message.warning("Đã có yêu cầu duyệt đang chờ");
+      message.warning(t("approval.alreadyPending"));
       return;
     }
     if (values.toStage === order.stage) {
-      message.warning("Chọn giai đoạn khác");
+      message.warning(t("approval.pickOtherStage"));
       return;
     }
     const reqId = `ar-${Date.now()}`;
@@ -70,16 +72,16 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
       approvalHistory: [...order.approvalHistory, request],
     });
     form.resetFields();
-    message.success(`Đã gửi yêu cầu chuyển sang ${stageLabel(values.toStage)}`);
+    message.success(t("approval.requested", { label: stageLabel(values.toStage) }));
   };
 
   const handleApprove = (reviewNote?: string) => {
     if (!canActAsReviewer) {
-      message.error("Bạn không phải người duyệt được chỉ định");
+      message.error(t("approval.notReviewer"));
       return;
     }
     if (!pending || !order.pendingTransition) {
-      message.warning("Không có yêu cầu đang chờ");
+      message.warning(t("approval.noPending"));
       return;
     }
     const toStage = order.pendingTransition.toStage;
@@ -100,16 +102,16 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
           : h,
       ),
     });
-    message.success(`Đã duyệt → ${stageLabel(toStage)}`);
+    message.success(t("approval.approvedTo", { label: stageLabel(toStage) }));
   };
 
   const handleReject = (reviewNote?: string) => {
     if (!canActAsReviewer) {
-      message.error("Bạn không phải người duyệt được chỉ định");
+      message.error(t("approval.notReviewer"));
       return;
     }
     if (!pending) {
-      message.warning("Không có yêu cầu đang chờ");
+      message.warning(t("approval.noPending"));
       return;
     }
     onChange({
@@ -128,7 +130,7 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
           : h,
       ),
     });
-    message.info("Đã từ chối — giai đoạn không đổi");
+    message.info(t("approval.rejectedKeep"));
   };
 
   const targetOptions = stageOptions
@@ -141,13 +143,13 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
   return (
     <div>
       <Space wrap style={{ marginBottom: 16 }}>
-        <Typography.Text>Trạng thái duyệt:</Typography.Text>
+        <Typography.Text>{t("approval.statusLabel")}</Typography.Text>
         <StatusBadge module="approval" status={order.approvalStatus} />
         <Typography.Text type="secondary">
-          Người gửi: {order.submitterName} · Người duyệt: {order.reviewerName}
+          {t("approval.people", { submitter: order.submitterName, reviewer: order.reviewerName ?? "—" })}
         </Typography.Text>
         <Tag color={hasLicense ? "success" : "default"}>
-          {hasLicense ? "Đã có giấy phép final" : "Chưa có giấy phép final"}
+          {hasLicense ? t("approval.hasFinal") : t("approval.noFinal")}
         </Tag>
       </Space>
 
@@ -162,24 +164,27 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
           }}
         >
           <Typography.Text strong>
-            Đang chờ: {stageLabel(pending.fromStage)} → {stageLabel(pending.toStage)}
+            {t("approval.waiting", {
+              from: stageLabel(pending.fromStage),
+              to: stageLabel(pending.toStage),
+            })}
           </Typography.Text>
           {pending.note && (
             <div>
-              <Typography.Text type="secondary">Ghi chú: {pending.note}</Typography.Text>
+              <Typography.Text type="secondary">{t("approval.note", { note: pending.note })}</Typography.Text>
             </div>
           )}
           <Space style={{ marginTop: 12 }}>
             <Button type="primary" icon={<CheckOutlined />} onClick={() => handleApprove()} disabled={!canActAsReviewer}>
-              Duyệt
+              {t("common.approve")}
             </Button>
             <Button
               danger
               icon={<CloseOutlined />}
-              onClick={() => handleReject("Cần bổ sung hồ sơ")}
+              onClick={() => handleReject(t("approval.needDocs"))}
               disabled={!canActAsReviewer}
             >
-              Từ chối
+              {t("common.reject")}
             </Button>
           </Space>
         </div>
@@ -189,30 +194,28 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
         <Form form={form} layout="vertical" onFinish={handleRequest} style={{ maxWidth: 480, marginBottom: 24 }}>
           <Form.Item
             name="toStage"
-            label="Yêu cầu đổi giai đoạn"
-            rules={[{ required: true, message: "Chọn giai đoạn đích" }]}
+            label={t("approval.requestLabel")}
+            rules={[{ required: true, message: t("approval.selectTarget") }]}
           >
-            <Select placeholder="Chuyển sang…" options={targetOptions} />
+            <Select placeholder={t("approval.moveTo")} options={targetOptions} />
           </Form.Item>
 
-          <Form.Item name="note" label="Ghi chú">
-            <Input.TextArea rows={2} placeholder="Lý do đổi giai đoạn…" />
+          <Form.Item name="note" label={t("common.note")}>
+            <Input.TextArea rows={2} placeholder={t("approval.reasonPh")} />
           </Form.Item>
           <Button type="primary" htmlType="submit" icon={<SendOutlined />}>
-            Gửi duyệt
+            {t("approval.send")}
           </Button>
         </Form>
       )}
 
       {order.approvalStatus !== "pending_review" && !canActAsSubmitter && (
-        <Typography.Paragraph type="secondary">
-          Chuyển sang vai trò Người gửi để yêu cầu đổi giai đoạn.
-        </Typography.Paragraph>
+        <Typography.Paragraph type="secondary">{t("approval.switchRole")}</Typography.Paragraph>
       )}
 
-      <Typography.Title level={5}>Lịch sử duyệt</Typography.Title>
+      <Typography.Title level={5}>{t("approval.history")}</Typography.Title>
       {order.approvalHistory.length === 0 ? (
-        <Typography.Text type="secondary">Chưa có lịch sử duyệt</Typography.Text>
+        <Typography.Text type="secondary">{t("approval.noHistory")}</Typography.Text>
       ) : (
         <Timeline
           items={[...order.approvalHistory].reverse().map((h) => ({
@@ -224,13 +227,15 @@ export function OrderApprovalPanel({ order, onChange, actingAs = "reviewer" }: O
                   {stageLabel(h.fromStage)} → {stageLabel(h.toStage)}
                 </div>
                 <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                  Gửi bởi {h.requestedBy} ngày {h.requestedAt}
-                  {h.reviewedBy ? ` · Duyệt bởi ${h.reviewedBy} ngày ${h.reviewedAt}` : ""}
+                  {t("approval.sentBy", { name: h.requestedBy, date: h.requestedAt })}
+                  {h.reviewedBy
+                    ? t("approval.reviewedBy", { name: h.reviewedBy, date: h.reviewedAt ?? "" })
+                    : ""}
                 </Typography.Text>
                 {(h.note || h.reviewNote) && (
                   <div style={{ fontSize: ds.fontSize.caption }}>
-                    {h.note && <div>Yêu cầu: {h.note}</div>}
-                    {h.reviewNote && <div>Duyệt: {h.reviewNote}</div>}
+                    {h.note && <div>{t("approval.reqLine", { note: h.note })}</div>}
+                    {h.reviewNote && <div>{t("approval.revLine", { note: h.reviewNote })}</div>}
                   </div>
                 )}
               </div>

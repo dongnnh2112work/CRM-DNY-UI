@@ -7,6 +7,7 @@ import { ColorSwatchPicker } from "@/components/shared/color-swatch-picker";
 import { ds } from "@/lib/design-tokens";
 import { resolveStatusColor, useStatusMeta } from "@/lib/order-status-store";
 import type { StatusModule } from "@/lib/status-config";
+import { useT } from "@/lib/use-t";
 
 type Option = { value: string; label: string };
 
@@ -31,6 +32,7 @@ export function StatusSelect({
     takenColors: string[];
   };
 }) {
+  const t = useT();
   const { token } = theme.useToken();
   const { message } = App.useApp();
   const current = useStatusMeta(module, value);
@@ -45,16 +47,16 @@ export function StatusSelect({
     if (!manage) return;
     const label = newLabel.trim();
     if (!label) {
-      message.warning("Nhập tên trạng thái");
+      message.warning(t("status.enterName"));
       return;
     }
     const created = manage.onAdd(label);
     if (!created) {
-      message.warning("Đã hết màu trong palette — đổi màu trạng thái khác trước");
+      message.warning(t("status.noColors"));
       return;
     }
     setNewLabel("");
-    message.success("Đã thêm trạng thái");
+    message.success(t("status.added"));
   };
 
   const removeStatus = (key: string, label: string) => {
@@ -64,7 +66,7 @@ export function StatusSelect({
       message.warning(result.reason);
       return;
     }
-    message.success(`Đã xóa trạng thái “${label}”`);
+    message.success(t("status.deleted", { label }));
   };
 
   const panel = (
@@ -111,7 +113,7 @@ export function StatusSelect({
           <div style={{ display: "flex", gap: 8, padding: "4px 8px 8px", alignItems: "center" }}>
             <Input
               size="small"
-              placeholder="Tên trạng thái mới"
+              placeholder={t("status.newName")}
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               onPressEnter={addStatus}
@@ -176,6 +178,7 @@ function StatusSelectOptionRow({
   onSelect: () => void;
   onRemove?: () => void;
 }) {
+  const t = useT();
   const meta = useStatusMeta(module, status);
   const takenExceptSelf = colorPicker
     ? colorPicker.takenColors.filter((c) => c.toLowerCase() !== meta.color.toLowerCase())
@@ -224,7 +227,7 @@ function StatusSelectOptionRow({
           size="small"
           danger
           icon={<DeleteOutlined />}
-          aria-label={`Xóa ${meta.label}`}
+          aria-label={t("status.deleteAria", { label: meta.label })}
           onClick={(e) => {
             e.stopPropagation();
             onRemove();

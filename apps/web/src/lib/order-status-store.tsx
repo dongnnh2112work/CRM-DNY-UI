@@ -9,9 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useAppConfig } from "@/components/providers/antd-provider";
 import { CustomerStatusContext } from "@/lib/customer-status-store";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { ds } from "@/lib/design-tokens";
+import { tt, translateStatusLabel } from "@/lib/i18n";
 import { STATUS_CONFIG, type DisplayStatusMeta, type StatusMeta, type StatusModule, type StatusTone } from "@/lib/status-config";
 import {
   STAGE_COLOR_PALETTE,
@@ -130,6 +132,7 @@ type Ctx = {
 const OrderStatusContext = createContext<Ctx | null>(null);
 
 export function OrderStatusProvider({ children }: { children: ReactNode }) {
+  const { locale } = useAppConfig();
   const [stages, setStages] = useState<OrderStageDefinition[]>(defaultStages);
   const [ready, setReady] = useState(false);
 
@@ -149,16 +152,21 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
     (module: StatusModule, status: string): DisplayStatusMeta => {
       if (module === "orderStage") {
         const found = stages.find((s) => s.key === status);
-        if (found) return { label: found.label, color: found.color };
+        if (found) {
+          return {
+            label: translateStatusLabel("orderStage", found.key, found.label),
+            color: found.color,
+          };
+        }
         return { label: status, color: STAGE_COLOR_PALETTE[0] };
       }
       const meta: StatusMeta = STATUS_CONFIG[module][status] ?? {
         label: status,
         color: "default",
       };
-      return { label: meta.label, color: meta.color };
+      return { label: translateStatusLabel(module, status, meta.label), color: meta.color };
     },
-    [stages],
+    [stages, locale],
   );
 
   const updateStage = useCallback((key: OrderStage, patch: Partial<OrderStageDisplayMeta>) => {
@@ -191,7 +199,7 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
           : null) ?? nextFreeStageColor(prev.map((s) => s.color));
       if (!free) return prev;
       const existing = new Set(prev.map((s) => s.key));
-      const label = input?.label?.trim() || `Giai đoạn ${prev.length + 1}`;
+      const label = input?.label?.trim() || tt("stage.defaultName", { n: prev.length + 1 });
       const key = uniqueKey(slugifyKey(label), existing);
       created = { key, label, color: free };
       return [...prev, created];
@@ -202,11 +210,11 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
   const removeStage = useCallback((key: OrderStage) => {
     let result: { ok: true } | { ok: false; reason: string } = {
       ok: false,
-      reason: "Không tìm thấy giai đoạn",
+      reason: tt("stage.notFound"),
     };
     setStages((prev) => {
       if (prev.length <= 1) {
-        result = { ok: false, reason: "Cần giữ ít nhất một giai đoạn" };
+        result = { ok: false, reason: tt("stage.needOne") };
         return prev;
       }
       if (!prev.some((s) => s.key === key)) {
@@ -228,8 +236,13 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stageOptions = useMemo(
-    () => stages.map((s) => ({ value: s.key, label: s.label, color: s.color })),
-    [stages],
+    () =>
+      stages.map((s) => ({
+        value: s.key,
+        label: translateStatusLabel("orderStage", s.key, s.label),
+        color: s.color,
+      })),
+    [stages, locale],
   );
 
   const value = useMemo(
@@ -272,7 +285,7 @@ export function useStatusMeta(module: StatusModule, status: string): DisplayStat
   if (module === "customer" && customerCtx) return customerCtx.getMeta(status);
   if (orderCtx) return orderCtx.getMeta(module, status);
   const meta = STATUS_CONFIG[module][status] ?? { label: status, color: "default" as StatusTone };
-  return { label: meta.label, color: meta.color };
+  return { label: translateStatusLabel(module, status, meta.label), color: meta.color };
 }
 
 const TONE_DOT: Record<StatusTone, string> = {

@@ -40,12 +40,14 @@ import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
 import type { CustomerStatus, Order } from "@/lib/types";
+import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
 }
 
 export default function CustomerDetailPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message, modal } = App.useApp();
@@ -71,6 +73,82 @@ export default function CustomerDetailPage() {
   );
   const extraFields = getCustomerFormExtraFields(fieldDefs);
 
+  const orderColumns = useMemo(
+    () => [
+      {
+        title: t("common.dossier"),
+        dataIndex: "orderNumber",
+        sorter: (a: Order, b: Order) => compareText(a.orderNumber, b.orderNumber),
+        render: (v: string, r: Order) => <Link href={`/orders/${r.id}`}>{v}</Link>,
+      },
+      {
+        title: t("common.service"),
+        dataIndex: "serviceName",
+        sorter: (a: Order, b: Order) => compareText(a.serviceName, b.serviceName),
+      },
+      {
+        title: t("common.stage"),
+        dataIndex: "stage",
+        render: (s: string) => <StatusBadge module="orderStage" status={s} />,
+      },
+      {
+        title: t("common.value"),
+        dataIndex: "value",
+        align: "center" as const,
+        sorter: (a: Order, b: Order) => a.value - b.value,
+        render: (v: number) => formatVndDisplay(v),
+      },
+      {
+        title: t("common.owner"),
+        dataIndex: "assignedUserName",
+      },
+      {
+        title: t("common.createdAt"),
+        dataIndex: "createdAt",
+      },
+    ],
+    [t],
+  );
+
+  const usedServiceColumns = useMemo(
+    () => [
+      {
+        title: t("common.service"),
+        dataIndex: "serviceName",
+        render: (name: string, r: CustomerUsedService) => (
+          <Link href={`/services/${r.serviceId}`}>{name}</Link>
+        ),
+      },
+      {
+        title: t("field.category"),
+        dataIndex: "category",
+        render: (v?: string) => v || "—",
+      },
+      {
+        title: t("customer.orderCount"),
+        dataIndex: "orderCount",
+        align: "center" as const,
+        render: (n: number) => n || "—",
+      },
+      {
+        title: t("customer.latestOrder"),
+        dataIndex: "lastOrderAt",
+        render: (v?: string) => v || "—",
+      },
+      {
+        title: t("customer.source"),
+        key: "source",
+        render: (_: unknown, r: CustomerUsedService) => (
+          <Space size={4} wrap>
+            {r.fromOrders ? <Tag color="blue">{t("common.order")}</Tag> : null}
+            {r.fromRecord && !r.fromOrders ? <Tag>{t("customer.manualRecord")}</Tag> : null}
+          </Space>
+        ),
+      },
+    ],
+    [t],
+  );
+
   useEffect(() => {
     if (!customer || !editOpen) return;
     form.setFieldsValue({
@@ -91,8 +169,8 @@ export default function CustomerDetailPage() {
   if (!customer) {
     return (
       <EmptyState
-        description="Không tìm thấy khách hàng."
-        action={{ label: "Quay lại danh sách", href: "/customers" }}
+        description={t("common.notFoundCustomer")}
+        action={{ label: t("common.back"), href: "/customers" }}
       />
     );
   }
@@ -100,80 +178,46 @@ export default function CustomerDetailPage() {
   const changeStatus = (status: CustomerStatus) => {
     if (status === customer.status) return;
     updateCustomer(customer.id, { status });
-    message.success("Đã cập nhật trạng thái");
+    message.success(t("customer.statusUpdated"));
   };
 
   const archive = () => {
     updateCustomer(customer.id, { status: "archived" });
-    message.success("Đã lưu trữ khách hàng");
+    message.success(t("customer.archived"));
   };
-
-  const orderColumns = [
-    {
-      title: "Mã hồ sơ",
-      dataIndex: "orderNumber",
-      sorter: (a: Order, b: Order) => compareText(a.orderNumber, b.orderNumber),
-      render: (v: string, r: Order) => <Link href={`/orders/${r.id}`}>{v}</Link>,
-    },
-    {
-      title: "Dịch vụ",
-      dataIndex: "serviceName",
-      sorter: (a: Order, b: Order) => compareText(a.serviceName, b.serviceName),
-    },
-    {
-      title: "Giai đoạn",
-      dataIndex: "stage",
-      render: (s: string) => <StatusBadge module="orderStage" status={s} />,
-    },
-    {
-      title: "Giá trị",
-      dataIndex: "value",
-      align: "center" as const,
-      sorter: (a: Order, b: Order) => a.value - b.value,
-      render: (v: number) => formatVndDisplay(v),
-    },
-    {
-      title: "Phụ trách",
-      dataIndex: "assignedUserName",
-    },
-    {
-      title: "Ngày tạo",
-      dataIndex: "createdAt",
-    },
-  ];
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Khách hàng", href: "/customers" }, { title: customer.name }]}>
+      <PageHeader breadcrumbs={[{ title: t("common.customer"), href: "/customers" }, { title: customer.name }]}>
         <Space wrap>
-          <Button onClick={() => setEditOpen(true)}>Sửa</Button>
+          <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
           <Button type="primary" onClick={() => router.push(`/orders/new?customerId=${customer.id}`)}>
-            + Đơn hàng mới
+            {t("order.newCta")}
           </Button>
           {customer.status !== "archived" && (
             <Popconfirm
-              title="Lưu trữ khách hàng này?"
-              description="Khách hàng sẽ chuyển sang trạng thái Lưu trữ."
-              okText="Lưu trữ"
-              cancelText="Hủy"
+              title={t("customer.archiveTitle")}
+              description={t("customer.archiveBody")}
+              okText={t("customer.archiveOk")}
+              cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
               onConfirm={archive}
             >
-              <Button danger>Lưu trữ</Button>
+              <Button danger>{t("customer.archiveOk")}</Button>
             </Popconfirm>
           )}
           <Popconfirm
-            title="Xóa khách hàng này?"
-            okText="Xóa"
-            cancelText="Hủy"
+            title={t("customer.deleteTitle")}
+            okText={t("common.delete")}
+            cancelText={t("common.cancel")}
             okButtonProps={{ danger: true }}
             onConfirm={() => {
               deleteCustomer(customer.id);
-              message.success("Đã xóa khách hàng");
+              message.success(t("customer.deleted"));
               router.push("/customers");
             }}
           >
-            <Button danger>Xóa</Button>
+            <Button danger>{t("common.delete")}</Button>
           </Popconfirm>
         </Space>
       </PageHeader>
@@ -196,30 +240,30 @@ export default function CustomerDetailPage() {
                 if (inUse > 0) {
                   return {
                     ok: false,
-                    reason: `Không thể xóa — còn ${inUse} khách hàng dùng trạng thái này`,
+                    reason: t("common.cannotDeleteInUse", { count: inUse }),
                   };
                 }
                 return removeStatus(key);
               },
             }}
           />
-          <Tag>{relatedOrders.length} đơn hàng</Tag>
+          <Tag>{t("customer.ordersBadge", { count: relatedOrders.length })}</Tag>
           <Tag color={usedServices.length > 0 ? "blue" : "default"}>
-            {usedServices.length} dịch vụ đã dùng
+            {t("customer.servicesUsedBadge", { count: usedServices.length })}
           </Tag>
         </Space>
 
         <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small" style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="SĐT">{customer.phone}</Descriptions.Item>
-          <Descriptions.Item label="Email">{customer.email || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Công ty">{customer.company || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Mã số thuế">{customer.taxCode || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Địa chỉ">{customer.address || "—"}</Descriptions.Item>
-          <Descriptions.Item label="Phụ trách">{customer.owner}</Descriptions.Item>
-          <Descriptions.Item label="Ngày tạo" span={2}>
+          <Descriptions.Item label={t("field.phone")}>{customer.phone}</Descriptions.Item>
+          <Descriptions.Item label={t("field.email")}>{customer.email || "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("field.company")}>{customer.company || "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("field.taxCode")}>{customer.taxCode || "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("field.address")}>{customer.address || "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("field.owner")}>{customer.owner}</Descriptions.Item>
+          <Descriptions.Item label={t("field.createdAt")} span={2}>
             {customer.createdAt}
           </Descriptions.Item>
-          <Descriptions.Item label="Dịch vụ đã dùng" span={2}>
+          <Descriptions.Item label={t("customer.usedServices")} span={2}>
             <UsedServiceTags services={usedServices} max={8} />
           </Descriptions.Item>
         </Descriptions>
@@ -228,63 +272,29 @@ export default function CustomerDetailPage() {
           items={[
             {
               key: "orders",
-              label: `Đơn hàng (${relatedOrders.length})`,
+              label: t("customer.ordersN", { count: relatedOrders.length }),
               children: (
                 <DataTable<Order>
                   rowKey="id"
                   columns={orderColumns}
                   dataSource={relatedOrders}
                   padded={false}
-                  emptyDescription="Khách hàng chưa có đơn hàng."
-                  emptyAction={{ label: "Tạo đơn hàng", href: `/orders/new?customerId=${customer.id}` }}
+                  emptyDescription={t("customer.noOrders")}
+                  emptyAction={{ label: t("common.createOrder"), href: `/orders/new?customerId=${customer.id}` }}
                 />
               ),
             },
             {
               key: "services",
-              label: `Dịch vụ đã dùng (${usedServices.length})`,
+              label: t("customer.usedServicesN", { count: usedServices.length }),
               children: (
                 <DataTable<CustomerUsedService>
                   rowKey="serviceId"
                   padded={false}
                   dataSource={usedServices}
-                  emptyDescription="Chưa ghi nhận dịch vụ nào."
-                  emptyAction={{ label: "Sửa khách hàng", onClick: () => setEditOpen(true) }}
-                  columns={[
-                    {
-                      title: "Dịch vụ",
-                      dataIndex: "serviceName",
-                      render: (name: string, r) => (
-                        <Link href={`/services/${r.serviceId}`}>{name}</Link>
-                      ),
-                    },
-                    {
-                      title: "Danh mục",
-                      dataIndex: "category",
-                      render: (v?: string) => v || "—",
-                    },
-                    {
-                      title: "Số đơn",
-                      dataIndex: "orderCount",
-                      align: "center",
-                      render: (n: number) => n || "—",
-                    },
-                    {
-                      title: "Đơn gần nhất",
-                      dataIndex: "lastOrderAt",
-                      render: (v?: string) => v || "—",
-                    },
-                    {
-                      title: "Nguồn",
-                      key: "source",
-                      render: (_, r) => (
-                        <Space size={4} wrap>
-                          {r.fromOrders ? <Tag color="blue">Đơn hàng</Tag> : null}
-                          {r.fromRecord && !r.fromOrders ? <Tag>Ghi nhận thủ công</Tag> : null}
-                        </Space>
-                      ),
-                    },
-                  ]}
+                  emptyDescription={t("customer.noUsedServices")}
+                  emptyAction={{ label: t("customer.editTitle"), onClick: () => setEditOpen(true) }}
+                  columns={usedServiceColumns}
                 />
               ),
             },
@@ -293,7 +303,7 @@ export default function CustomerDetailPage() {
       </div>
 
       <Modal
-        title={`Sửa ${customer.name}`}
+        title={`${t("common.edit")} ${customer.name}`}
         open={editOpen}
         onCancel={() => setEditOpen(false)}
         footer={null}
@@ -319,48 +329,48 @@ export default function CustomerDetailPage() {
                 usedServiceIds: values.usedServiceIds ?? [],
                 customFields: collectCustomFields(values, extraFields, customer.customFields),
               });
-              message.success("Đã cập nhật khách hàng");
+              message.success(t("customer.updated"));
               setEditOpen(false);
             } finally {
               setSaving(false);
             }
           }}
         >
-          <Form.Item name="name" label="Tên" rules={[{ required: true }]}>
+          <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="phone" label="SĐT" rules={[{ required: true }]}>
+          <Form.Item name="phone" label={t("field.phone")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ type: "email" }]}>
+          <Form.Item name="email" label={t("field.email")} rules={[{ type: "email" }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="company" label="Công ty">
+          <Form.Item name="company" label={t("field.company")}>
             <Input />
           </Form.Item>
-          <Form.Item name="taxCode" label="Mã số thuế">
+          <Form.Item name="taxCode" label={t("field.taxCode")}>
             <Input />
           </Form.Item>
-          <Form.Item name="address" label="Địa chỉ">
+          <Form.Item name="address" label={t("field.address")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="owner" label="Phụ trách" rules={[{ required: true }]}>
+          <Form.Item name="owner" label={t("field.owner")} rules={[{ required: true }]}>
             <Select options={CUSTOMER_OWNER_OPTIONS} />
           </Form.Item>
-          <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>
+          <Form.Item name="status" label={t("field.status")} rules={[{ required: true }]}>
             <Select options={statusOptions} />
           </Form.Item>
           <Form.Item
             name="usedServiceIds"
-            label="Dịch vụ đã sử dụng"
-            extra="Dịch vụ gắn từ đơn hàng luôn hiển thị. Có thể ghi nhận thêm dịch vụ ngoài hệ thống đơn."
+            label={t("customer.usedServices")}
+            extra={t("customer.usedServicesExtra")}
           >
             <Select
               mode="multiple"
               allowClear
               showSearch
               optionFilterProp="label"
-              placeholder="Chọn dịch vụ"
+              placeholder={t("customer.selectService")}
               options={services.map((s) => ({
                 value: s.id,
                 label: s.name,
@@ -373,10 +383,10 @@ export default function CustomerDetailPage() {
               onClick={() => confirmDiscardIfDirty(modal, form, () => setEditOpen(false))}
               disabled={saving}
             >
-              Hủy
+              {t("common.cancel")}
             </Button>
             <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-              Lưu
+              {t("common.save")}
             </Button>
           </Space>
         </Form>

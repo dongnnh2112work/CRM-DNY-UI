@@ -2,6 +2,7 @@
 
 import { Tag, Typography } from "antd";
 import type { MouseEvent } from "react";
+import { useT } from "@/lib/use-t";
 
 function openZalo(url: string, e: MouseEvent) {
   e.preventDefault();
@@ -16,6 +17,7 @@ export function ZaloGroupLink({
   url?: string;
   variant?: "link" | "tag";
 }) {
+  const t = useT();
   const href = url?.trim();
   if (!href) {
     return variant === "tag" ? null : <span>—</span>;
@@ -27,5 +29,5 @@ export function ZaloGroupLink({
       </Tag>
     );
   }
-  return <Typography.Link onClick={(e) => openZalo(href, e)}>Group Zalo</Typography.Link>;
+  return <Typography.Link onClick={(e) => openZalo(href, e)}>{t("common.zaloGroup")}</Typography.Link>;
 }
