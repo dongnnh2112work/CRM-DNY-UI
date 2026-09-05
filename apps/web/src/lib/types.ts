@@ -74,6 +74,7 @@ export const SYSTEM_PAGES = [
   { key: "customers", label: "Quản lý khách hàng" },
   { key: "payments", label: "Quản lý thanh toán" },
   { key: "expense_approvals", label: "Đề nghị thanh toán" },
+  { key: "payroll", label: "Tính lương" },
   { key: "vat", label: "Quản lý VAT" },
   { key: "services", label: "Quản lý dịch vụ" },
   { key: "emails", label: "Quản lý email" },
@@ -126,11 +127,13 @@ export const DEFAULT_ROLE_PAGE_PERMISSIONS: Record<string, RolePagePermissions> 
     payments: { view: true, edit: false },
     services: { view: true, edit: false },
     emails: { view: true, edit: false },
+    payroll: { view: true, edit: false },
   }),
   accountant: access({
     dashboard: { view: true, edit: false },
     payments: { view: true, edit: true },
     expense_approvals: { view: true, edit: true },
+    payroll: { view: true, edit: true },
     vat: { view: true, edit: true },
   }),
   ctv_role: access({
@@ -264,11 +267,11 @@ export interface Order {
   ctvName?: string;
   /** Giá trị niêm yết — chỉnh được theo từng đơn */
   value: number;
-  /** Hoa hồng nhập lúc tạo đơn (VND). Logic % theo tháng làm sau. */
-  commission?: number;
+  /** % hoa hồng nhân viên phụ trách — lương tháng = % × (thu − chi) */
+  commissionPercent?: number;
   /** Link group Zalo */
   zaloGroupUrl?: string;
-  /** Giá CTV — Hoa hồng CTV = ctvPrice - value */
+  /** Giá CTV — dùng làm tổng thanh toán khi kênh CTV */
   ctvPrice?: number;
   assignedUserId: string;
   assignedUserName: string;

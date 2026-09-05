@@ -27,12 +27,16 @@ import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { MOCK_DASHBOARD } from "@/lib/mock-dashboard";
 import { ds } from "@/lib/design-tokens";
+import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { currentYearMonth } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
+import { buildPayroll, getPayrollScope } from "@/lib/payroll";
 import { useT } from "@/lib/use-t";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
+import { useUsers } from "@/lib/users-store";
 
 const d = MOCK_DASHBOARD;
 
@@ -71,13 +75,28 @@ function buildOrderStatusChart(
 export default function DashboardPage() {
   const t = useT();
   const { token } = theme.useToken();
+  const { currentUser, getEffectivePermissions } = useUsers();
   const { orders } = useOrders();
   const { payments } = usePayments();
+  const { expenses } = useExpenses();
   const { stageOptions } = useOrderStatusConfig();
   const recentOrders = orders.slice(0, 5);
   const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
   const orderStatusData = buildOrderStatusChart(orders, stageOptions);
   const totalOrders = orders.length;
+  const payrollScope = getPayrollScope(
+    currentUser,
+    currentUser ? getEffectivePermissions(currentUser) : null,
+  );
+  const payrollThisMonth = useMemo(() => {
+    if (payrollScope === "none") return 0;
+    const rows = buildPayroll(orders, payments, expenses, currentYearMonth());
+    const visible =
+      payrollScope === "self" && currentUser
+        ? rows.filter((s) => s.userId === currentUser.id)
+        : rows;
+    return visible.reduce((sum, s) => sum + s.total, 0);
+  }, [orders, payments, expenses, payrollScope, currentUser]);
 
   const revenueData = useMemo(
     () =>
@@ -112,12 +131,23 @@ export default function DashboardPage() {
             <StatCard title={t("dash.totalCustomers")} value={d.customers.total} prefix={<TeamOutlined />} />
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <StatCard
-              title={t("dash.commissionPaid")}
-              value={d.commission.totalPaid}
-              prefix={<TrophyOutlined />}
-              suffix="₫"
-            />
+            {payrollScope === "none" ? (
+              <StatCard
+                title={t("dash.commissionPaid")}
+                value={payrollThisMonth}
+                prefix={<TrophyOutlined />}
+                suffix="₫"
+              />
+            ) : (
+              <Link href="/payroll" style={{ color: "inherit", display: "block" }}>
+                <StatCard
+                  title={payrollScope === "self" ? t("dash.myPayroll") : t("dash.commissionPaid")}
+                  value={payrollThisMonth}
+                  prefix={<TrophyOutlined />}
+                  suffix="₫"
+                />
+              </Link>
+            )}
           </Col>
         </Row>
 

@@ -26,7 +26,7 @@ export type NewOrderInput = {
   ctvId?: string;
   ctvName?: string;
   value: number;
-  commission?: number;
+  commissionPercent?: number;
   zaloGroupUrl?: string;
   ctvPrice?: number;
   assignedUserId: string;
@@ -104,7 +104,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         ctvId: input.ctvId,
         ctvName: input.ctvName,
         value: input.value,
-        commission: input.commission,
+        commissionPercent: input.commissionPercent,
         zaloGroupUrl: input.zaloGroupUrl?.trim() || undefined,
         ctvPrice: input.ctvPrice,
         assignedUserId: input.assignedUserId,

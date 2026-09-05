@@ -3,6 +3,7 @@
 import {
   AccountBookOutlined,
   AppstoreOutlined,
+  CalculatorOutlined,
   BellOutlined,
   DashboardOutlined,
   DollarOutlined,
@@ -30,6 +31,7 @@ import { useT } from "@/lib/use-t";
 import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
+import { getPayrollScope } from "@/lib/payroll";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 import type { AppNotification } from "@/lib/types";
@@ -43,7 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { token } = theme.useToken();
   const { theme: appTheme, setTheme } = useAppConfig();
   const t = useT();
-  const { currentUser, logout, getById: getUser } = useUsers();
+  const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
@@ -55,6 +57,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isDark = appTheme === "dark";
 
   const userId = currentUser?.id;
+  const payrollScope = getPayrollScope(
+    currentUser,
+    currentUser ? getEffectivePermissions(currentUser) : null,
+  );
   const myNotifs = userId ? forUser(userId).slice(0, 8) : [];
   const unread = userId ? unreadCount(userId) : 0;
 
@@ -90,8 +96,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     t,
   ]);
 
-  const menuItems = useMemo(
-    () => [
+  const menuItems = useMemo(() => {
+    const payrollItem =
+      payrollScope === "none"
+        ? []
+        : [
+            {
+              key: "/payroll",
+              icon: <CalculatorOutlined />,
+              label: (
+                <Link href="/payroll">
+                  {payrollScope === "self" ? t("payroll.myPay") : t("nav.payroll")}
+                </Link>
+              ),
+            },
+          ];
+    return [
       { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">{t("nav.dashboard")}</Link> },
       { type: "divider" as const },
       { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
@@ -103,6 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         icon: <AccountBookOutlined />,
         label: <Link href="/expense-approvals">{t("nav.expenses")}</Link>,
       },
+      ...payrollItem,
       { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">{t("nav.vat")}</Link> },
       { type: "divider" as const },
       { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">{t("nav.services")}</Link> },
@@ -110,9 +131,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       { type: "divider" as const },
       { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.users")}</Link> },
       { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> },
-    ],
-    [t],
-  );
+    ];
+  }, [t, payrollScope]);
 
   const selectedKey = useMemo(() => {
     const keys = menuItems.filter((i) => "key" in i).map((i) => (i as { key: string }).key);

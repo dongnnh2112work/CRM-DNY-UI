@@ -130,12 +130,22 @@ export function daysUntil(dateIso: string, from = new Date()): number {
   return Math.ceil((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+export function normalizeCommissionPercent(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value < 0) return 0;
+  if (value > 100) return undefined;
+  return value;
+}
+
 export function normalizeOrder(o: Order): Order {
+  const legacy = o as Order & { commission?: number };
+  const { commission: _legacyCommission, ...rest } = legacy;
   return {
-    ...o,
+    ...rest,
     needsVat: o.needsVat ?? false,
     licenseAttachments: (o.licenseAttachments ?? []).map((a: OrderAttachment) => ({ ...a })),
     approvalHistory: o.approvalHistory ?? [],
     attachments: o.attachments ?? [],
+    commissionPercent: normalizeCommissionPercent(o.commissionPercent ?? _legacyCommission),
   };
 }

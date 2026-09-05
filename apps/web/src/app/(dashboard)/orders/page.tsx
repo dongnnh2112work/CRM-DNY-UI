@@ -121,7 +121,7 @@ export default function OrdersPage() {
           o.deadline,
           o.vatIssueDeadline,
           o.zaloGroupUrl,
-          o.commission,
+          o.commissionPercent,
           cashflowByOrder.get(o.id)?.thu,
           cashflowByOrder.get(o.id)?.chi,
           o.attachments.filter((a) => !a.deleted).length,

@@ -96,6 +96,7 @@ export default function OrderDetailPage() {
       channel: order.channel,
       ctvId: order.ctvId,
       value: order.value,
+      commissionPercent: order.commissionPercent,
       ctvPrice: order.ctvPrice,
       assignedUserId: order.assignedUserId,
       submitterId: order.submitterId,
@@ -235,8 +236,8 @@ export default function OrderDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label={t("common.service")}>{order.serviceName}</Descriptions.Item>
           <Descriptions.Item label={t("order.listPriceVnd")}>{formatVndDisplay(order.value)}</Descriptions.Item>
-          <Descriptions.Item label={t("common.commission")}>
-            {order.commission != null ? formatVndDisplay(order.commission) : "—"}
+          <Descriptions.Item label={t("order.commissionPercent")}>
+            {order.commissionPercent != null ? `${order.commissionPercent}%` : "—"}
           </Descriptions.Item>
           <Descriptions.Item label={t("common.zaloGroup")}>
             {order.zaloGroupUrl ? (
@@ -255,15 +256,7 @@ export default function OrderDetailPage() {
           <Descriptions.Item label={t("common.deadline")}>{order.deadline ?? "—"}</Descriptions.Item>
           {order.ctvName && <Descriptions.Item label={t("common.ctv")}>{order.ctvName}</Descriptions.Item>}
           {order.channel === "ctv" && order.ctvPrice != null && (
-            <>
-              <Descriptions.Item label={t("common.ctvPrice")}>{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
-              <Descriptions.Item label={t("order.ctvCommission")}>
-                <Tag color="green">{formatVndDisplay(order.ctvPrice - order.value)}</Tag>
-                <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: ds.fontSize.caption }}>
-                  {t("order.ctvCommissionExtra")}
-                </Typography.Text>
-              </Descriptions.Item>
-            </>
+            <Descriptions.Item label={t("common.ctvPrice")}>{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
           )}
           <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
           <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
@@ -361,6 +354,10 @@ export default function OrderDetailPage() {
                 ctvId: values.channel === "ctv" ? ctv?.id : undefined,
                 ctvName: values.channel === "ctv" ? ctv?.name : undefined,
                 value: Number(values.value),
+                commissionPercent:
+                  values.commissionPercent != null && values.commissionPercent !== ""
+                    ? Number(values.commissionPercent)
+                    : undefined,
                 ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
                 assignedUserId: assigned.id,
                 assignedUserName: assigned.name,
@@ -438,6 +435,13 @@ export default function OrderDetailPage() {
           ) : null}
           <Form.Item name="value" label={t("common.listPrice")} rules={[{ required: true }]}>
             <InputNumber {...vndInputProps} />
+          </Form.Item>
+          <Form.Item
+            name="commissionPercent"
+            label={t("order.commissionPercent")}
+            extra={t("order.commissionPercentExtra")}
+          >
+            <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
             <Select

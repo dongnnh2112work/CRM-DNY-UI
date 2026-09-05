@@ -1,6 +1,6 @@
 "use client";
 
-import { App, Alert, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space, Typography } from "antd";
+import { App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space } from "antd";
 import dayjs from "dayjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
@@ -45,18 +45,12 @@ function NewOrderPageContent() {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const channel = Form.useWatch("channel", form);
-  const value = Form.useWatch("value", form) as number | undefined;
-  const ctvPrice = Form.useWatch("ctvPrice", form) as number | undefined;
   const serviceId = Form.useWatch("serviceId", form) as string | undefined;
   const needsVat = Form.useWatch("needsVat", form) as boolean | undefined;
 
   const suggestedHd = useMemo(() => nextContractNumber(orders), [orders]);
 
   const selectedService = services.find((s) => s.id === serviceId);
-  const ctvCommission =
-    channel === "ctv" && typeof value === "number" && typeof ctvPrice === "number"
-      ? ctvPrice - value
-      : null;
 
   const onServiceChange = (id: string) => {
     const svc = services.find((s) => s.id === id);
@@ -110,9 +104,9 @@ function NewOrderPageContent() {
               ctvId: ctv?.id,
               ctvName: ctv?.name,
               value: Number(values.value),
-              commission:
-                values.commission != null && values.commission !== ""
-                  ? Number(values.commission)
+              commissionPercent:
+                values.commissionPercent != null && values.commissionPercent !== ""
+                  ? Number(values.commissionPercent)
                   : undefined,
               zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
               ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
@@ -207,48 +201,21 @@ function NewOrderPageContent() {
           <InputNumber {...vndInputProps} />
         </Form.Item>
         <Form.Item
-          name="commission"
-          label={t("order.commissionVnd")}
-          extra={t("order.commissionExtra")}
+          name="commissionPercent"
+          label={t("order.commissionPercent")}
+          extra={t("order.commissionPercentExtra")}
         >
-          <InputNumber {...vndInputProps} />
+          <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
         </Form.Item>
         {channel === "ctv" && (
           <>
             <Form.Item
               name="ctvPrice"
               label={t("order.ctvPriceVnd")}
-              rules={[
-                { required: true, message: t("order.enterCtvPrice") },
-                {
-                  validator: async (_, ctvVal) => {
-                    if (ctvVal == null || value == null) return;
-                    if (Number(ctvVal) < Number(value)) {
-                      throw new Error(t("order.ctvPriceHint"));
-                    }
-                  },
-                },
-              ]}
-              extra={t("order.ctvCommissionExtra")}
-              dependencies={["value"]}
+              rules={[{ required: true, message: t("order.enterCtvPrice") }]}
             >
               <InputNumber {...vndInputProps} />
             </Form.Item>
-            {ctvCommission != null && (
-              <Alert
-                type={ctvCommission >= 0 ? "success" : "error"}
-                showIcon
-                style={{ marginBottom: 16 }}
-                message={
-                  <Typography.Text>
-                    {t("order.commissionExpected")}{" "}
-                    <Typography.Text strong>{formatVndDisplay(ctvCommission)}</Typography.Text>
-                    <Typography.Text type="secondary"> ({t("order.ctvCommissionExtra")})</Typography.Text>
-                    {ctvCommission < 0 && t("order.checkPrice")}
-                  </Typography.Text>
-                }
-              />
-            )}
           </>
         )}
         <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>

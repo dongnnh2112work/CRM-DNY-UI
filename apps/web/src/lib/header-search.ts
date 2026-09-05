@@ -11,6 +11,7 @@ const MODULES: { prefix: string; listPath: string; placeholderKey: MessageKey }[
   { prefix: "/customers", listPath: "/customers", placeholderKey: "shell.searchCustomers" },
   { prefix: "/payments", listPath: "/payments", placeholderKey: "shell.searchPayments" },
   { prefix: "/expense-approvals", listPath: "/expense-approvals", placeholderKey: "shell.searchExpenses" },
+  { prefix: "/payroll", listPath: "/payroll", placeholderKey: "shell.searchPayroll" },
   { prefix: "/vat", listPath: "/vat", placeholderKey: "shell.searchVat" },
   { prefix: "/services", listPath: "/services", placeholderKey: "shell.searchServices" },
   { prefix: "/emails", listPath: "/emails", placeholderKey: "shell.searchEmails" },
