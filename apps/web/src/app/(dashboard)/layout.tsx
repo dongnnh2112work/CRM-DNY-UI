@@ -10,12 +10,15 @@ import { OrdersProvider } from "@/lib/orders-store";
 import { PaymentsProvider } from "@/lib/payments-store";
 import { ServicesProvider } from "@/lib/services-store";
 import { VatProvider } from "@/lib/vat-store";
+import { AuthGate } from "@/components/auth-gate";
+import { ApiHydrator } from "@/components/api-hydrator";
 import { ClientOnly } from "@/components/client-only";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClientOnly>
+      <AuthGate>
       <AppConfigProvider>
         <OrderStatusProvider>
           <CustomerStatusProvider>
@@ -28,7 +31,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <ExpensesProvider>
                         <EmailsProvider>
                           <NotificationsProvider>
+                            <ApiHydrator>
                             <AppShell>{children}</AppShell>
+                            </ApiHydrator>
                           </NotificationsProvider>
                         </EmailsProvider>
                       </ExpensesProvider>
@@ -41,6 +46,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </CustomerStatusProvider>
         </OrderStatusProvider>
       </AppConfigProvider>
+      </AuthGate>
     </ClientOnly>
   );
 }

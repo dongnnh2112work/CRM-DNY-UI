@@ -9,6 +9,9 @@ import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
 import type { OrderAttachment } from "@/lib/types";
 import { ds } from "@/lib/design-tokens";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
+import { apiErrorMessage } from "@/lib/http/message";
+import { documentsApi } from "@/modules/documents/api";
+import { encodeLicenseFileType, mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 interface LicenseUploadProps {
@@ -16,6 +19,7 @@ interface LicenseUploadProps {
   onChange: (next: OrderAttachment[]) => void;
   uploaderName?: string;
   compact?: boolean;
+  orderId?: string;
 }
 
 export function LicenseUpload({
@@ -23,6 +27,7 @@ export function LicenseUpload({
   onChange,
   uploaderName = "Admin",
   compact = false,
+  orderId,
 }: LicenseUploadProps) {
   const t = useT();
   const { message } = App.useApp();
@@ -47,25 +52,47 @@ export function LicenseUpload({
   const confirmUpload = async () => {
     if (!pendingFile) return;
     const values = await dateForm.validateFields();
-    const type = getAttachmentType(pendingFile.name);
-    const next: OrderAttachment = {
-      id: `lic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: pendingFile.name,
-      type,
-      size: pendingFile.size,
-      uploadedBy: uploaderName,
-      uploadedAt: new Date().toISOString().slice(0, 10),
-      issuedAt: values.issuedAt ? values.issuedAt.format("YYYY-MM-DD") : undefined,
-      expiresAt: values.expiresAt.format("YYYY-MM-DD"),
-    };
-    onChange([...(files ?? []), next]);
-    message.success(t("license.saved", { name: pendingFile.name }));
-    setPendingFile(null);
-    dateForm.resetFields();
+    const issuedAt = values.issuedAt ? values.issuedAt.format("YYYY-MM-DD") : undefined;
+    const expiresAt = values.expiresAt.format("YYYY-MM-DD");
+    try {
+      if (orderId) {
+        const doc = await documentsApi.upload(pendingFile, {
+          orderId,
+          fileType: encodeLicenseFileType(issuedAt, expiresAt),
+        });
+        onChange([
+          ...(files ?? []),
+          { ...mapApiDocumentToAttachment(doc, uploaderName), issuedAt, expiresAt },
+        ]);
+      } else {
+        const type = getAttachmentType(pendingFile.name);
+        const next: OrderAttachment = {
+          id: `lic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: pendingFile.name,
+          type,
+          size: pendingFile.size,
+          uploadedBy: uploaderName,
+          uploadedAt: new Date().toISOString().slice(0, 10),
+          issuedAt,
+          expiresAt,
+        };
+        onChange([...(files ?? []), next]);
+      }
+      message.success(t("license.saved", { name: pendingFile.name }));
+      setPendingFile(null);
+      dateForm.resetFields();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("license.saved", { name: pendingFile.name })));
+    }
   };
 
-  const remove = (id: string) => {
-    onChange((files ?? []).map((a) => (a.id === id ? { ...a, deleted: true } : a)));
+  const remove = async (id: string) => {
+    try {
+      if (orderId) await documentsApi.remove(id);
+      onChange((files ?? []).map((a) => (a.id === id ? { ...a, deleted: true } : a)));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("docs.empty")));
+    }
   };
 
   const updateDates = (id: string, issuedAt?: string, expiresAt?: string) => {

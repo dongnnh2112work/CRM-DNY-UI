@@ -44,6 +44,8 @@ type UsersContextValue = {
   deleteRole: (roleKey: string) => { ok: boolean; reason?: string };
   loginAs: (userId: string) => void;
   logout: () => void;
+  replaceUsers: (items: AppUser[], currentUserId?: string) => void;
+  mergeRemoteRoles: (items: RoleDefinition[]) => void;
 };
 
 const UsersContext = createContext<UsersContextValue | null>(null);
@@ -217,6 +219,16 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(null);
   }, []);
 
+  const replaceUsers = useCallback((items: AppUser[], currentUserId?: string) => {
+    setUsers(items);
+    if (currentUserId) setCurrentUserId(currentUserId);
+  }, []);
+
+  const mergeRemoteRoles = useCallback((items: RoleDefinition[]) => {
+    const extras = items.filter((r) => !r.builtin && !BUILT_IN_ROLES.some((b) => b.key === r.key));
+    setRoles([...BUILT_IN_ROLES, ...extras]);
+  }, []);
+
   const value = useMemo(
     () => ({
       users,
@@ -235,6 +247,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       deleteRole,
       loginAs,
       logout,
+      replaceUsers,
+      mergeRemoteRoles,
     }),
     [
       users,
@@ -253,6 +267,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       deleteRole,
       loginAs,
       logout,
+      replaceUsers,
+      mergeRemoteRoles,
     ],
   );
 

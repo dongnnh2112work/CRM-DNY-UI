@@ -31,6 +31,8 @@ import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { tableIndexColumn } from "@/lib/table-index-column";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
+import { apiErrorMessage } from "@/lib/http/message";
+import { paymentsApi } from "@/modules/payments/api";
 import type { PaymentInstallment } from "@/lib/types";
 import { useT } from "@/lib/use-t";
 
@@ -81,9 +83,14 @@ export default function PaymentDetailPage() {
               description={t("payment.markPaidBody")}
               okText={t("common.confirm")}
               cancelText={t("common.cancel")}
-              onConfirm={() => {
-                markInstallmentPaid(payment!.id, row.id);
-                message.success(t("payment.markedPaid"));
+              onConfirm={async () => {
+                try {
+                  await paymentsApi.verify(row.id);
+                  markInstallmentPaid(payment!.id, row.id);
+                  message.success(t("payment.markedPaid"));
+                } catch (err) {
+                  message.error(apiErrorMessage(err, t("payment.markedPaid")));
+                }
               }}
             >
               <Button size="small">{t("payment.markPaidBtn")}</Button>
@@ -181,17 +188,30 @@ export default function PaymentDetailPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(values) => {
-            addInstallment(payment.id, {
-              amount: Number(values.amount),
-              dueDate: values.dueDate,
-              method: values.method,
-              note: values.note,
-              paidDate: values.markPaid ? new Date().toISOString().slice(0, 10) : undefined,
-              status: values.markPaid ? "paid" : "pending",
-            });
-            message.success(t("payment.addedInstallment"));
-            closeAdd();
+          onFinish={async (values) => {
+            try {
+              const created = await paymentsApi.create({
+                orderId: payment.orderId,
+                amount: Number(values.amount),
+                method:
+                  values.method === "CASH" || values.method === "QR_PAYMENT"
+                    ? values.method
+                    : "BANK_TRANSFER",
+              });
+              addInstallment(payment.id, {
+                amount: Number(created.amount),
+                dueDate: values.dueDate,
+                method: created.method,
+                note: values.note,
+                paidDate: values.markPaid ? new Date().toISOString().slice(0, 10) : undefined,
+                status: values.markPaid ? "paid" : "pending",
+              });
+              if (values.markPaid) await paymentsApi.verify(created.id);
+              message.success(t("payment.addedInstallment"));
+              closeAdd();
+            } catch (err) {
+              message.error(apiErrorMessage(err, t("payment.addedInstallment")));
+            }
           }}
         >
           <Form.Item name="amount" label={t("common.amount")} rules={[{ required: true, message: t("common.enterAmount") }]}>

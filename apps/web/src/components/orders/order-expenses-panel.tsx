@@ -14,6 +14,8 @@ import { usePayments } from "@/lib/payments-store";
 import { tableIndexColumn } from "@/lib/table-index-column";
 import type { Order, OrderExpense } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
+import { apiErrorMessage } from "@/lib/http/message";
+import { expensesApi } from "@/modules/expenses/api";
 import { useT } from "@/lib/use-t";
 
 export function OrderExpensesPanel({ order }: { order: Order }) {
@@ -115,17 +117,22 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
                 title={t("expense.approveTitle")}
                 okText={t("common.approve")}
                 cancelText={t("common.cancel")}
-                onConfirm={() => {
-                  reviewExpense(r.id, "approved", {
-                    id: currentUser.id,
-                    name: currentUser.name,
-                  });
-                  addNotifications(
-                    [r.requestedById, order.reviewerId],
-                    expenseReviewedDraft(r, "approved", currentUser.name),
-                    currentUser.id,
-                  );
-                  message.success(t("expense.approved"));
+                onConfirm={async () => {
+                  try {
+                    await expensesApi.approve(r.id);
+                    reviewExpense(r.id, "approved", {
+                      id: currentUser.id,
+                      name: currentUser.name,
+                    });
+                    addNotifications(
+                      [r.requestedById, order.reviewerId],
+                      expenseReviewedDraft(r, "approved", currentUser.name),
+                      currentUser.id,
+                    );
+                    message.success(t("expense.approved"));
+                  } catch (err) {
+                    message.error(apiErrorMessage(err, t("expense.approved")));
+                  }
                 }}
               >
                 <Button size="small" type="primary">
@@ -137,17 +144,22 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
                 okText={t("common.reject")}
                 cancelText={t("common.cancel")}
                 okButtonProps={{ danger: true }}
-                onConfirm={() => {
-                  reviewExpense(r.id, "rejected", {
-                    id: currentUser.id,
-                    name: currentUser.name,
-                  });
-                  addNotifications(
-                    [r.requestedById, order.reviewerId],
-                    expenseReviewedDraft(r, "rejected", currentUser.name),
-                    currentUser.id,
-                  );
-                  message.success(t("expense.rejected"));
+                onConfirm={async () => {
+                  try {
+                    await expensesApi.reject(r.id);
+                    reviewExpense(r.id, "rejected", {
+                      id: currentUser.id,
+                      name: currentUser.name,
+                    });
+                    addNotifications(
+                      [r.requestedById, order.reviewerId],
+                      expenseReviewedDraft(r, "rejected", currentUser.name),
+                      currentUser.id,
+                    );
+                    message.success(t("expense.rejected"));
+                  } catch (err) {
+                    message.error(apiErrorMessage(err, t("expense.rejected")));
+                  }
                 }}
               >
                 <Button size="small" danger>

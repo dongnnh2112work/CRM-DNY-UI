@@ -14,6 +14,9 @@ import type { Order } from "@/lib/types";
 import { useT } from "@/lib/use-t";
 import { VAT_TAX_RATES, orderHasContractNumber, vatAmountsFromLines } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
+import { apiErrorMessage } from "@/lib/http/message";
+import { vatApi } from "@/modules/vat/api";
+import { mapApiVatToUi } from "@/modules/vat/map-to-ui";
 
 type VatFormValues = {
   orderId: string;
@@ -39,7 +42,7 @@ function NewVatPageContent() {
   const [form] = Form.useForm<VatFormValues>();
   const { orders } = useOrders();
   const { getById: getCustomer } = useCustomers();
-  const { addInvoice } = useVat();
+  const { addInvoice, replaceInvoices, invoices } = useVat();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -104,7 +107,7 @@ function NewVatPageContent() {
             { description: "", amount: 0 },
           ],
         }}
-        onFinish={(values) => {
+        onFinish={async (values) => {
           setSaving(true);
           try {
             const order = orders.find((o) => o.id === values.orderId);
@@ -117,16 +120,16 @@ function NewVatPageContent() {
               return;
             }
             const computed = vatAmountsFromLines(values.lines, values.taxRate);
-            addInvoice({
+            const created = await vatApi.create({
+              invoiceNumber: `VAT-${Date.now()}`,
               orderId: order.id,
-              orderNumber: order.orderNumber,
-              contractNumber: order.contractNumber,
+              sourceType: "ORDER",
+              netAmount: computed.amount,
+              vatAmount: computed.taxAmount,
+              grossAmount: computed.totalAmount,
               customerName: values.customerName || order.customerName,
-              taxCode: values.taxCode,
-              taxRate: values.taxRate,
-              amount: computed.amount,
-              taxAmount: computed.taxAmount,
-              totalAmount: computed.totalAmount,
+              customerTaxCode: values.taxCode,
+              vatRate: values.taxRate,
               lines: [
                 {
                   description: values.lines?.[0]?.description?.trim() ?? "",
@@ -138,8 +141,14 @@ function NewVatPageContent() {
                 },
               ],
             });
+            replaceInvoices([
+              mapApiVatToUi(created, order.orderNumber, order.contractNumber),
+              ...invoices,
+            ]);
             message.success(t("vat.createdDraft"));
             router.push("/vat");
+          } catch (err) {
+            message.error(apiErrorMessage(err, t("vat.createdDraft")));
           } finally {
             setSaving(false);
           }

@@ -1,18 +1,32 @@
 # Frontend API index (Next.js)
 
 > **Source of truth for HTTP contracts.**  
-> Swagger explores interactively; these MD files are the stable FE contract.
+> Swagger explores interactively; these MD files are the stable FE contract.  
+> **FE integrate guide + copy-paste prompt:** [FRONTEND_INTEGRATION_PROMPT.md](./FRONTEND_INTEGRATION_PROMPT.md)  
+> **Screen → API inventory (FE):** [../FE_API_INVENTORY.md](../FE_API_INVENTORY.md)
 
 ## Connection
 
 | Item | Value |
 |------|--------|
+| Base URL (**production**) | `https://apidyn.otcayxe.com/api/v1` |
+| Swagger (production) | https://apidyn.otcayxe.com/docs |
 | Base URL (local) | `http://localhost:3000/api/v1` |
-| Swagger | `http://localhost:3000/docs` |
+| Swagger (local) | http://localhost:3000/docs |
 | Auth header | `Authorization: Bearer <accessToken>` |
-| Dev token | `test:<userId>` when `AUTH_MODE=test` |
-| Prod / real login | `POST /auth/login` → use `accessToken` (Supabase JWT via Nest BFF) |
+| Dev token | `test:<userId>` **chỉ** khi BE `AUTH_MODE=test` (local). **Prod: JWT thật** |
+| Prod / real login | `POST /auth/login` hoặc Google OAuth → `accessToken` |
 | Content-Type | `application/json` (riêng upload: `multipart/form-data` — xem [documents.md](./documents.md)) |
+
+```env
+NEXT_PUBLIC_API_URL=https://apidyn.otcayxe.com/api/v1
+```
+
+## Call convention (FE)
+
+- **Một domain = một API module** (`authApi`, `customersApi`, …) — xem bảng trong [FRONTEND_INTEGRATION_PROMPT.md](./FRONTEND_INTEGRATION_PROMPT.md).  
+- UI không `fetch` path trực tiếp; dùng shared HTTP client (Bearer + refresh + error shape).  
+- Thứ tự: Auth → CRM → Service → Legal → Finance → CTV → Comms.
 
 ## Error shape
 

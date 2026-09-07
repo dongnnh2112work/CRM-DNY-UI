@@ -9,13 +9,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { loadJson, saveJson } from "@/lib/demo-storage";
 import { tt } from "@/lib/i18n";
-import { MOCK_ORDERS } from "@/lib/mock-orders";
 import { isContractNumberTaken, nextDossierNumber, normalizeOrder } from "@/lib/order-helpers";
 import type { Order, OrderStage } from "@/lib/types";
-
-const ORDERS_KEY = "dny-crm-orders";
 
 export type NewOrderInput = {
   customerId: string;
@@ -49,6 +45,7 @@ type OrdersContextValue = {
   updateOrder: (id: string, patch: Partial<Omit<Order, "id">> | ((prev: Order) => Order)) => void;
   setOrderStage: (id: string, stage: OrderStage) => void;
   deleteOrder: (id: string) => void;
+  replaceOrders: (items: Order[]) => void;
   getById: (id: string) => Order | undefined;
   isContractTaken: (contractNumber: number, excludeOrderId?: string) => boolean;
 };
@@ -56,27 +53,22 @@ type OrdersContextValue = {
 const OrdersContext = createContext<OrdersContextValue | null>(null);
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
-  const [orders, setOrders] = useState<Order[]>(() => MOCK_ORDERS.map(normalizeOrder));
+  const [orders, setOrders] = useState<Order[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = loadJson<Order[]>(ORDERS_KEY);
-    if (stored && Array.isArray(stored)) {
-      setOrders(stored.map(normalizeOrder));
-    }
     setReady(true);
   }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(ORDERS_KEY, orders);
-  }, [orders, ready]);
 
   const isContractTaken = useCallback(
     (contractNumber: number, excludeOrderId?: string) =>
       isContractNumberTaken(orders, contractNumber, excludeOrderId),
     [orders],
   );
+
+  const replaceOrders = useCallback((items: Order[]) => {
+    setOrders(items.map(normalizeOrder));
+  }, []);
 
   const addOrder = useCallback(
     (input: NewOrderInput) => {
@@ -168,10 +160,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       updateOrder,
       setOrderStage,
       deleteOrder,
+      replaceOrders,
       getById,
       isContractTaken,
     }),
-    [orders, ready, addOrder, updateOrder, setOrderStage, deleteOrder, getById, isContractTaken],
+    [orders, ready, addOrder, updateOrder, setOrderStage, deleteOrder, replaceOrders, getById, isContractTaken],
   );
 
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;

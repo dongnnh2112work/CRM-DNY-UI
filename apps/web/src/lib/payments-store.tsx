@@ -6,15 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { loadJson, saveJson } from "@/lib/demo-storage";
-import { MOCK_PAYMENTS } from "@/lib/mock-payments";
 import { useOrders } from "@/lib/orders-store";
 import type { Order, PaymentInstallment, PaymentRecord, PaymentStatus } from "@/lib/types";
-
-const PAYMENTS_KEY = "dny-crm-payments";
 
 function orderTotal(order: Order): number {
   if (order.channel === "ctv" && order.ctvPrice != null) return order.ctvPrice;
@@ -81,52 +78,33 @@ type PaymentsContextValue = {
     input: Omit<PaymentInstallment, "id" | "status"> & { status?: PaymentInstallment["status"] },
   ) => void;
   markInstallmentPaid: (paymentId: string, installmentId: string, method?: string) => void;
+  replacePayments: (items: PaymentRecord[]) => void;
 };
 
 const PaymentsContext = createContext<PaymentsContextValue | null>(null);
 
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const { orders, ready: ordersReady } = useOrders();
-  const [payments, setPayments] = useState<PaymentRecord[]>(MOCK_PAYMENTS);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const liveRef = useRef(false);
 
   useEffect(() => {
-    const stored = loadJson<PaymentRecord[]>(PAYMENTS_KEY);
-    if (stored && Array.isArray(stored)) setPayments(stored);
     setHydrated(true);
   }, []);
 
-  // Sync payment records with orders (create missing, update order info, drop orphaned)
   useEffect(() => {
-    if (!hydrated || !ordersReady) return;
+    if (!hydrated || !ordersReady || liveRef.current) return;
     setPayments((prev) => {
       const byOrder = new Map(prev.map((p) => [p.orderId, p]));
-      const next = orders.map((order) => paymentFromOrder(order, byOrder.get(order.id)));
-      // Keep seed payments that still match an order; drop orphans for deleted orders
-      const same =
-        next.length === prev.length &&
-        next.every((p, i) => {
-          const o = prev[i];
-          return (
-            o &&
-            o.id === p.id &&
-            o.orderNumber === p.orderNumber &&
-            o.customerName === p.customerName &&
-            o.totalAmount === p.totalAmount &&
-            o.paidAmount === p.paidAmount &&
-            o.remaining === p.remaining &&
-            o.status === p.status &&
-            JSON.stringify(o.installments) === JSON.stringify(p.installments)
-          );
-        });
-      return same ? prev : next;
+      return orders.map((order) => paymentFromOrder(order, byOrder.get(order.id)));
     });
   }, [orders, ordersReady, hydrated]);
 
-  useEffect(() => {
-    if (!hydrated || !ordersReady) return;
-    saveJson(PAYMENTS_KEY, payments);
-  }, [payments, hydrated, ordersReady]);
+  const replacePayments = useCallback((items: PaymentRecord[]) => {
+    liveRef.current = true;
+    setPayments(items);
+  }, []);
 
   const getById = useCallback((id: string) => payments.find((p) => p.id === id), [payments]);
 
@@ -182,8 +160,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       getByOrderId,
       addInstallment,
       markInstallmentPaid,
+      replacePayments,
     }),
-    [payments, hydrated, ordersReady, getById, getByOrderId, addInstallment, markInstallmentPaid],
+    [payments, hydrated, ordersReady, getById, getByOrderId, addInstallment, markInstallmentPaid, replacePayments],
   );
 
   return <PaymentsContext.Provider value={value}>{children}</PaymentsContext.Provider>;

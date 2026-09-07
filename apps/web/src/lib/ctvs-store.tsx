@@ -9,11 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { loadJson, saveJson } from "@/lib/demo-storage";
-import { MOCK_CTVS } from "@/lib/mock-ctv";
 import type { Ctv, CtvJob, CtvStatus } from "@/lib/types";
-
-const CTVS_KEY = "dny-crm-ctvs";
 
 export type NewCtvInput = {
   name: string;
@@ -28,6 +24,7 @@ type CtvsContextValue = {
   addCtv: (input: NewCtvInput) => Ctv;
   updateCtv: (id: string, patch: Partial<Omit<Ctv, "id">>) => void;
   deleteCtv: (id: string) => void;
+  replaceCtvs: (items: Ctv[]) => void;
   addJob: (ctvId: string, job: CtvJob) => void;
   getById: (id: string) => Ctv | undefined;
 };
@@ -43,19 +40,16 @@ function withTotals(ctv: Ctv): Ctv {
 }
 
 export function CtvsProvider({ children }: { children: ReactNode }) {
-  const [ctvs, setCtvs] = useState<Ctv[]>(MOCK_CTVS);
+  const [ctvs, setCtvs] = useState<Ctv[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = loadJson<Ctv[]>(CTVS_KEY);
-    if (stored && Array.isArray(stored)) setCtvs(stored);
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(CTVS_KEY, ctvs);
-  }, [ctvs, ready]);
+  const replaceCtvs = useCallback((items: Ctv[]) => {
+    setCtvs(items.map(withTotals));
+  }, []);
 
   const addCtv = useCallback((input: NewCtvInput) => {
     const created = withTotals({
@@ -99,8 +93,8 @@ export function CtvsProvider({ children }: { children: ReactNode }) {
   const getById = useCallback((id: string) => ctvs.find((c) => c.id === id), [ctvs]);
 
   const value = useMemo(
-    () => ({ ctvs, ready, addCtv, updateCtv, deleteCtv, addJob, getById }),
-    [ctvs, ready, addCtv, updateCtv, deleteCtv, addJob, getById],
+    () => ({ ctvs, ready, addCtv, updateCtv, deleteCtv, replaceCtvs, addJob, getById }),
+    [ctvs, ready, addCtv, updateCtv, deleteCtv, replaceCtvs, addJob, getById],
   );
 
   return <CtvsContext.Provider value={value}>{children}</CtvsContext.Provider>;

@@ -8,6 +8,9 @@ import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
 import type { OrderAttachment } from "@/lib/types";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
 import { tableIndexColumn } from "@/lib/table-index-column";
+import { apiErrorMessage } from "@/lib/http/message";
+import { documentsApi } from "@/modules/documents/api";
+import { mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 function formatSize(bytes: number) {
@@ -20,35 +23,50 @@ interface OrderDocumentsProps {
   attachments: OrderAttachment[];
   onChange: (next: OrderAttachment[]) => void;
   uploaderName?: string;
+  orderId?: string;
 }
 
 /** Hồ sơ làm việc trong quá trình xử lý (không gồm giấy phép final) */
-export function OrderDocuments({ attachments, onChange, uploaderName = "Admin" }: OrderDocumentsProps) {
+export function OrderDocuments({ attachments, onChange, uploaderName = "Admin", orderId }: OrderDocumentsProps) {
   const t = useT();
   const { message } = App.useApp();
   const visible = attachments.filter((a) => !a.deleted);
 
-  const beforeUpload: UploadProps["beforeUpload"] = (file) => {
+  const beforeUpload: UploadProps["beforeUpload"] = async (file) => {
     const type = getAttachmentType(file.name);
     if (type === "other") {
       message.error(t("file.allowedTypes"));
       return Upload.LIST_IGNORE;
     }
-    const next: OrderAttachment = {
-      id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: file.name,
-      type,
-      size: file.size,
-      uploadedBy: uploaderName,
-      uploadedAt: new Date().toISOString().slice(0, 10),
-    };
-    onChange([...attachments, next]);
-    message.success(t("docs.added", { name: file.name }));
+    try {
+      if (orderId) {
+        const doc = await documentsApi.upload(file, { orderId, fileType: "work" });
+        onChange([...attachments, mapApiDocumentToAttachment(doc, uploaderName)]);
+      } else {
+        const next: OrderAttachment = {
+          id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          type,
+          size: file.size,
+          uploadedBy: uploaderName,
+          uploadedAt: new Date().toISOString().slice(0, 10),
+        };
+        onChange([...attachments, next]);
+      }
+      message.success(t("docs.added", { name: file.name }));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("docs.added", { name: file.name })));
+    }
     return false;
   };
 
-  const softDelete = (id: string) => {
-    onChange(attachments.map((a) => (a.id === id ? { ...a, deleted: true } : a)));
+  const softDelete = async (id: string) => {
+    try {
+      if (orderId) await documentsApi.remove(id);
+      onChange(attachments.map((a) => (a.id === id ? { ...a, deleted: true } : a)));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("docs.empty")));
+    }
   };
 
   const columns = useMemo(

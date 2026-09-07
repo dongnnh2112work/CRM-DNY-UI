@@ -5,11 +5,14 @@ import { useEffect, useMemo } from "react";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
 import { vndInputProps } from "@/lib/format-vnd";
+import { apiErrorMessage } from "@/lib/http/message";
 import { expensePendingDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import type { Order } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
+import { expensesApi } from "@/modules/expenses/api";
+import { mapApiExpenseToUi } from "@/modules/expenses/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 type FormValues = {
@@ -41,7 +44,7 @@ export function PaymentRequestDrawer({
   const [form] = Form.useForm<FormValues>();
   const { currentUser } = useUsers();
   const { orders } = useOrders();
-  const { expenses, addExpense } = useExpenses();
+  const { expenses, addExpense, replaceExpenses } = useExpenses();
   const { addNotifications } = useNotifications();
 
   useEffect(() => {
@@ -90,7 +93,7 @@ export function PaymentRequestDrawer({
       <Form
         form={form}
         layout="vertical"
-        onFinish={(values) => {
+        onFinish={async (values) => {
           if (!currentUser) {
             message.error(t("expense.notLoggedIn"));
             return;
@@ -127,25 +130,30 @@ export function PaymentRequestDrawer({
             }
           }
 
-          const created = addExpense({
-            orderId,
-            orderNumber,
-            projectName,
-            amount: Number(values.amount),
-            title: values.title.trim(),
-            note: values.note?.trim() || undefined,
-            requestedById: currentUser.id,
-            requestedByName: currentUser.name,
-            payeeName: values.payeeName,
-            bankAccount: values.bankAccount,
-            bankName: values.bankName,
-          });
-          addNotifications(
-            [currentUser.id, reviewerId],
-            expensePendingDraft(created, currentUser.name),
-          );
-          message.success(t("expense.sent"));
-          close();
+          if (!orderId) {
+            message.error(t("common.requiredMissing"));
+            return;
+          }
+          try {
+            const createdApi = await expensesApi.create({
+              orderId,
+              title: values.title.trim(),
+              amount: Number(values.amount),
+              note: values.note?.trim() || undefined,
+              payeeName: values.payeeName,
+              description: [values.bankName, values.bankAccount].filter(Boolean).join(" · ") || undefined,
+            });
+            const created = mapApiExpenseToUi(createdApi, orderNumber);
+            replaceExpenses([created, ...expenses]);
+            addNotifications(
+              [currentUser.id, reviewerId],
+              expensePendingDraft(created, currentUser.name),
+            );
+            message.success(t("expense.sent"));
+            close();
+          } catch (err) {
+            message.error(apiErrorMessage(err, t("expense.sent")));
+          }
         }}
       >
         <Form.Item label={t("common.requester")}>

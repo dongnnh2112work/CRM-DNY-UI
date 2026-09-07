@@ -13,16 +13,19 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import {
-  CUSTOMER_OWNER_OPTIONS,
   getCustomerUsedServices,
   usedServiceNames,
 } from "@/lib/customer-helpers";
 import { CUSTOMER_LOCKED_FIELD_KEYS, useCustomers } from "@/lib/customers-store";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
+import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
+import { useSession } from "@/lib/session/session-provider";
 import { useServices } from "@/lib/services-store";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { Customer, CustomerStatus } from "@/lib/types";
+import { useUsers } from "@/lib/users-store";
+import { customersApi } from "@/modules/customers/api";
 import { useT } from "@/lib/use-t";
 
 export default function CustomersPage() {
@@ -38,8 +41,9 @@ function CustomersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message } = App.useApp();
-  const { customers, fieldDefs, saveFieldDefs, addCustomers, updateCustomer, deleteCustomer } =
-    useCustomers();
+  const { can } = useSession();
+  const { customers, fieldDefs, saveFieldDefs, updateCustomer, deleteCustomer, addCustomers } = useCustomers();
+  const { users } = useUsers();
   const { orders } = useOrders();
   const { services } = useServices();
   const { getMeta, statusOptions, addStatus, updateStatus, removeStatus } = useCustomerStatusConfig();
@@ -50,6 +54,10 @@ function CustomersPageContent() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignOwner, setAssignOwner] = useState<string>();
+  const ownerOptions = useMemo(
+    () => users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name })),
+    [users],
+  );
 
   useEffect(() => {
     const q = searchParams.get("q");
@@ -103,10 +111,15 @@ function CustomersPageContent() {
     clearSelection();
   };
 
-  const bulkDelete = () => {
-    selectedRowKeys.forEach((id) => deleteCustomer(String(id)));
-    message.success(t("customer.deletedN", { count: selectedCount }));
-    clearSelection();
+  const bulkDelete = async () => {
+    try {
+      await Promise.all(selectedRowKeys.map((id) => customersApi.remove(String(id))));
+      selectedRowKeys.forEach((id) => deleteCustomer(String(id)));
+      message.success(t("customer.deletedN", { count: selectedCount }));
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("customer.loadFailed")));
+    }
   };
 
   const toExportRow = (c: Customer) => ({
@@ -132,16 +145,23 @@ function CustomersPageContent() {
     message.success(t("customer.exported", { count: rows.length }));
   };
 
-  const bulkAssign = () => {
+  const bulkAssign = async () => {
     if (!assignOwner) {
       message.warning(t("common.selectStaffOwner"));
       return;
     }
-    selectedRowKeys.forEach((id) => updateCustomer(String(id), { owner: assignOwner }));
-    message.success(t("customer.assigned", { count: selectedCount, name: assignOwner }));
-    setAssignOpen(false);
-    setAssignOwner(undefined);
-    clearSelection();
+    try {
+      await Promise.all(
+        selectedRowKeys.map((id) => customersApi.update(String(id), { ownerId: assignOwner })),
+      );
+      selectedRowKeys.forEach((id) => updateCustomer(String(id), { owner: assignOwner }));
+      message.success(t("customer.assigned", { count: selectedCount, name: assignOwner }));
+      setAssignOpen(false);
+      setAssignOwner(undefined);
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("customer.loadFailed")));
+    }
   };
 
   return (
@@ -154,7 +174,9 @@ function CustomersPageContent() {
           clearSelection();
         }}
         searchValue={query}
-        primaryAction={{ label: t("customer.newCta"), href: "/customers/new" }}
+        primaryAction={
+          can("customer.create") ? { label: t("customer.newCta"), href: "/customers/new" } : undefined
+        }
       >
         <Select
           value={statusFilter}
@@ -175,7 +197,7 @@ function CustomersPageContent() {
             clearSelection();
           }}
           style={{ width: 180 }}
-          options={[{ value: "all", label: t("customer.allOwners") }, ...CUSTOMER_OWNER_OPTIONS]}
+          options={[{ value: "all", label: t("customer.allOwners") }, ...ownerOptions]}
         />
         <Space>
           <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
@@ -283,14 +305,14 @@ function CustomersPageContent() {
           </BulkActionBar>
         }
         emptyDescription={
-          hasActiveFilters && customers.length > 0
-            ? t("common.noResults")
-            : t("customer.empty")
+          hasActiveFilters && customers.length > 0 ? t("common.noResults") : t("customer.empty")
         }
         emptyAction={
           hasActiveFilters && customers.length > 0
             ? undefined
-            : { label: t("common.createCustomer"), href: "/customers/new" }
+            : can("customer.create")
+              ? { label: t("common.createCustomer"), href: "/customers/new" }
+              : undefined
         }
         onRow={(record) => ({ onClick: () => router.push(`/customers/${record.id}`) })}
       />
@@ -328,7 +350,7 @@ function CustomersPageContent() {
           placeholder={t("common.selectStaff")}
           value={assignOwner}
           onChange={setAssignOwner}
-          options={CUSTOMER_OWNER_OPTIONS}
+          options={ownerOptions}
         />
       </Modal>
     </>

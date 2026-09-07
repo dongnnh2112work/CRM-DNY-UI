@@ -9,12 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { loadJson, saveJson } from "@/lib/demo-storage";
 import { tt } from "@/lib/i18n";
-import { MOCK_VAT_INVOICES } from "@/lib/mock-vat";
 import type { VatInvoice, VatStatus } from "@/lib/types";
-
-const KEY = "dny-crm-vat-invoices-v2";
 
 export type NewVatInvoiceInput = Omit<VatInvoice, "id" | "invoiceNumber" | "issueDate" | "status"> & {
   invoiceNumber?: string;
@@ -28,6 +24,7 @@ type Ctx = {
   addInvoice: (input: NewVatInvoiceInput) => VatInvoice;
   updateInvoice: (id: string, patch: Partial<VatInvoice>) => void;
   deleteInvoices: (ids: string[]) => void;
+  replaceInvoices: (items: VatInvoice[]) => void;
 };
 
 const VatContext = createContext<Ctx | null>(null);
@@ -52,19 +49,16 @@ function ensureLines(inv: VatInvoice): VatInvoice {
 }
 
 export function VatProvider({ children }: { children: ReactNode }) {
-  const [invoices, setInvoices] = useState<VatInvoice[]>(MOCK_VAT_INVOICES);
+  const [invoices, setInvoices] = useState<VatInvoice[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = loadJson<VatInvoice[]>(KEY);
-    if (stored && Array.isArray(stored)) setInvoices(stored.map(ensureLines));
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(KEY, invoices);
-  }, [invoices, ready]);
+  const replaceInvoices = useCallback((items: VatInvoice[]) => {
+    setInvoices(items.map(ensureLines));
+  }, []);
 
   const addInvoice = useCallback((input: NewVatInvoiceInput) => {
     if (input.contractNumber == null || input.contractNumber < 1) {
@@ -95,8 +89,8 @@ export function VatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ invoices, ready, addInvoice, updateInvoice, deleteInvoices }),
-    [invoices, ready, addInvoice, updateInvoice, deleteInvoices],
+    () => ({ invoices, ready, addInvoice, updateInvoice, deleteInvoices, replaceInvoices }),
+    [invoices, ready, addInvoice, updateInvoice, deleteInvoices, replaceInvoices],
   );
 
   return <VatContext.Provider value={value}>{children}</VatContext.Provider>;

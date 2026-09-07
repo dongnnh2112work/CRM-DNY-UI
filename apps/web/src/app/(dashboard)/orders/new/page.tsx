@@ -11,16 +11,17 @@ import { ds } from "@/lib/design-tokens";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
-import { MOCK_USERS } from "@/lib/mock-users";
+import { apiErrorMessage } from "@/lib/http/message";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
-import { deadlineFromService, nextContractNumber } from "@/lib/order-helpers";
+import { deadlineFromService, nextContractNumber, nextDossierNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
+import { contractsApi } from "@/modules/contracts/api";
+import { ordersApi } from "@/modules/orders/api";
+import { mapApiOrderToUi } from "@/modules/orders/map-to-ui";
 import { useT } from "@/lib/use-t";
-
-const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
 export default function NewOrderPage() {
   return (
@@ -39,9 +40,10 @@ function NewOrderPageContent() {
   const { services } = useServices();
   const { customers } = useCustomers();
   const { ctvs, addJob } = useCtvs();
-  const { orders, addOrder, isContractTaken } = useOrders();
+  const { orders, replaceOrders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
-  const { currentUser } = useUsers();
+  const { currentUser, users } = useUsers();
+  const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const channel = Form.useWatch("channel", form);
@@ -67,7 +69,7 @@ function NewOrderPageContent() {
         layout="vertical"
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
         initialValues={{ needsVat: false, customerId: prefillCustomerId }}
-        onFinish={(values) => {
+        onFinish={async (values) => {
           setSaving(true);
           try {
             const customer = customers.find((c) => c.id === values.customerId);
@@ -95,32 +97,49 @@ function NewOrderPageContent() {
               }
             }
 
-            const created = addOrder({
+            const value = Number(values.value);
+            const vatRate = values.needsVat ? 10 : 0;
+            const contract = await contractsApi.create({
+              contractNumber: values.needsVat ? String(values.contractNumber) : `DH-${Date.now()}`,
               customerId: customer.id,
-              customerName: customer.name,
+              title: `${customer.name} · ${service.name}`,
+            });
+            const apiOrder = await ordersApi.create({
+              orderNumber: nextDossierNumber(orders, new Date()),
+              contractId: contract.id,
+              customerId: customer.id,
               serviceId: service.id,
-              serviceName: service.name,
+              value,
+              totalNet: value,
+              totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
+              assignedUserId: assigned.id,
+              submitterUserId: submitter.id,
+              collaboratorId: ctv?.id,
+              vatRate,
+              stage: "new",
+              notes: values.notes,
+            });
+            const created = {
+              ...mapApiOrderToUi(apiOrder, {
+                customerName: customer.name,
+                serviceName: service.name,
+                assignedUserName: assigned.name,
+                submitterName: submitter.name,
+                reviewerName: reviewer?.name,
+                ctvName: ctv?.name,
+                contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
+              }),
               channel: values.channel,
-              ctvId: ctv?.id,
-              ctvName: ctv?.name,
-              value: Number(values.value),
               commissionPercent:
                 values.commissionPercent != null && values.commissionPercent !== ""
                   ? Number(values.commissionPercent)
                   : undefined,
               zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
               ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
-              assignedUserId: assigned.id,
-              assignedUserName: assigned.name,
-              submitterId: submitter.id,
-              submitterName: submitter.name,
-              reviewerId: reviewer?.id,
-              reviewerName: reviewer?.name,
-              notes: values.notes,
-              needsVat: Boolean(values.needsVat),
-              contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
               deadline: values.deadline ? values.deadline.format("YYYY-MM-DD") : undefined,
-            });
+              needsVat: Boolean(values.needsVat),
+            };
+            replaceOrders([created, ...orders]);
 
             addNotifications(
               [assigned.id],
@@ -145,7 +164,7 @@ function NewOrderPageContent() {
             message.success(t("order.created"));
             router.push(`/orders/${created.id}`);
           } catch (err) {
-            message.error(err instanceof Error ? err.message : t("order.createFailed"));
+            message.error(apiErrorMessage(err, t("order.createFailed")));
           } finally {
             setSaving(false);
           }

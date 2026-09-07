@@ -13,7 +13,7 @@ import { useT } from "@/lib/use-t";
 
 interface KanbanBoardProps {
   orders: Order[];
-  onMove: (orderId: string, newStage: OrderStage) => boolean | void;
+  onMove: (orderId: string, newStage: OrderStage) => boolean | void | Promise<boolean | void>;
 }
 
 export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {

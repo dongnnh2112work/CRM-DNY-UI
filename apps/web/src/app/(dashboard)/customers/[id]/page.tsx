@@ -27,7 +27,6 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import {
-  CUSTOMER_OWNER_OPTIONS,
   collectCustomFields,
   getCustomerFormExtraFields,
   getCustomerOrders,
@@ -37,9 +36,13 @@ import {
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import { useCustomers } from "@/lib/customers-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
-import type { CustomerStatus, Order } from "@/lib/types";
+import type { Customer, CustomerStatus, Order } from "@/lib/types";
+import { useUsers } from "@/lib/users-store";
+import { customersApi } from "@/modules/customers/api";
+import { mapApiCustomerToUi, mapUiCustomerPatchToApi } from "@/modules/customers/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
@@ -53,9 +56,13 @@ export default function CustomerDetailPage() {
   const { message, modal } = App.useApp();
   const { statusOptions, addStatus, updateStatus, removeStatus } = useCustomerStatusConfig();
   const { customers, getById, ready, updateCustomer, deleteCustomer, fieldDefs } = useCustomers();
+  const { users } = useUsers();
   const { orders } = useOrders();
   const { services } = useServices();
-  const customer = getById(id);
+  const mockCustomer = getById(id);
+  const [liveCustomer, setLiveCustomer] = useState<Customer | null>(null);
+  const [liveChecked, setLiveChecked] = useState(false);
+  const customer = mockCustomer ?? liveCustomer;
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
@@ -150,6 +157,29 @@ export default function CustomerDetailPage() {
   );
 
   useEffect(() => {
+    if (!ready || !id) return;
+    if (getById(id)) {
+      setLiveChecked(true);
+      return;
+    }
+    let cancelled = false;
+    customersApi
+      .get(id)
+      .then((c) => {
+        if (!cancelled) setLiveCustomer(mapApiCustomerToUi(c));
+      })
+      .catch(() => {
+        if (!cancelled) setLiveCustomer(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLiveChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, id, getById]);
+
+  useEffect(() => {
     if (!customer || !editOpen) return;
     form.setFieldsValue({
       name: customer.name,
@@ -165,7 +195,7 @@ export default function CustomerDetailPage() {
     });
   }, [customer, editOpen, form]);
 
-  if (!ready) return <PageLoading />;
+  if (!ready || (!mockCustomer && !liveChecked)) return <PageLoading />;
   if (!customer) {
     return (
       <EmptyState
@@ -211,10 +241,15 @@ export default function CustomerDetailPage() {
             okText={t("common.delete")}
             cancelText={t("common.cancel")}
             okButtonProps={{ danger: true }}
-            onConfirm={() => {
-              deleteCustomer(customer.id);
-              message.success(t("customer.deleted"));
-              router.push("/customers");
+            onConfirm={async () => {
+              try {
+                await customersApi.remove(customer.id);
+                deleteCustomer(customer.id);
+                message.success(t("customer.deleted"));
+                router.push("/customers");
+              } catch (err) {
+                message.error(apiErrorMessage(err, t("customer.loadFailed")));
+              }
             }}
           >
             <Button danger>{t("common.delete")}</Button>
@@ -314,23 +349,33 @@ export default function CustomerDetailPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(values) => {
+          onFinish={async (values) => {
             setSaving(true);
             try {
+              const updated = await customersApi.update(
+                customer.id,
+                mapUiCustomerPatchToApi({
+                  name: values.name,
+                  phone: values.phone,
+                  email: values.email,
+                  company: values.company,
+                  taxCode: values.taxCode,
+                  owner: values.owner,
+                  customFields: collectCustomFields(values, extraFields, customer.customFields),
+                }),
+              );
               updateCustomer(customer.id, {
-                name: values.name,
-                phone: values.phone,
-                email: values.email,
-                company: values.company,
-                taxCode: values.taxCode,
+                ...mapApiCustomerToUi(updated),
                 address: values.address,
-                owner: values.owner,
                 status: values.status as CustomerStatus,
                 usedServiceIds: values.usedServiceIds ?? [],
                 customFields: collectCustomFields(values, extraFields, customer.customFields),
               });
+              setLiveCustomer(mapApiCustomerToUi(updated));
               message.success(t("customer.updated"));
               setEditOpen(false);
+            } catch (err) {
+              message.error(apiErrorMessage(err, t("customer.loadFailed")));
             } finally {
               setSaving(false);
             }
@@ -355,7 +400,7 @@ export default function CustomerDetailPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item name="owner" label={t("field.owner")} rules={[{ required: true }]}>
-            <Select options={CUSTOMER_OWNER_OPTIONS} />
+            <Select options={users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="status" label={t("field.status")} rules={[{ required: true }]}>
             <Select options={statusOptions} />

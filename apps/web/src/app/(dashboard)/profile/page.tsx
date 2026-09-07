@@ -29,8 +29,11 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ProfileAvatarUpload } from "@/components/users/profile-avatar-upload";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
+import { apiErrorMessage } from "@/lib/http/message";
 import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
+import { authApi } from "@/modules/auth/api";
+import { identityAdminApi } from "@/modules/identity-admin/api";
 
 function formatDate(iso?: string) {
   if (!iso) return "—";
@@ -236,6 +239,10 @@ export default function ProfilePage() {
                           onSubmit={async (values) => {
                             setSaving(true);
                             try {
+                              await identityAdminApi.updateUser(currentUser.id, {
+                                displayName: values.name,
+                                phone: values.phone,
+                              });
                               updateUser(currentUser.id, {
                                 name: values.name,
                                 email: values.email,
@@ -244,6 +251,8 @@ export default function ProfilePage() {
                                 address: values.address,
                               });
                               message.success(t("profile.updated"));
+                            } catch (err) {
+                              message.error(apiErrorMessage(err, t("profile.updated")));
                             } finally {
                               setSaving(false);
                             }
@@ -311,8 +320,18 @@ export default function ProfilePage() {
                         </Typography.Paragraph>
                         <Form
                           layout="vertical"
-                          onFinish={() => {
-                            message.info(t("profile.passwordHint"));
+                          onFinish={async (values) => {
+                            const next = String(values.newPassword ?? "");
+                            if (next.length < 8) {
+                              message.error(t("profile.passwordTooShort"));
+                              return;
+                            }
+                            try {
+                              await authApi.changePassword(next);
+                              message.success(t("profile.passwordChanged"));
+                            } catch (err) {
+                              message.error(apiErrorMessage(err, t("profile.passwordHint")));
+                            }
                           }}
                         >
                           <Form.Item

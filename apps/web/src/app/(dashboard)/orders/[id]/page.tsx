@@ -34,7 +34,6 @@ import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { ds } from "@/lib/design-tokens";
-import { MOCK_USERS } from "@/lib/mock-users";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import {
@@ -46,6 +45,9 @@ import {
   nextContractNumber,
 } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
+import { apiErrorMessage } from "@/lib/http/message";
+import { ordersApi } from "@/modules/orders/api";
+import { contractsApi } from "@/modules/contracts/api";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useServices } from "@/lib/services-store";
@@ -54,8 +56,6 @@ import { useUsers } from "@/lib/users-store";
 import { orderHasContractNumber } from "@/lib/vat-helpers";
 import { useT } from "@/lib/use-t";
 import { hasMessageKey, type MessageKey } from "@/lib/i18n";
-
-const activeUsers = MOCK_USERS.filter((u) => u.status === "active");
 
 function channelLabel(t: (key: MessageKey) => string, channel: string) {
   const key = `channel.${channel}` as MessageKey;
@@ -69,7 +69,8 @@ export default function OrderDetailPage() {
   const { message, modal } = App.useApp();
   const { getById, ready, updateOrder, deleteOrder, orders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
-  const { currentUser } = useUsers();
+  const { currentUser, users } = useUsers();
+  const activeUsers = users.filter((u) => u.status === "active");
   const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId } = usePayments();
   const { customers } = useCustomers();
@@ -130,14 +131,19 @@ export default function OrderDetailPage() {
     updateOrder(order.id, next);
   };
 
-  const applyStage = (newStage: OrderStage) => {
+  const applyStage = async (newStage: OrderStage) => {
     if (newStage === order.stage) return;
-    updateOrder(order.id, {
-      stage: newStage,
-      approvalStatus: "none",
-      pendingTransition: undefined,
-    });
-    message.success(t("order.stageUpdated"));
+    try {
+      await ordersApi.changeStage(order.id, newStage);
+      updateOrder(order.id, {
+        stage: newStage,
+        approvalStatus: "none",
+        pendingTransition: undefined,
+      });
+      message.success(t("order.stageUpdated"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("order.stageUpdated")));
+    }
   };
 
   const requestStageChange = (newStage: OrderStage) => {
@@ -156,6 +162,21 @@ export default function OrderDetailPage() {
       <PageHeader breadcrumbs={[{ title: t("common.order"), href: "/orders" }, { title: order.orderNumber }]}>
         <Space wrap>
           <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
+          {order.approvalStatus !== "approved" ? (
+            <Button
+              onClick={async () => {
+                try {
+                  await ordersApi.approve(order.id);
+                  updateOrder(order.id, { approvalStatus: "approved" });
+                  message.success(t("common.approve"));
+                } catch (err) {
+                  message.error(apiErrorMessage(err, t("common.approve")));
+                }
+              }}
+            >
+              {t("common.approve")}
+            </Button>
+          ) : null}
           <Button
             type="primary"
             onClick={() => {
@@ -281,6 +302,7 @@ export default function OrderDetailPage() {
               label: t("order.workFiles", { count: workFileCount }),
               children: (
                 <OrderDocuments
+                  orderId={order.id}
                   attachments={order.attachments}
                   onChange={(attachments) => persist({ ...order, attachments })}
                   uploaderName={order.submitterName}
@@ -294,6 +316,7 @@ export default function OrderDetailPage() {
                 <div>
                   <Typography.Paragraph type="secondary">{t("license.tabHint")}</Typography.Paragraph>
                   <LicenseUpload
+                    orderId={order.id}
                     files={order.licenseAttachments ?? []}
                     onChange={(licenseAttachments) => persist({ ...order, licenseAttachments })}
                     uploaderName={order.submitterName}
@@ -317,7 +340,7 @@ export default function OrderDetailPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(values) => {
+          onFinish={async (values) => {
             setSaving(true);
             try {
               const customer = customers.find((c) => c.id === values.customerId);
@@ -345,6 +368,33 @@ export default function OrderDetailPage() {
                 }
               }
 
+              const value = Number(values.value);
+              const vatRate = values.needsVat ? 10 : 0;
+              await ordersApi.update(order.id, {
+                customerId: customer.id,
+                serviceId: service.id,
+                value,
+                totalNet: value,
+                totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
+                vatRate,
+                assignedUserId: assigned.id,
+                submitterUserId: submitter.id,
+                collaboratorId: values.channel === "ctv" ? ctv?.id : undefined,
+                collaboratorPrice: values.channel === "ctv" ? Number(values.ctvPrice) : null,
+                channel: values.channel,
+                reviewerUserId: reviewer?.id ?? null,
+                notes: values.notes,
+              });
+              if (assigned.id !== order.assignedUserId) {
+                await ordersApi.assign(order.id, assigned.id);
+              }
+              if (order.contractId && values.needsVat && values.contractNumber) {
+                await contractsApi.update(order.contractId, {
+                  contractNumber: String(values.contractNumber),
+                  customerId: customer.id,
+                });
+              }
+
               updateOrder(order.id, {
                 customerId: customer.id,
                 customerName: customer.name,
@@ -353,7 +403,7 @@ export default function OrderDetailPage() {
                 channel: values.channel,
                 ctvId: values.channel === "ctv" ? ctv?.id : undefined,
                 ctvName: values.channel === "ctv" ? ctv?.name : undefined,
-                value: Number(values.value),
+                value,
                 commissionPercent:
                   values.commissionPercent != null && values.commissionPercent !== ""
                     ? Number(values.commissionPercent)
@@ -386,6 +436,8 @@ export default function OrderDetailPage() {
               }
               message.success(t("order.updated"));
               setEditOpen(false);
+            } catch (err) {
+              message.error(apiErrorMessage(err, t("order.updated")));
             } finally {
               setSaving(false);
             }

@@ -30,6 +30,7 @@
 | # | Table / capability | Endpoints | FE doc | Status |
 |---|--------------------|-----------|--------|--------|
 | B0 | Auth session (Supabase BFF) | `POST /auth/signup` `login` `logout` `refresh` `forgot-password` `change-password` | [auth.md](./api/auth.md) | **DONE** |
+| B0b | Google OAuth (BFF) | `GET /auth/oauth/google` + `/auth/oauth/callback` | [auth.md](./api/auth.md) | **DONE** |
 | B1 | Current user | `GET /auth/me` | [auth.md](./api/auth.md) | **DONE** |
 | B2 | Users (admin) | `GET/POST/PATCH/DELETE /users` | [identity-admin.md](./api/identity-admin.md) | **DONE** |
 | B3 | Roles | `GET/POST/PATCH /roles` + permission-groups | [identity-admin.md](./api/identity-admin.md) | **DONE** |

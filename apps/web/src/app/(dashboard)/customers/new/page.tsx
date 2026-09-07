@@ -8,19 +8,23 @@ import { PageHeader } from "@/components/shared/page-header";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import {
-  CUSTOMER_OWNER_OPTIONS,
   collectCustomFields,
   getCustomerFormExtraFields,
 } from "@/lib/customer-helpers";
 import { useCustomers } from "@/lib/customers-store";
+import { apiErrorMessage } from "@/lib/http/message";
 import { useServices } from "@/lib/services-store";
+import { useUsers } from "@/lib/users-store";
+import { customersApi } from "@/modules/customers/api";
+import { mapApiCustomerToUi, mapUiCustomerToApi } from "@/modules/customers/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 export default function NewCustomerPage() {
   const t = useT();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const { addCustomer, fieldDefs } = useCustomers();
+  const { addCustomers, fieldDefs } = useCustomers();
+  const { users } = useUsers();
   const { services } = useServices();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -33,23 +37,32 @@ export default function NewCustomerPage() {
         form={form}
         layout="vertical"
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
-        onFinish={(values) => {
+        onFinish={async (values) => {
           setSaving(true);
           try {
-            addCustomer({
-              name: values.name,
-              phone: values.phone,
-              email: values.email,
-              company: values.company,
-              taxCode: values.taxCode,
-              address: values.address,
-              owner: values.owner,
-              status: "lead",
-              usedServiceIds: values.usedServiceIds ?? [],
-              customFields: collectCustomFields(values, extraFields),
-            });
+            const created = await customersApi.create(
+              mapUiCustomerToApi({
+                name: values.name,
+                phone: values.phone,
+                email: values.email,
+                company: values.company,
+                taxCode: values.taxCode,
+                owner: values.owner,
+                customFields: collectCustomFields(values, extraFields),
+              }),
+            );
+            addCustomers([
+              {
+                ...mapApiCustomerToUi(created),
+                address: values.address,
+                usedServiceIds: values.usedServiceIds ?? [],
+                customFields: collectCustomFields(values, extraFields),
+              },
+            ]);
             message.success(t("customer.created"));
             router.push("/customers");
+          } catch (err) {
+            message.error(apiErrorMessage(err, t("customer.loadFailed")));
           } finally {
             setSaving(false);
           }
@@ -73,8 +86,8 @@ export default function NewCustomerPage() {
         <Form.Item name="address" label={t("field.address")}>
           <Input.TextArea rows={2} />
         </Form.Item>
-        <Form.Item name="owner" label={t("field.owner")} initialValue="Le Staff A">
-          <Select options={CUSTOMER_OWNER_OPTIONS} />
+        <Form.Item name="owner" label={t("field.owner")}>
+          <Select options={users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name }))} />
         </Form.Item>
         <Form.Item
           name="usedServiceIds"

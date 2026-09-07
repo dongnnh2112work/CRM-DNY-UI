@@ -15,7 +15,6 @@ import { MOCK_SERVICES, SERVICE_FIELD_DEFS } from "@/lib/mock-services";
 import { DEFAULT_LICENSE_WARN_MONTHS, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 
-const SERVICES_KEY = "dny-crm-services";
 const FIELDS_KEY = "dny-crm-service-fields";
 
 export type NewServiceInput = {
@@ -37,6 +36,7 @@ type ServicesContextValue = {
   updateService: (id: string, patch: UpdateServiceInput) => Service | undefined;
   setServiceStatus: (id: string, status: ServiceStatus) => void;
   deleteService: (id: string) => void;
+  replaceServices: (items: Service[]) => void;
   saveFieldDefs: (defs: FieldDefinition[]) => void;
   getById: (id: string) => Service | undefined;
   resetToSeed: () => void;
@@ -53,16 +53,12 @@ function normalizeService(s: Service): Service {
 const ServicesContext = createContext<ServicesContextValue | null>(null);
 
 export function ServicesProvider({ children }: { children: ReactNode }) {
-  const [services, setServices] = useState<Service[]>(() => MOCK_SERVICES.map(normalizeService));
+  const [services, setServices] = useState<Service[]>([]);
   const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>(SERVICE_FIELD_DEFS);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const storedServices = loadJson<Service[]>(SERVICES_KEY);
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
-    if (storedServices && Array.isArray(storedServices)) {
-      setServices(storedServices.map(normalizeService));
-    }
     if (storedFields && Array.isArray(storedFields)) {
       setFieldDefs(mergeSeedFieldDefs(storedFields, SERVICE_FIELD_DEFS));
     }
@@ -71,13 +67,12 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    saveJson(SERVICES_KEY, services);
-  }, [services, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
     saveJson(FIELDS_KEY, fieldDefs);
   }, [fieldDefs, ready]);
+
+  const replaceServices = useCallback((items: Service[]) => {
+    setServices(items.map(normalizeService));
+  }, []);
 
   const addService = useCallback((input: NewServiceInput) => {
     const created: Service = {
@@ -144,6 +139,7 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
       updateService,
       setServiceStatus,
       deleteService,
+      replaceServices,
       saveFieldDefs,
       getById,
       resetToSeed,
@@ -156,6 +152,7 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
       updateService,
       setServiceStatus,
       deleteService,
+      replaceServices,
       saveFieldDefs,
       getById,
       resetToSeed,

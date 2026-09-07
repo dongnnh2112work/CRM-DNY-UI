@@ -27,6 +27,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { ds } from "@/lib/design-tokens";
 import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
+import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { theme: appTheme, setTheme } = useAppConfig();
   const t = useT();
   const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
+  const { user: apiUser, can, logout: logoutApi } = useSession();
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
@@ -116,7 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               ),
             },
           ];
-    return [
+    const items = [
       { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">{t("nav.dashboard")}</Link> },
       { type: "divider" as const },
       { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
@@ -137,7 +139,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.users")}</Link> },
       { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> },
     ];
-  }, [t, payrollScope]);
+    if (apiUser && !can("customer.view")) {
+      return items.filter((i) => !("key" in i) || i.key !== "/customers");
+    }
+    return items;
+  }, [t, payrollScope, apiUser, can]);
 
   const selectedKey = useMemo(() => {
     const keys = menuItems.filter((i) => "key" in i).map((i) => (i as { key: string }).key);
@@ -160,7 +166,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.push(listSearchHref(searchTarget.listPath, q));
   };
 
-  const displayName = currentUser?.name ?? t("shell.guest");
+  const displayName = apiUser?.displayName ?? currentUser?.name ?? t("shell.guest");
 
   return (
     <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
@@ -332,7 +338,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                     icon: <LogoutOutlined />,
                     label: t("shell.logout"),
                     danger: true,
-                    onClick: () => {
+                    onClick: async () => {
+                      await logoutApi();
                       logout();
                       message.success(t("shell.loggedOut"));
                       router.push("/login");

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { configApi, REMINDER_CONFIG_KEY } from "@/modules/config/api";
 
 const KEY = "dny-crm-app-reminders";
 
@@ -25,6 +26,7 @@ type Ctx = {
   config: ReminderConfig;
   ready: boolean;
   setVatIssueWarnDays: (n: number) => void;
+  hydrateConfig: (next: ReminderConfig) => void;
 };
 
 const AppConfigContext = createContext<Ctx | null>(null);
@@ -49,12 +51,20 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
   }, [config, ready]);
 
   const setVatIssueWarnDays = useCallback((n: number) => {
-    setConfig((c) => ({ ...c, vatIssueWarnDays: Math.min(90, Math.max(7, Math.round(n))) }));
+    const vatIssueWarnDays = Math.min(90, Math.max(7, Math.round(n)));
+    setConfig((c) => ({ ...c, vatIssueWarnDays }));
+    void configApi.patch(REMINDER_CONFIG_KEY, { vatIssueWarnDays }).catch(() => undefined);
+  }, []);
+
+  const hydrateConfig = useCallback((next: ReminderConfig) => {
+    setConfig({
+      vatIssueWarnDays: Math.min(90, Math.max(7, Math.round(next.vatIssueWarnDays))),
+    });
   }, []);
 
   const value = useMemo(
-    () => ({ config, ready, setVatIssueWarnDays }),
-    [config, ready, setVatIssueWarnDays],
+    () => ({ config, ready, setVatIssueWarnDays, hydrateConfig }),
+    [config, ready, setVatIssueWarnDays, hydrateConfig],
   );
 
   return <AppConfigContext.Provider value={value}>{children}</AppConfigContext.Provider>;

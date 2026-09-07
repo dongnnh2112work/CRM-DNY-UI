@@ -9,13 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { loadJson, saveJson } from "@/lib/demo-storage";
 import { tt } from "@/lib/i18n";
 import { orderJobOwnerIds, relatedUserIds, type NotificationDraft } from "@/lib/notification-targets";
 import { daysUntil, getOrderLicenseExpirySummary, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import type { AppNotification, Order, Service } from "@/lib/types";
-
-const KEY = "dny-crm-notifications";
+import { notificationsApi } from "@/modules/notifications/api";
 
 type AddInput = NotificationDraft & { userId: string };
 
@@ -39,6 +37,7 @@ type Ctx = {
       vatWarnDays: number;
     },
   ) => AppNotification[];
+  replaceNotifications: (items: AppNotification[]) => void;
 };
 
 const NotificationsContext = createContext<Ctx | null>(null);
@@ -52,15 +51,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = loadJson<AppNotification[]>(KEY);
-    if (stored && Array.isArray(stored)) setNotifications(stored);
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(KEY, notifications);
-  }, [notifications, ready]);
+  const replaceNotifications = useCallback((items: AppNotification[]) => {
+    setNotifications(items);
+  }, []);
 
   const addNotifications = useCallback(
     (userIds: Array<string | undefined | null>, draft: NotificationDraft, exceptUserId?: string) => {
@@ -101,12 +97,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const markRead = useCallback((id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    void notificationsApi.markRead(id).catch(() => undefined);
   }, []);
 
   const markAllRead = useCallback((userId: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.userId === userId ? { ...n, read: true } : n)),
-    );
+    setNotifications((prev) => {
+      for (const n of prev) {
+        if (n.userId === userId && !n.read) {
+          void notificationsApi.markRead(n.id).catch(() => undefined);
+        }
+      }
+      return prev.map((n) => (n.userId === userId ? { ...n, read: true } : n));
+    });
   }, []);
 
   const unreadCount = useCallback(
@@ -223,6 +225,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       unreadCount,
       forUser,
       scanOrderAlerts,
+      replaceNotifications,
     }),
     [
       notifications,
@@ -234,6 +237,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       unreadCount,
       forUser,
       scanOrderAlerts,
+      replaceNotifications,
     ],
   );
 

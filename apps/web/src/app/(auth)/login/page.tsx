@@ -1,23 +1,54 @@
 "use client";
 
 import { GoogleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
-import { Button, Divider, Form, Input, Typography, theme } from "antd";
+import { Alert, App, Button, Divider, Form, Input, Typography, theme } from "antd";
 import { useRouter } from "next/navigation";
-import { useUsers } from "@/lib/users-store";
+import { useEffect, useState } from "react";
+import { PageLoading } from "@/components/shared/page-loading";
+import { ApiError } from "@/lib/http/errors";
+import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
-
-const DEFAULT_LOGIN_USER_ID = "u2";
+import { authApi } from "@/modules/auth/api";
 
 export default function LoginPage() {
   const router = useRouter();
   const { token } = theme.useToken();
-  const { loginAs } = useUsers();
+  const { message } = App.useApp();
   const t = useT();
+  const { status, applySession } = useSession();
+  const [submitting, setSubmitting] = useState(false);
+  const [googlePending, setGooglePending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const enterApp = () => {
-    loginAs(DEFAULT_LOGIN_USER_ID);
-    router.push("/dashboard");
+  useEffect(() => {
+    if (status === "authenticated") router.replace("/dashboard");
+  }, [status, router]);
+
+  const onGoogle = () => {
+    setGooglePending(true);
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    window.location.assign(authApi.googleOAuthUrl(redirectTo));
   };
+
+  const onFinish = async (values: { email: string; password: string }) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const session = await authApi.login(values.email, values.password);
+      applySession(session);
+      router.replace("/dashboard");
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.messages.join(" ") : t("auth.loginFailed");
+      setFormError(msg);
+      message.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (status === "loading" || status === "authenticated") {
+    return <PageLoading />;
+  }
 
   return (
     <div
@@ -47,9 +78,14 @@ export default function LoginPage() {
           <Typography.Text type="secondary">{t("auth.tagline")}</Typography.Text>
         </div>
 
+        {formError ? (
+          <Alert type="error" showIcon title={formError} style={{ marginBottom: 16 }} />
+        ) : null}
+
         <Button
           size="large"
           block
+          loading={googlePending}
           style={{
             marginBottom: 16,
             height: 40,
@@ -57,7 +93,7 @@ export default function LoginPage() {
             borderRadius: 9999,
           }}
           icon={<GoogleOutlined />}
-          onClick={enterApp}
+          onClick={onGoogle}
         >
           {t("auth.loginGoogle")}
         </Button>
@@ -66,12 +102,13 @@ export default function LoginPage() {
           {t("auth.orEmail")}
         </Divider>
 
-        <Form layout="vertical" onFinish={enterApp} requiredMark={false}>
+        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item name="email" rules={[{ required: true, type: "email", message: t("auth.emailRequired") }]}>
             <Input
               prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}
               placeholder={t("auth.email")}
               size="large"
+              autoComplete="email"
             />
           </Form.Item>
           <Form.Item name="password" rules={[{ required: true, message: t("auth.passwordRequired") }]}>
@@ -79,9 +116,10 @@ export default function LoginPage() {
               prefix={<LockOutlined style={{ color: token.colorTextTertiary }} />}
               placeholder={t("auth.password")}
               size="large"
+              autoComplete="current-password"
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit" size="large" block>
+          <Button type="primary" htmlType="submit" size="large" block loading={submitting}>
             {t("auth.login")}
           </Button>
         </Form>

@@ -11,10 +11,9 @@ import {
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { mergeSeedFieldDefs } from "@/lib/field-defs";
-import { CUSTOMER_FIELD_DEFS, MOCK_CUSTOMERS } from "@/lib/mock-customers";
+import { CUSTOMER_FIELD_DEFS } from "@/lib/mock-customers";
 import type { Customer, CustomerStatus, FieldDefinition } from "@/lib/types";
 
-const CUSTOMERS_KEY = "dny-crm-customers";
 const FIELDS_KEY = "dny-crm-customer-fields";
 
 export type NewCustomerInput = {
@@ -34,6 +33,7 @@ type CustomersContextValue = {
   customers: Customer[];
   fieldDefs: FieldDefinition[];
   ready: boolean;
+  replaceCustomers: (items: Customer[]) => void;
   addCustomer: (input: NewCustomerInput) => Customer;
   addCustomers: (items: Customer[]) => void;
   updateCustomer: (id: string, patch: Partial<Omit<Customer, "id">>) => void;
@@ -45,14 +45,12 @@ type CustomersContextValue = {
 const CustomersContext = createContext<CustomersContextValue | null>(null);
 
 export function CustomersProvider({ children }: { children: ReactNode }) {
-  const [customers, setCustomers] = useState<Customer[]>(MOCK_CUSTOMERS);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>(CUSTOMER_FIELD_DEFS);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = loadJson<Customer[]>(CUSTOMERS_KEY);
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
-    if (stored && Array.isArray(stored)) setCustomers(stored);
     if (storedFields && Array.isArray(storedFields)) {
       setFieldDefs(mergeSeedFieldDefs(storedFields, CUSTOMER_FIELD_DEFS));
     }
@@ -61,13 +59,12 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    saveJson(CUSTOMERS_KEY, customers);
-  }, [customers, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
     saveJson(FIELDS_KEY, fieldDefs);
   }, [fieldDefs, ready]);
+
+  const replaceCustomers = useCallback((items: Customer[]) => {
+    setCustomers(items);
+  }, []);
 
   const addCustomer = useCallback((input: NewCustomerInput) => {
     const created: Customer = {
@@ -121,6 +118,7 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
       customers,
       fieldDefs,
       ready,
+      replaceCustomers,
       addCustomer,
       addCustomers,
       updateCustomer,
@@ -132,6 +130,7 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
       customers,
       fieldDefs,
       ready,
+      replaceCustomers,
       addCustomer,
       addCustomers,
       updateCustomer,

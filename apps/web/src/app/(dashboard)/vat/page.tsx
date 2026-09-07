@@ -18,6 +18,8 @@ import type { VatInvoice, VatStatus } from "@/lib/types";
 import { useT } from "@/lib/use-t";
 import { resolveContractNumber } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
+import { apiErrorMessage } from "@/lib/http/message";
+import { vatApi } from "@/modules/vat/api";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -96,7 +98,7 @@ export default function VatPage() {
     }
   };
 
-  const bulkCancelDrafts = () => {
+  const bulkCancelDrafts = async () => {
     const draftIds = selectedInvoices()
       .filter((v) => v.status === "draft")
       .map((v) => v.id);
@@ -104,9 +106,33 @@ export default function VatPage() {
       message.warning(t("vat.noDrafts"));
       return;
     }
-    for (const id of draftIds) updateInvoice(id, { status: "cancelled" });
-    message.success(t("vat.cancelledN", { count: draftIds.length }));
-    clearSelection();
+    try {
+      await Promise.all(draftIds.map((id) => vatApi.cancel(id)));
+      for (const id of draftIds) updateInvoice(id, { status: "cancelled" });
+      message.success(t("vat.cancelledN", { count: draftIds.length }));
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("vat.noDrafts")));
+    }
+  };
+
+  const bulkIssueDrafts = async () => {
+    const draftIds = selectedInvoices()
+      .filter((v) => v.status === "draft")
+      .map((v) => v.id);
+    if (draftIds.length === 0) {
+      message.warning(t("vat.noDrafts"));
+      return;
+    }
+    try {
+      const today = todayIso();
+      await Promise.all(draftIds.map((id) => vatApi.issue(id, today)));
+      for (const id of draftIds) updateInvoice(id, { status: "issued", issueDate: today });
+      message.success(t("vat.issuedN", { count: draftIds.length }));
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("vat.noDrafts")));
+    }
   };
 
   const bulkDelete = () => {
@@ -220,6 +246,15 @@ export default function VatPage() {
             <Button size="small" onClick={bulkExport}>
               {t("common.exportExcel")}
             </Button>
+            <Popconfirm
+              title={t("vat.issueN", { count: draftSelectedCount || selectedCount })}
+              description={t("vat.issueBody")}
+              okText={t("status.vat.issued")}
+              cancelText={t("common.close")}
+              onConfirm={bulkIssueDrafts}
+            >
+              <Button size="small">{t("vat.issueDraftOnly")}</Button>
+            </Popconfirm>
             <Popconfirm
               title={t("vat.cancelN", { count: draftSelectedCount || selectedCount })}
               description={t("vat.cancelBody")}

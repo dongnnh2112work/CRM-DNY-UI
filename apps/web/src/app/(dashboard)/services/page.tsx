@@ -10,13 +10,16 @@ import { ServiceForm } from "@/components/services/service-form";
 import { ds } from "@/lib/design-tokens";
 import { SERVICE_LOCKED_FIELD_KEYS, serviceMatchesQuery } from "@/lib/service-fields";
 import { useServices } from "@/lib/services-store";
+import { apiErrorMessage } from "@/lib/http/message";
 import type { Service } from "@/lib/types";
+import { servicesApi } from "@/modules/services/api";
+import { mapApiServiceToUi, mapUiServiceToApi } from "@/modules/services/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 export default function ServicesPage() {
   const t = useT();
   const { message } = App.useApp();
-  const { services, fieldDefs, saveFieldDefs, setServiceStatus, deleteService, addService, updateService } =
+  const { services, fieldDefs, saveFieldDefs, setServiceStatus, deleteService, updateService, replaceServices } =
     useServices();
   const [query, setQuery] = useState("");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -48,20 +51,36 @@ export default function ServicesPage() {
     setEditService(null);
   };
 
-  const bulkSetStatus = (status: "active" | "inactive") => {
-    selectedRowKeys.forEach((id) => setServiceStatus(String(id), status));
-    message.success(
-      status === "active"
-        ? t("service.activatedN", { count: selectedCount })
-        : t("service.deactivatedN", { count: selectedCount }),
-    );
-    clearSelection();
+  const bulkSetStatus = async (status: "active" | "inactive") => {
+    try {
+      await Promise.all(
+        selectedRowKeys.map(async (id) => {
+          const sid = String(id);
+          if (status === "inactive") await servicesApi.archive(sid);
+          else await servicesApi.update(sid, { status: "ACTIVE" });
+          setServiceStatus(sid, status);
+        }),
+      );
+      message.success(
+        status === "active"
+          ? t("service.activatedN", { count: selectedCount })
+          : t("service.deactivatedN", { count: selectedCount }),
+      );
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("service.empty")));
+    }
   };
 
-  const bulkDelete = () => {
-    selectedRowKeys.forEach((id) => deleteService(String(id)));
-    message.success(t("service.deletedN", { count: selectedCount }));
-    clearSelection();
+  const bulkDelete = async () => {
+    try {
+      await Promise.all(selectedRowKeys.map((id) => servicesApi.archive(String(id))));
+      selectedRowKeys.forEach((id) => deleteService(String(id)));
+      message.success(t("service.deletedN", { count: selectedCount }));
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("service.empty")));
+    }
   };
 
   return (
@@ -155,13 +174,17 @@ export default function ServicesPage() {
             setSaving(true);
             try {
               if (editService) {
-                updateService(editService.id, payload);
+                const updated = await servicesApi.update(editService.id, mapUiServiceToApi(payload));
+                updateService(editService.id, mapApiServiceToUi(updated));
                 message.success(t("service.updated"));
               } else {
-                addService(payload);
+                const created = await servicesApi.create(mapUiServiceToApi(payload));
+                replaceServices([...services, mapApiServiceToUi(created)]);
                 message.success(t("service.created"));
               }
               closeForm();
+            } catch (err) {
+              message.error(apiErrorMessage(err, t("service.empty")));
             } finally {
               setSaving(false);
             }

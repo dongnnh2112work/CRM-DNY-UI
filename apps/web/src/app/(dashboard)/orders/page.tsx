@@ -16,7 +16,6 @@ import { StatusSelect } from "@/components/shared/status-select";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { MOCK_USERS } from "@/lib/mock-users";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import {
@@ -32,6 +31,8 @@ import {
   type OrderCashflow,
 } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
+import { apiErrorMessage } from "@/lib/http/message";
+import { ordersApi } from "@/modules/orders/api";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useExpenses } from "@/lib/expenses-store";
@@ -57,7 +58,7 @@ export default function OrdersPage() {
   const { services } = useServices();
   const { addNotifications } = useNotifications();
   const { getMeta, stageOptions } = useOrderStatusConfig();
-  const { currentUser, getEffectivePermissions } = useUsers();
+  const { currentUser, getEffectivePermissions, users } = useUsers();
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canViewStages = Boolean(perms?.order_statuses?.view);
   const canEditStages = Boolean(perms?.order_statuses?.edit);
@@ -75,7 +76,7 @@ export default function OrdersPage() {
   const [exporting, setExporting] = useState(false);
   const [stageDrawerOpen, setStageDrawerOpen] = useState(false);
 
-  const staffUsers = MOCK_USERS.filter((u) => u.role === "staff" || u.role === "admin");
+  const staffUsers = users.filter((u) => u.status === "active");
   const cashflowMonth = monthFilter === "all" ? currentYearMonth() : monthFilter;
 
   const cashflowByOrder = useMemo(() => {
@@ -135,16 +136,21 @@ export default function OrdersPage() {
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
 
-  const handleMove = (orderId: string, newStage: OrderStage) => {
+  const handleMove = async (orderId: string, newStage: OrderStage) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return false;
-
-    updateOrder(orderId, {
-      stage: newStage,
-      approvalStatus: "none",
-      pendingTransition: undefined,
-    });
-    return true;
+    try {
+      await ordersApi.changeStage(orderId, newStage);
+      updateOrder(orderId, {
+        stage: newStage,
+        approvalStatus: "none",
+        pendingTransition: undefined,
+      });
+      return true;
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("order.stageUpdated")));
+      return false;
+    }
   };
 
   const requestStageChange = (order: Order, newStage: OrderStage) => {
@@ -155,9 +161,9 @@ export default function OrdersPage() {
       content: `${order.orderNumber} · ${order.customerName}`,
       okText: t("common.confirm"),
       cancelText: t("common.cancel"),
-      onOk: () => {
-        handleMove(order.id, newStage);
-        message.success(t("order.stageUpdated"));
+      onOk: async () => {
+        const ok = await handleMove(order.id, newStage);
+        if (ok) message.success(t("order.stageUpdated"));
       },
     });
   };
@@ -192,35 +198,43 @@ export default function OrdersPage() {
     }
   };
 
-  const bulkAssign = () => {
+  const bulkAssign = async () => {
     const user = staffUsers.find((u) => u.id === assignUserId);
     if (!user) {
       message.warning(t("common.selectStaffOwner"));
       return;
     }
-    selectedRowKeys.forEach((id) => {
-      const order = orders.find((o) => o.id === String(id));
-      updateOrder(String(id), {
-        assignedUserId: user.id,
-        assignedUserName: user.name,
-      });
-      if (order && order.assignedUserId !== user.id) {
-        addNotifications(
-          [user.id],
-          taskAssignedDraft({
-            id: order.id,
-            orderNumber: order.orderNumber,
-            customerName: order.customerName,
-            serviceName: order.serviceName,
-          }),
-          currentUser?.id,
-        );
-      }
-    });
-    message.success(t("order.assigned", { count: selectedCount, name: user.name }));
-    setAssignOpen(false);
-    setAssignUserId(undefined);
-    clearSelection();
+    try {
+      await Promise.all(
+        selectedRowKeys.map(async (id) => {
+          const orderId = String(id);
+          const order = orders.find((o) => o.id === orderId);
+          await ordersApi.assign(orderId, user.id);
+          updateOrder(orderId, {
+            assignedUserId: user.id,
+            assignedUserName: user.name,
+          });
+          if (order && order.assignedUserId !== user.id) {
+            addNotifications(
+              [user.id],
+              taskAssignedDraft({
+                id: order.id,
+                orderNumber: order.orderNumber,
+                customerName: order.customerName,
+                serviceName: order.serviceName,
+              }),
+              currentUser?.id,
+            );
+          }
+        }),
+      );
+      message.success(t("order.assigned", { count: selectedCount, name: user.name }));
+      setAssignOpen(false);
+      setAssignUserId(undefined);
+      clearSelection();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("common.assign")));
+    }
   };
 
   const months = [...new Set(orders.map((o) => o.month))].sort();
@@ -374,7 +388,9 @@ export default function OrdersPage() {
           style={{ width: 180 }}
           options={[
             { value: "all", label: t("common.allStaff") },
-            ...MOCK_USERS.filter((u) => u.role === "staff").map((u) => ({ value: u.id, label: u.name })),
+            ...staffUsers
+              .filter((u) => u.role === "staff" || u.role === "admin")
+              .map((u) => ({ value: u.id, label: u.name })),
           ]}
         />
         <Select

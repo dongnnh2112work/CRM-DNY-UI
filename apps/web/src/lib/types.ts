@@ -257,6 +257,8 @@ export interface OrderApprovalRequest {
 export interface Order {
   id: string;
   orderNumber: string;
+  /** Hợp đồng pháp lý gắn đơn — dùng PATCH số HĐ */
+  contractId?: string;
   customerId: string;
   customerName: string;
   serviceId: string;

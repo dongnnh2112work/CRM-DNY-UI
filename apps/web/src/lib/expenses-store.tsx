@@ -9,11 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { loadJson, saveJson } from "@/lib/demo-storage";
-import { MOCK_ORDER_EXPENSES } from "@/lib/mock-expenses";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
-
-const KEY = "dny-crm-order-expenses";
 
 export type NewExpenseInput = {
   orderId?: string;
@@ -41,6 +37,7 @@ type Ctx = {
     reviewer: { id: string; name: string },
     reviewNote?: string,
   ) => void;
+  replaceExpenses: (items: OrderExpense[]) => void;
 };
 
 function normalizeExpense(e: OrderExpense): OrderExpense {
@@ -62,21 +59,12 @@ export function expenseProjectLabel(
 const ExpensesContext = createContext<Ctx | null>(null);
 
 export function ExpensesProvider({ children }: { children: ReactNode }) {
-  const [expenses, setExpenses] = useState<OrderExpense[]>(() =>
-    MOCK_ORDER_EXPENSES.map(normalizeExpense),
-  );
+  const [expenses, setExpenses] = useState<OrderExpense[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = loadJson<OrderExpense[]>(KEY);
-    if (stored && Array.isArray(stored)) setExpenses(stored.map(normalizeExpense));
     setReady(true);
   }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(KEY, expenses);
-  }, [expenses, ready]);
 
   const getByOrderId = useCallback(
     (orderId: string) => expenses.filter((e) => e.orderId === orderId),
@@ -90,6 +78,10 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
         .reduce((sum, e) => sum + e.amount, 0),
     [expenses],
   );
+
+  const replaceExpenses = useCallback((items: OrderExpense[]) => {
+    setExpenses(items.map(normalizeExpense));
+  }, []);
 
   const addExpense = useCallback((input: NewExpenseInput) => {
     const created: OrderExpense = {
@@ -138,8 +130,8 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense }),
-    [expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense],
+    () => ({ expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense, replaceExpenses }),
+    [expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense, replaceExpenses],
   );
 
   return <ExpensesContext.Provider value={value}>{children}</ExpensesContext.Provider>;

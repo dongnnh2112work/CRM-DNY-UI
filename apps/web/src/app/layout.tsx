@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AntdProvider } from "@/components/providers/antd-provider";
+import { SessionProvider } from "@/lib/session/session-provider";
 import { UsersProvider } from "@/lib/users-store";
 import "./globals.css";
 
@@ -31,7 +32,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-full antialiased" suppressHydrationWarning>
         <AntdProvider>
-          <UsersProvider>{children}</UsersProvider>
+          <SessionProvider>
+            <UsersProvider>{children}</UsersProvider>
+          </SessionProvider>
         </AntdProvider>
       </body>
     </html>

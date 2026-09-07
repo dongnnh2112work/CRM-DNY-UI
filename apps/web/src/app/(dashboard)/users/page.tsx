@@ -32,8 +32,15 @@ import {
 } from "@/lib/types";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
+import { apiErrorMessage } from "@/lib/http/message";
 import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
+import { identityAdminApi } from "@/modules/identity-admin/api";
+import {
+  mapIdentityUserToUi,
+  uiRoleToApiCodes,
+  uiStatusToApi,
+} from "@/modules/identity-admin/map-to-ui";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -260,15 +267,24 @@ export default function UsersPage() {
             setSaving(true);
             try {
               if (editUser) {
-                updateUser(editUser.id, {
-                  name: values.name,
-                  email: values.email,
+                const updated = await identityAdminApi.updateUser(editUser.id, {
+                  displayName: values.name,
                   phone: values.phone,
+                  status: uiStatusToApi(values.status),
+                });
+                if (values.role && values.role !== editUser.role) {
+                  await identityAdminApi.setUserRoles(editUser.id, uiRoleToApiCodes(values.role));
+                }
+                const mapped = mapIdentityUserToUi({
+                  ...updated,
+                  roleCodes: values.role ? uiRoleToApiCodes(values.role) : updated.roleCodes,
+                });
+                updateUser(editUser.id, {
+                  ...mapped,
+                  email: values.email,
                   dateOfBirth: values.dateOfBirth,
                   address: values.address,
                   avatar: values.avatar,
-                  role: values.role,
-                  status: values.status,
                   useCustomPermissions: values.useCustomPermissions,
                   customPermissions: values.useCustomPermissions
                     ? values.customPermissions
@@ -276,20 +292,33 @@ export default function UsersPage() {
                 });
                 message.success(t("user.updated"));
               } else {
-                createUser({
-                  name: values.name,
+                const created = await identityAdminApi.createUser({
                   email: values.email,
+                  displayName: values.name,
+                  phone: values.phone,
+                  status: "ACTIVE",
+                  roleCodes: uiRoleToApiCodes(values.role ?? "staff"),
+                });
+                const mapped = mapIdentityUserToUi({
+                  ...created,
+                  roleCodes: created.roleCodes?.length
+                    ? created.roleCodes
+                    : uiRoleToApiCodes(values.role ?? "staff"),
+                });
+                createUser({
+                  ...mapped,
+                  id: created.id,
                   phone: values.phone,
                   dateOfBirth: values.dateOfBirth,
                   address: values.address,
                   avatar: values.avatar,
-                  role: values.role ?? "staff",
-                  status: "active",
                   authMethod: "email",
                 });
                 message.success(t("user.created"));
               }
               closeProfile();
+            } catch (err) {
+              message.error(apiErrorMessage(err, t("user.empty")));
             } finally {
               setSaving(false);
             }
@@ -361,9 +390,17 @@ export default function UsersPage() {
             placeholder={t("user.newRolePlaceholder")}
             value={newRoleLabel}
             onChange={(e) => setNewRoleLabel(e.target.value)}
-            onPressEnter={() => {
+            onPressEnter={async () => {
               if (!newRoleLabel.trim()) return;
               const created = createRole(newRoleLabel, permRole ?? "staff");
+              try {
+                await identityAdminApi.createRole({
+                  code: created.key.toUpperCase(),
+                  name: created.label,
+                });
+              } catch (err) {
+                message.warning(apiErrorMessage(err, created.label));
+              }
               message.success(t("user.roleCreated", { label: created.label }));
               setNewRoleLabel("");
               openRolePerms(created.key);
@@ -372,12 +409,20 @@ export default function UsersPage() {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => {
+            onClick={async () => {
               if (!newRoleLabel.trim()) {
                 message.warning(t("user.enterRoleName"));
                 return;
               }
               const created = createRole(newRoleLabel, permRole ?? "staff");
+              try {
+                await identityAdminApi.createRole({
+                  code: created.key.toUpperCase(),
+                  name: created.label,
+                });
+              } catch (err) {
+                message.warning(apiErrorMessage(err, created.label));
+              }
               message.success(t("user.roleCreated", { label: created.label }));
               setNewRoleLabel("");
               openRolePerms(created.key);
