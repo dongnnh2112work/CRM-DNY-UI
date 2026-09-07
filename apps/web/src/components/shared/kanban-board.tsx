@@ -87,11 +87,6 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                       <Typography.Text strong style={{ fontSize: ds.fontSize.caption }}>
                                         {order.orderNumber}
                                       </Typography.Text>
-                                      {order.approvalStatus === "pending_review" && (
-                                        <Tag color="processing" style={{ fontSize: ds.fontSize.caption, margin: 0 }}>
-                                          {t("order.kanbanReview")}
-                                        </Tag>
-                                      )}
                                     </div>
                                     <div
                                       style={{
@@ -130,7 +125,7 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                       <span>{formatVndDisplay(order.value)}</span>
                                       <Tag style={{ fontSize: ds.fontSize.caption }}>{order.assignedUserName}</Tag>
                                     </div>
-                                    {(fileCount > 0 || order.reviewerName) && (
+                                    {(fileCount > 0) && (
                                       <div
                                         style={{
                                           marginTop: 6,
@@ -138,11 +133,7 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                           color: token.colorTextTertiary,
                                         }}
                                       >
-                                        {fileCount > 0
-                                          ? t("order.fileCount", { count: fileCount })
-                                          : t("order.noFiles")}
-                                        {" · "}
-                                        {t("order.reviewerShort")}: {order.reviewerName}
+                                        {t("order.fileCount", { count: fileCount })}
                                       </div>
                                     )}
                                   </Card>

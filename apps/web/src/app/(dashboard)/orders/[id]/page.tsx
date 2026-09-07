@@ -105,7 +105,6 @@ export default function OrderDetailPage() {
       ctvPrice: order.ctvPrice,
       assignedUserId: order.assignedUserId,
       submitterId: order.submitterId,
-      reviewerId: order.reviewerId,
       deadline: order.deadline ? dayjs(order.deadline) : null,
       zaloGroupUrl: order.zaloGroupUrl,
       needsVat: order.needsVat,
@@ -190,21 +189,6 @@ export default function OrderDetailPage() {
       <PageHeader breadcrumbs={[{ title: t("common.order"), href: "/orders" }, { title: order.orderNumber }]}>
         <Space wrap>
           <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
-          {order.approvalStatus !== "approved" ? (
-            <Button
-              onClick={async () => {
-                try {
-                  await ordersApi.approve(order.id);
-                  updateOrder(order.id, { approvalStatus: "approved" });
-                  message.success(t("common.approve"));
-                } catch (err) {
-                  message.error(apiErrorMessage(err, t("common.approve")));
-                }
-              }}
-            >
-              {t("common.approve")}
-            </Button>
-          ) : null}
           <Button
             type="primary"
             onClick={() => {
@@ -309,7 +293,6 @@ export default function OrderDetailPage() {
           )}
           <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
           <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
-          <Descriptions.Item label={t("common.reviewer")}>{order.reviewerName ?? "—"}</Descriptions.Item>
           <Descriptions.Item label={t("common.createdAt")}>{order.createdAt}</Descriptions.Item>
           {order.notes && (
             <Descriptions.Item label={t("common.note")} span={2}>
@@ -375,9 +358,6 @@ export default function OrderDetailPage() {
               const service = services.find((s) => s.id === values.serviceId);
               const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
               const submitter = activeUsers.find((u) => u.id === values.submitterId);
-              const reviewer = values.reviewerId
-                ? activeUsers.find((u) => u.id === values.reviewerId)
-                : undefined;
               const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
               if (!customer || !service || !assigned || !submitter) {
                 message.error(t("common.requiredMissing"));
@@ -436,8 +416,6 @@ export default function OrderDetailPage() {
                 assignedUserName: assigned.name,
                 submitterId: submitter.id,
                 submitterName: submitter.name,
-                reviewerId: reviewer?.id,
-                reviewerName: reviewer?.name,
                 notes: values.notes,
                 needsVat: Boolean(values.needsVat),
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
@@ -527,14 +505,6 @@ export default function OrderDetailPage() {
           </Form.Item>
           <Form.Item name="submitterId" label={t("common.submitter")} rules={[{ required: true }]}>
             <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
-          </Form.Item>
-          <Form.Item name="reviewerId" label={t("common.reviewer")}>
-            <Select
-              allowClear
-              options={activeUsers
-                .filter((u) => u.role === "admin" || u.role === "super_admin" || u.role === "accountant")
-                .map((u) => ({ value: u.id, label: u.name }))}
-            />
           </Form.Item>
           <Form.Item name="deadline" label={t("order.deadlineLabel")}>
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />

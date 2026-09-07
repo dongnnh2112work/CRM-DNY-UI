@@ -76,9 +76,6 @@ function NewOrderPageContent() {
             const service = services.find((s) => s.id === values.serviceId);
             const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
             const submitter = activeUsers.find((u) => u.id === values.submitterId);
-            const reviewer = values.reviewerId
-              ? activeUsers.find((u) => u.id === values.reviewerId)
-              : undefined;
             const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
             if (!customer || !service || !assigned || !submitter) {
               message.error(t("common.requiredMissing"));
@@ -128,7 +125,6 @@ function NewOrderPageContent() {
                 serviceName: service.name,
                 assignedUserName: assigned.name,
                 submitterName: submitter.name,
-                reviewerName: reviewer?.name,
                 ctvName: ctv?.name,
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
               }),
@@ -253,18 +249,6 @@ function NewOrderPageContent() {
           rules={[{ required: true, message: t("order.selectSubmitter") }]}
         >
           <Select options={activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))} />
-        </Form.Item>
-        <Form.Item
-          name="reviewerId"
-          label={t("order.reviewerOptional")}
-          extra={t("order.reviewerExtra")}
-        >
-          <Select
-            allowClear
-            options={activeUsers
-              .filter((u) => u.role === "admin" || u.role === "super_admin" || u.role === "accountant")
-              .map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
-          />
         </Form.Item>
         <Form.Item name="deadline" label={t("order.deadlineLabel")}>
           <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
