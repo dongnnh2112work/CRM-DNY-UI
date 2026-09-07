@@ -2,25 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { PageLoading } from "@/components/shared/page-loading";
 import { Alert, Button, Typography } from "antd";
-import { useSession } from "@/lib/session/session-provider";
+import { saveSession } from "@/lib/http/tokens";
 import { useT } from "@/lib/use-t";
-
-function parseOAuthHash(hash: string) {
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
-  return {
-    error: params.get("error"),
-    errorDescription: params.get("error_description"),
-    accessToken: params.get("access_token"),
-    refreshToken: params.get("refresh_token"),
-  };
-}
 
 export default function AuthCallbackPage() {
   const t = useT();
   const router = useRouter();
-  const { applyTokens, status } = useSession();
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
 
@@ -28,24 +16,23 @@ export default function AuthCallbackPage() {
     if (started.current) return;
     started.current = true;
 
-    const parsed = parseOAuthHash(window.location.hash);
+    const p = new URLSearchParams(window.location.hash.slice(1));
+    if (p.get("error")) {
+      setError(p.get("error_description") || p.get("error") || t("auth.callbackError"));
+      return;
+    }
+    const accessToken = p.get("access_token");
+    const refreshToken = p.get("refresh_token");
+    if (!accessToken || !refreshToken) return;
+
+    saveSession({
+      accessToken,
+      refreshToken,
+      expiresIn: Number(p.get("expires_in") ?? 0),
+    });
     window.history.replaceState(null, "", window.location.pathname);
-
-    if (parsed.error) {
-      setError(parsed.errorDescription || parsed.error);
-      return;
-    }
-    if (!parsed.accessToken || !parsed.refreshToken) {
-      setError(t("auth.callbackInvalid"));
-      return;
-    }
-
-    void applyTokens(parsed.accessToken, parsed.refreshToken)
-      .then(() => router.replace("/dashboard"))
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : t("auth.callbackError"));
-      });
-  }, [applyTokens, router, t]);
+    router.replace("/dashboard");
+  }, [router, t]);
 
   if (error) {
     return (
@@ -58,10 +45,6 @@ export default function AuthCallbackPage() {
         </div>
       </div>
     );
-  }
-
-  if (status === "authenticated") {
-    return <PageLoading />;
   }
 
   return (

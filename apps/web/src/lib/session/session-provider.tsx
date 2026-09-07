@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { clearStoredSession, readStoredSession, writeStoredSession } from "@/lib/http/tokens";
+import { clearStoredSession, readStoredSession, SESSION_SAVED_EVENT, writeStoredSession } from "@/lib/http/tokens";
 import { authApi, type AuthUser, type SessionResponse } from "@/modules/auth/api";
 
 type SessionStatus = "loading" | "authenticated" | "anonymous";
@@ -19,7 +19,6 @@ type SessionContextValue = {
   user: AuthUser | null;
   can: (permission: string) => boolean;
   applySession: (session: SessionResponse) => void;
-  applyTokens: (accessToken: string, refreshToken: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -33,17 +32,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     writeStoredSession({
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
+      expiresIn: session.expiresIn,
     });
     setUser(session.user);
     setStatus("authenticated");
   }, []);
 
-  const applyTokens = useCallback(async (accessToken: string, refreshToken: string) => {
-    writeStoredSession({ accessToken, refreshToken });
-    const me = await authApi.me();
-    setUser(me);
-    setStatus("authenticated");
-    return me;
+  const restoreFromStorage = useCallback(async () => {
+    const stored = readStoredSession();
+    if (!stored) {
+      setUser(null);
+      setStatus("anonymous");
+      return;
+    }
+    setStatus("loading");
+    try {
+      const me = await authApi.me();
+      setUser(me);
+      setStatus("authenticated");
+    } catch {
+      clearStoredSession();
+      setUser(null);
+      setStatus("anonymous");
+    }
   }, []);
 
   const logout = useCallback(async () => {
@@ -58,30 +69,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const boot = async () => {
-      const stored = readStoredSession();
-      if (!stored) {
-        if (!cancelled) setStatus("anonymous");
-        return;
-      }
-      try {
-        const me = await authApi.me();
-        if (cancelled) return;
-        setUser(me);
-        setStatus("authenticated");
-      } catch {
-        if (cancelled) return;
-        clearStoredSession();
-        setUser(null);
-        setStatus("anonymous");
-      }
+    void restoreFromStorage();
+  }, [restoreFromStorage]);
+
+  useEffect(() => {
+    const onSaved = () => {
+      void restoreFromStorage();
     };
-    void boot();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    window.addEventListener(SESSION_SAVED_EVENT, onSaved);
+    return () => window.removeEventListener(SESSION_SAVED_EVENT, onSaved);
+  }, [restoreFromStorage]);
 
   useEffect(() => {
     const onLogout = () => {
@@ -98,8 +95,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ status, user, can, applySession, applyTokens, logout }),
-    [status, user, can, applySession, applyTokens, logout],
+    () => ({ status, user, can, applySession, logout }),
+    [status, user, can, applySession, logout],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
