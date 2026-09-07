@@ -47,6 +47,7 @@ import {
 import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ordersApi } from "@/modules/orders/api";
+import { mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { contractsApi } from "@/modules/contracts/api";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
@@ -370,21 +371,16 @@ export default function OrderDetailPage() {
 
               const value = Number(values.value);
               const vatRate = values.needsVat ? 10 : 0;
-              await ordersApi.update(order.id, {
-                customerId: customer.id,
-                serviceId: service.id,
-                value,
-                totalNet: value,
-                totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
-                vatRate,
-                assignedUserId: assigned.id,
-                submitterUserId: submitter.id,
-                collaboratorId: values.channel === "ctv" ? ctv?.id : undefined,
-                collaboratorPrice: values.channel === "ctv" ? Number(values.ctvPrice) : null,
-                channel: values.channel,
-                reviewerUserId: reviewer?.id ?? null,
-                notes: values.notes,
-              });
+              await ordersApi.update(
+                order.id,
+                mapUiOrderToUpdateApi({
+                  value,
+                  vatRate,
+                  channel: values.channel,
+                  collaboratorId: values.channel === "ctv" ? (ctv?.id ?? null) : null,
+                  notes: values.notes,
+                }),
+              );
               if (assigned.id !== order.assignedUserId) {
                 await ordersApi.assign(order.id, assigned.id);
               }

@@ -49,6 +49,18 @@ export type CreateOrderBody = {
   notes?: string;
 };
 
+/** Khớp UpdateOrderDto trên Swagger — không gửi field ngoài whitelist. */
+export type UpdateOrderBody = {
+  collaboratorId?: string | null;
+  value?: number;
+  totalNet?: number;
+  totalGross?: number;
+  vatRate?: number;
+  currency?: string;
+  notes?: string | null;
+  channel?: string;
+};
+
 export const ordersApi = {
   list(query: { page?: number; pageSize?: number } = {}) {
     const params = new URLSearchParams();
@@ -65,15 +77,7 @@ export const ordersApi = {
     return apiRequest<ApiOrder>("/orders", { method: "POST", body: JSON.stringify(body) });
   },
 
-  update(
-    id: string,
-    body: Partial<CreateOrderBody> & {
-      notes?: string;
-      collaboratorPrice?: number | null;
-      channel?: string;
-      reviewerUserId?: string | null;
-    },
-  ) {
+  update(id: string, body: UpdateOrderBody) {
     return apiRequest<ApiOrder>(`/orders/${id}`, { method: "PATCH", body: JSON.stringify(body) });
   },
 

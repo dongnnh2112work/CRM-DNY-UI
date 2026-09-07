@@ -20,7 +20,7 @@ import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 import { contractsApi } from "@/modules/contracts/api";
 import { ordersApi } from "@/modules/orders/api";
-import { mapApiOrderToUi } from "@/modules/orders/map-to-ui";
+import { mapApiOrderToUi, mapUiOrderToCreateApi } from "@/modules/orders/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 export default function NewOrderPage() {
@@ -104,21 +104,24 @@ function NewOrderPageContent() {
               customerId: customer.id,
               title: `${customer.name} · ${service.name}`,
             });
-            const apiOrder = await ordersApi.create({
-              orderNumber: nextDossierNumber(orders, new Date()),
-              contractId: contract.id,
-              customerId: customer.id,
-              serviceId: service.id,
-              value,
-              totalNet: value,
-              totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
-              assignedUserId: assigned.id,
-              submitterUserId: submitter.id,
-              collaboratorId: ctv?.id,
-              vatRate,
-              stage: "new",
-              notes: values.notes,
-            });
+            let apiOrder = await ordersApi.create(
+              mapUiOrderToCreateApi({
+                orderNumber: nextDossierNumber(orders, new Date()),
+                contractId: contract.id,
+                customerId: customer.id,
+                serviceId: service.id,
+                value,
+                assignedUserId: assigned.id,
+                submitterUserId: submitter.id,
+                collaboratorId: ctv?.id,
+                vatRate,
+                stage: "new",
+                notes: values.notes,
+              }),
+            );
+            if (values.channel) {
+              apiOrder = await ordersApi.update(apiOrder.id, { channel: values.channel });
+            }
             const created = {
               ...mapApiOrderToUi(apiOrder, {
                 customerName: customer.name,

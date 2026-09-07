@@ -1,6 +1,6 @@
 import { num } from "@/lib/http/message";
 import type { ApprovalStatus, Order, OrderChannel } from "@/lib/types";
-import type { ApiOrder } from "@/modules/orders/api";
+import type { ApiOrder, CreateOrderBody, UpdateOrderBody } from "@/modules/orders/api";
 
 const CHANNELS = new Set(["direct", "website", "referral", "ctv"]);
 
@@ -60,5 +60,57 @@ export function mapApiOrderToUi(
     month: created.slice(0, 7),
     needsVat: vatRate > 0 && num(o.totalGross) > num(o.totalNet),
     contractNumber: names.contractNumber,
+  };
+}
+
+export function mapUiOrderToCreateApi(input: {
+  orderNumber: string;
+  contractId: string;
+  customerId: string;
+  serviceId: string;
+  value: number;
+  assignedUserId: string;
+  submitterUserId?: string;
+  collaboratorId?: string;
+  vatRate?: number;
+  stage?: string;
+  notes?: string;
+}): CreateOrderBody {
+  const vatRate = input.vatRate ?? 0;
+  const value = input.value;
+  return {
+    orderNumber: input.orderNumber,
+    contractId: input.contractId,
+    customerId: input.customerId,
+    serviceId: input.serviceId,
+    value,
+    totalNet: value,
+    totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
+    assignedUserId: input.assignedUserId,
+    submitterUserId: input.submitterUserId,
+    collaboratorId: input.collaboratorId,
+    vatRate,
+    stage: input.stage ?? "new",
+    notes: input.notes,
+  };
+}
+
+export function mapUiOrderToUpdateApi(input: {
+  value: number;
+  vatRate?: number;
+  channel?: string;
+  collaboratorId?: string | null;
+  notes?: string | null;
+}): UpdateOrderBody {
+  const vatRate = input.vatRate ?? 0;
+  const value = input.value;
+  return {
+    value,
+    totalNet: value,
+    totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
+    vatRate,
+    channel: input.channel,
+    collaboratorId: input.collaboratorId,
+    notes: input.notes,
   };
 }

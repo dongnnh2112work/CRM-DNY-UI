@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { PageLoading } from "@/components/shared/page-loading";
-import { fetchAllPages } from "@/lib/http/paging";
+import { fetchAllPages, unwrapList } from "@/lib/http/paging";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
@@ -31,7 +31,7 @@ import { mapApiNotificationToUi } from "@/modules/notifications/map-to-ui";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi } from "@/modules/orders/map-to-ui";
 import { paymentsApi } from "@/modules/payments/api";
-import { mapPaymentsToRecords } from "@/modules/payments/map-to-ui";
+import { mapPaymentsToRecords, unwrapSchedule } from "@/modules/payments/map-to-ui";
 import { servicesApi } from "@/modules/services/api";
 import { mapApiServiceToUi } from "@/modules/services/map-to-ui";
 import { vatApi } from "@/modules/vat/api";
@@ -91,7 +91,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         settled(fetchAllPages((page, pageSize) => notificationsApi.list({ page, pageSize })), []),
         settled(fetchAllPages((page, pageSize) => documentsApi.list({ page, pageSize })), []),
         settled(configApi.list(REMINDER_CONFIG_KEY), { items: [] }),
-        settled(fetchAllPages(() => identityAdminApi.listRoles()), []),
+        settled(identityAdminApi.listRoles().then(unwrapList), []),
       ]);
 
       if (cancelled) return;
@@ -148,9 +148,25 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       });
       replaceOrders(orders);
 
+      const scheduleEntries = await Promise.all(
+        apiOrders.map(async (o) => {
+          const rows = await settled(ordersApi.listSchedule(o.id).then(unwrapSchedule), []);
+          return [o.id, rows] as const;
+        }),
+      );
+      if (cancelled) return;
+      const schedules = new Map(scheduleEntries);
+
       const orderNumber = new Map(orders.map((o) => [o.id, o.orderNumber]));
-      replacePayments(mapPaymentsToRecords(orders, apiPayments));
-      replaceExpenses(apiExpenses.map((e) => mapApiExpenseToUi(e, orderNumber.get(e.orderId))));
+      replacePayments(mapPaymentsToRecords(orders, apiPayments, schedules));
+      replaceExpenses(
+        apiExpenses.map((e) =>
+          mapApiExpenseToUi(e, orderNumber.get(e.orderId), {
+            requestedByName: userName.get(e.requestedByUserId),
+            reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
+          }),
+        ),
+      );
       replaceInvoices(
         apiVat.map((v) => {
           const order = orders.find((o) => o.id === v.orderId);
