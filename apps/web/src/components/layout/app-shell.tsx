@@ -20,7 +20,9 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Typography, theme } from "antd";
+import { useApiHydrate } from "@/components/api-hydrator";
+import { PageLoading } from "@/components/shared/page-loading";
+import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Spin, Typography, theme } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -47,6 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useT();
   const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
   const { user: apiUser, can, logout: logoutApi } = useSession();
+  const { ready: hydrateReady, refreshing } = useApiHydrate();
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
@@ -238,6 +241,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             onSearch={onSearch}
           />
           <Space style={{ marginLeft: "auto" }} size={8}>
+            {refreshing ? <Spin size="small" /> : null}
             <Button
               type="text"
               icon={isDark ? <SunOutlined /> : <MoonOutlined />}
@@ -368,7 +372,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Space>
         </Header>
         <Content style={{ margin: 16 }}>
-          <div className="nt-page-shell">{children}</div>
+          <div className="nt-page-shell">{hydrateReady ? children : <PageLoading />}</div>
         </Content>
       </Layout>
     </Layout>

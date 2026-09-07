@@ -1,3 +1,5 @@
+import { clearClientCaches } from "@/lib/hydrate-cache";
+
 const ACCESS_KEY = "dyn-crm-access-token";
 const REFRESH_KEY = "dyn-crm-refresh-token";
 const EXPIRES_KEY = "dyn-crm-expires-in";
@@ -47,4 +49,5 @@ export function clearStoredSession() {
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(EXPIRES_KEY);
+  clearClientCaches();
 }

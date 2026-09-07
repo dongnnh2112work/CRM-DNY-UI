@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { readCachedAuthUser, writeCachedAuthUser } from "@/lib/hydrate-cache";
 import { clearStoredSession, readStoredSession, SESSION_SAVED_EVENT, writeStoredSession } from "@/lib/http/tokens";
 import { authApi, type AuthUser, type SessionResponse } from "@/modules/auth/api";
 
@@ -34,6 +35,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       refreshToken: session.refreshToken,
       expiresIn: session.expiresIn,
     });
+    writeCachedAuthUser(session.user);
     setUser(session.user);
     setStatus("authenticated");
   }, []);
@@ -45,9 +47,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setStatus("anonymous");
       return;
     }
-    setStatus("loading");
+
+    const cached = readCachedAuthUser();
+    setUser(cached);
+    setStatus("authenticated");
+
     try {
       const me = await authApi.me();
+      writeCachedAuthUser(me);
       setUser(me);
       setStatus("authenticated");
     } catch {

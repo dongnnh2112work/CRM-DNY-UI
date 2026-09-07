@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { PageLoading } from "@/components/shared/page-loading";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
@@ -18,21 +17,29 @@ import { useVat } from "@/lib/vat-store";
 type ApiRefreshContextValue = {
   refresh: (scope?: RefreshScope | RefreshScope[]) => Promise<void>;
   reloadOrderFinance: (orderId: string) => Promise<void>;
+  ready: boolean;
   refreshing: boolean;
 };
 
 const ApiRefreshContext = createContext<ApiRefreshContextValue | null>(null);
 
-export function useApiRefresh() {
+function useApiRefreshContext() {
   const ctx = useContext(ApiRefreshContext);
   if (!ctx) throw new Error("useApiRefresh must be used within ApiHydrator");
-  return ctx.refresh;
+  return ctx;
+}
+
+export function useApiRefresh() {
+  return useApiRefreshContext().refresh;
 }
 
 export function useReloadOrderFinance() {
-  const ctx = useContext(ApiRefreshContext);
-  if (!ctx) throw new Error("useReloadOrderFinance must be used within ApiHydrator");
-  return ctx.reloadOrderFinance;
+  return useApiRefreshContext().reloadOrderFinance;
+}
+
+export function useApiHydrate() {
+  const ctx = useApiRefreshContext();
+  return { ready: ctx.ready, refreshing: ctx.refreshing };
 }
 
 export function ApiHydrator({ children }: { children: ReactNode }) {
@@ -82,7 +89,6 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     ],
   );
 
-  const userId = user?.id;
   const refresh = useCallback(
     async (scope: RefreshScope | RefreshScope[] = "core") => {
       if (status !== "authenticated") return;
@@ -117,24 +123,26 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     }
     let cancelled = false;
     setReady(false);
+    setRefreshing(true);
     const run = async () => {
       await applyRemoteData(applier, user, "core", () => snapshotRef.current);
       if (cancelled) return;
       setReady(true);
       void applyRemoteData(applier, user, "deferred", () => snapshotRef.current);
     };
-    void run();
+    void run().finally(() => {
+      if (!cancelled) setRefreshing(false);
+    });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, userId]);
+  }, [status]);
 
   const ctx = useMemo(
-    () => ({ refresh, reloadOrderFinance: reloadFinance, refreshing }),
-    [refresh, reloadFinance, refreshing],
+    () => ({ refresh, reloadOrderFinance: reloadFinance, ready, refreshing }),
+    [refresh, reloadFinance, ready, refreshing],
   );
 
-  if (status === "authenticated" && !ready) return <PageLoading />;
   return <ApiRefreshContext.Provider value={ctx}>{children}</ApiRefreshContext.Provider>;
 }
