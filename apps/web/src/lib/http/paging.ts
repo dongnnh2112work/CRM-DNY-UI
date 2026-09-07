@@ -20,9 +20,10 @@ export async function fetchAllPages<T>(
   const items = [...(first.items ?? [])];
   const size = first.pageSize || pageSize;
   const totalPages = Math.max(1, Math.ceil((first.total || items.length) / size));
-  for (let page = 2; page <= totalPages; page++) {
-    const next = await load(page, pageSize);
-    items.push(...unwrapList(next));
-  }
+  if (totalPages <= 1) return items;
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => load(i + 2, pageSize)),
+  );
+  for (const next of rest) items.push(...unwrapList(next));
   return items;
 }

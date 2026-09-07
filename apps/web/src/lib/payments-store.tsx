@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -79,6 +78,7 @@ type PaymentsContextValue = {
   ) => void;
   markInstallmentPaid: (paymentId: string, installmentId: string, method?: string) => void;
   replacePayments: (items: PaymentRecord[]) => void;
+  upsertPayment: (record: PaymentRecord) => void;
 };
 
 const PaymentsContext = createContext<PaymentsContextValue | null>(null);
@@ -87,14 +87,13 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   const { orders, ready: ordersReady } = useOrders();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
-  const liveRef = useRef(false);
 
   useEffect(() => {
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!hydrated || !ordersReady || liveRef.current) return;
+    if (!hydrated || !ordersReady) return;
     setPayments((prev) => {
       const byOrder = new Map(prev.map((p) => [p.orderId, p]));
       return orders.map((order) => paymentFromOrder(order, byOrder.get(order.id)));
@@ -102,8 +101,14 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   }, [orders, ordersReady, hydrated]);
 
   const replacePayments = useCallback((items: PaymentRecord[]) => {
-    liveRef.current = true;
     setPayments(items);
+  }, []);
+
+  const upsertPayment = useCallback((record: PaymentRecord) => {
+    setPayments((prev) => {
+      const next = prev.filter((p) => p.orderId !== record.orderId && p.id !== record.id);
+      return [...next, record];
+    });
   }, []);
 
   const getById = useCallback((id: string) => payments.find((p) => p.id === id), [payments]);
@@ -161,8 +166,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       addInstallment,
       markInstallmentPaid,
       replacePayments,
+      upsertPayment,
     }),
-    [payments, hydrated, ordersReady, getById, getByOrderId, addInstallment, markInstallmentPaid, replacePayments],
+    [payments, hydrated, ordersReady, getById, getByOrderId, addInstallment, markInstallmentPaid, replacePayments, upsertPayment],
   );
 
   return <PaymentsContext.Provider value={value}>{children}</PaymentsContext.Provider>;

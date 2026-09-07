@@ -20,7 +20,8 @@ import {
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useReloadOrderFinance } from "@/components/api-hydrator";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
@@ -43,6 +44,7 @@ export default function PaymentDetailPage() {
   const { message, modal } = App.useApp();
   const { getById, getByOrderId, ready, addInstallment, markInstallmentPaid } = usePayments();
   const { getById: getOrder } = useOrders();
+  const reloadFinance = useReloadOrderFinance();
   const [addOpen, setAddOpen] = useState(false);
   const [form] = Form.useForm();
   const closeAdd = () => {
@@ -52,6 +54,12 @@ export default function PaymentDetailPage() {
 
   const payment = getById(id) ?? getByOrderId(id);
   const order = payment ? getOrder(payment.orderId) : undefined;
+
+  useEffect(() => {
+    const orderId = payment?.orderId;
+    if (!orderId) return;
+    void reloadFinance(orderId);
+  }, [payment?.orderId, reloadFinance]);
 
   const installmentColumns = useMemo(
     () => [
@@ -87,6 +95,7 @@ export default function PaymentDetailPage() {
                 try {
                   await paymentsApi.verify(row.id);
                   markInstallmentPaid(payment!.id, row.id);
+                  await reloadFinance(payment!.orderId);
                   message.success(t("payment.markedPaid"));
                 } catch (err) {
                   message.error(apiErrorMessage(err, t("payment.markedPaid")));
@@ -100,7 +109,7 @@ export default function PaymentDetailPage() {
           ),
       },
     ],
-    [t, markInstallmentPaid, message, payment],
+    [t, markInstallmentPaid, message, payment, reloadFinance],
   );
 
   if (!ready) return <PageLoading />;
@@ -207,6 +216,7 @@ export default function PaymentDetailPage() {
                 status: values.markPaid ? "paid" : "pending",
               });
               if (values.markPaid) await paymentsApi.verify(created.id);
+              await reloadFinance(payment.orderId);
               message.success(t("payment.addedInstallment"));
               closeAdd();
             } catch (err) {

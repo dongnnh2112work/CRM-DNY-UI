@@ -46,9 +46,12 @@ import {
 } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
+import { unwrapList } from "@/lib/http/paging";
 import { ordersApi } from "@/modules/orders/api";
 import { mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { contractsApi } from "@/modules/contracts/api";
+import { documentsApi } from "@/modules/documents/api";
+import { isLicenseDocument, mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useServices } from "@/lib/services-store";
@@ -110,6 +113,30 @@ export default function OrderDetailPage() {
       notes: order.notes,
     });
   }, [order, editOpen, form]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    const userName = new Map(users.map((u) => [u.id, u.name]));
+    documentsApi
+      .list({ orderId: id, pageSize: 100 })
+      .then((data) => {
+        const docs = unwrapList(data);
+        if (cancelled) return;
+        updateOrder(id, {
+          attachments: docs
+            .filter((d) => !isLicenseDocument(d))
+            .map((d) => mapApiDocumentToAttachment(d, userName.get(d.uploadedByUserId))),
+          licenseAttachments: docs
+            .filter((d) => isLicenseDocument(d))
+            .map((d) => mapApiDocumentToAttachment(d, userName.get(d.uploadedByUserId))),
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, updateOrder, users]);
 
   if (!ready) return <PageLoading />;
   if (!order) {

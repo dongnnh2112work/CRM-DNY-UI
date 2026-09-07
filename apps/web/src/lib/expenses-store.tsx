@@ -38,6 +38,7 @@ type Ctx = {
     reviewNote?: string,
   ) => void;
   replaceExpenses: (items: OrderExpense[]) => void;
+  mergeExpensesForOrder: (orderId: string, items: OrderExpense[]) => void;
 };
 
 function normalizeExpense(e: OrderExpense): OrderExpense {
@@ -81,6 +82,13 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
 
   const replaceExpenses = useCallback((items: OrderExpense[]) => {
     setExpenses(items.map(normalizeExpense));
+  }, []);
+
+  const mergeExpensesForOrder = useCallback((orderId: string, items: OrderExpense[]) => {
+    setExpenses((prev) => [
+      ...prev.filter((e) => e.orderId !== orderId),
+      ...items.map(normalizeExpense),
+    ]);
   }, []);
 
   const addExpense = useCallback((input: NewExpenseInput) => {
@@ -130,8 +138,17 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense, replaceExpenses }),
-    [expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense, replaceExpenses],
+    () => ({
+      expenses,
+      ready,
+      getByOrderId,
+      totalApprovedChi,
+      addExpense,
+      reviewExpense,
+      replaceExpenses,
+      mergeExpensesForOrder,
+    }),
+    [expenses, ready, getByOrderId, totalApprovedChi, addExpense, reviewExpense, replaceExpenses, mergeExpensesForOrder],
   );
 
   return <ExpensesContext.Provider value={value}>{children}</ExpensesContext.Provider>;
