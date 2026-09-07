@@ -70,8 +70,10 @@ export const authApi = {
     });
   },
 
-  googleOAuthUrl(redirectTo: string) {
-    const q = new URLSearchParams({ redirectTo });
-    return `${getApiBaseUrl()}/auth/oauth/google?${q.toString()}`;
+  /** Redirect browser to Nest Google OAuth — do not fetch this URL. */
+  loginWithGoogle() {
+    const API = getApiBaseUrl();
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    window.location.href = `${API}/auth/oauth/google?redirectTo=${encodeURIComponent(redirectTo)}`;
   },
 };

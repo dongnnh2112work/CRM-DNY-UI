@@ -26,8 +26,7 @@ export default function LoginPage() {
 
   const onGoogle = () => {
     setGooglePending(true);
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    window.location.assign(authApi.googleOAuthUrl(redirectTo));
+    authApi.loginWithGoogle();
   };
 
   const onFinish = async (values: { email: string; password: string }) => {
