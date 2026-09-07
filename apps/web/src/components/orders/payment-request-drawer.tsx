@@ -76,7 +76,7 @@ export function PaymentRequestDrawer({
       title={t("expense.create")}
       open={open}
       onClose={() => confirmDiscardIfDirty(modal, form, close)}
-      width={480}
+      size={480}
       destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

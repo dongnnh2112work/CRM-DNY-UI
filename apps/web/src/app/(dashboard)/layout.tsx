@@ -10,34 +10,37 @@ import { OrdersProvider } from "@/lib/orders-store";
 import { PaymentsProvider } from "@/lib/payments-store";
 import { ServicesProvider } from "@/lib/services-store";
 import { VatProvider } from "@/lib/vat-store";
+import { ClientOnly } from "@/components/client-only";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AppConfigProvider>
-      <OrderStatusProvider>
-        <CustomerStatusProvider>
-        <ServicesProvider>
-          <CustomersProvider>
-            <CtvsProvider>
-              <OrdersProvider>
-                <VatProvider>
-                  <PaymentsProvider>
-                    <ExpensesProvider>
-                      <EmailsProvider>
-                        <NotificationsProvider>
-                          <AppShell>{children}</AppShell>
-                        </NotificationsProvider>
-                      </EmailsProvider>
-                    </ExpensesProvider>
-                  </PaymentsProvider>
-                </VatProvider>
-              </OrdersProvider>
-            </CtvsProvider>
-          </CustomersProvider>
-        </ServicesProvider>
-        </CustomerStatusProvider>
-      </OrderStatusProvider>
-    </AppConfigProvider>
+    <ClientOnly>
+      <AppConfigProvider>
+        <OrderStatusProvider>
+          <CustomerStatusProvider>
+          <ServicesProvider>
+            <CustomersProvider>
+              <CtvsProvider>
+                <OrdersProvider>
+                  <VatProvider>
+                    <PaymentsProvider>
+                      <ExpensesProvider>
+                        <EmailsProvider>
+                          <NotificationsProvider>
+                            <AppShell>{children}</AppShell>
+                          </NotificationsProvider>
+                        </EmailsProvider>
+                      </ExpensesProvider>
+                    </PaymentsProvider>
+                  </VatProvider>
+                </OrdersProvider>
+              </CtvsProvider>
+            </CustomersProvider>
+          </ServicesProvider>
+          </CustomerStatusProvider>
+        </OrderStatusProvider>
+      </AppConfigProvider>
+    </ClientOnly>
   );
 }

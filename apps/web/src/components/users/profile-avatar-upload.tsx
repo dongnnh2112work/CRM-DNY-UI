@@ -27,7 +27,7 @@ export function ProfileAvatarUpload({
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
       <Avatar size={size} src={avatar} icon={<UserOutlined />} />
-      <Space direction="vertical" size={4}>
+      <Space orientation="vertical" size={4}>
         <Upload
           accept="image/*"
           showUploadList={false}

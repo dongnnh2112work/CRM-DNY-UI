@@ -142,7 +142,7 @@ export function UserProfileForm({
       {showAvatar ? (
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
           <Avatar size={64} src={avatar} icon={<UserOutlined />} />
-          <Space direction="vertical" size={4}>
+          <Space orientation="vertical" size={4}>
             <Upload
               accept="image/*"
               showUploadList={false}

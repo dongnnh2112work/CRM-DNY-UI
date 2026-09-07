@@ -37,9 +37,8 @@ type Ctx = {
     opts: {
       services: Array<Pick<Service, "id" | "licenseExpiryWarnMonths">>;
       vatWarnDays: number;
-      mirrorEmail?: (n: AppNotification) => void;
     },
-  ) => void;
+  ) => AppNotification[];
 };
 
 const NotificationsContext = createContext<Ctx | null>(null);
@@ -126,9 +125,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       opts: {
         services: Array<Pick<Service, "id" | "licenseExpiryWarnMonths">>;
         vatWarnDays: number;
-        mirrorEmail?: (n: AppNotification) => void;
       },
-    ) => {
+    ): AppNotification[] => {
       const day = todayKey();
       const toCreate: AppNotification[] = [];
 
@@ -201,14 +199,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (toCreate.length === 0) return;
+      if (toCreate.length === 0) return [];
 
+      let fresh: AppNotification[] = [];
       setNotifications((prev) => {
         const existing = new Set(prev.map((n) => n.dedupeKey).filter(Boolean));
-        const fresh = toCreate.filter((n) => !n.dedupeKey || !existing.has(n.dedupeKey));
-        for (const n of fresh) opts.mirrorEmail?.(n);
+        fresh = toCreate.filter((n) => !n.dedupeKey || !existing.has(n.dedupeKey));
         return fresh.length ? [...fresh, ...prev] : prev;
       });
+      return fresh;
     },
     [],
   );

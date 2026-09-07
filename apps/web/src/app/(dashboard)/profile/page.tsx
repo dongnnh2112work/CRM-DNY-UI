@@ -164,7 +164,7 @@ export default function ProfilePage() {
 
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={8}>
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Space orientation="vertical" size={16} style={{ width: "100%" }}>
               <Surface>
                 <SectionTitle>{t("profile.contact")}</SectionTitle>
                 <Descriptions column={1} size="small">

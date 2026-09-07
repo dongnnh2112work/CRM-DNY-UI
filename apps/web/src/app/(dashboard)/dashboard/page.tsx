@@ -240,7 +240,7 @@ export default function DashboardPage() {
               size="small"
               extra={<Link href="/orders">{t("common.viewAll")}</Link>}
             >
-              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+              <Space orientation="vertical" style={{ width: "100%" }} size={8}>
                 {recentOrders.map((o) => (
                   <div
                     key={o.id}
@@ -269,7 +269,7 @@ export default function DashboardPage() {
               size="small"
               extra={<Link href="/payments">{t("common.viewAll")}</Link>}
             >
-              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+              <Space orientation="vertical" style={{ width: "100%" }} size={8}>
                 {upcomingPayments.map((p) => (
                   <div
                     key={p.id}

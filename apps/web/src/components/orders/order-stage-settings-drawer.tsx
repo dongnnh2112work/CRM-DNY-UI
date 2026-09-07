@@ -135,7 +135,7 @@ export function OrderStageSettingsDrawer({
       title={t("nav.orderStatuses")}
       open={open}
       onClose={tryClose}
-      width={420}
+      size={420}
       destroyOnClose
       footer={
         canEdit ? (
@@ -169,7 +169,7 @@ export function OrderStageSettingsDrawer({
       <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm, marginTop: 0 }}>
         {t("stage.drawerHint")}
       </Typography.Paragraph>
-      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Space orientation="vertical" style={{ width: "100%" }} size="middle">
         {draft.map((stage) => {
           const inUse = countInStage(stage.key);
           const takenColors = draft.filter((s) => s.key !== stage.key).map((s) => s.color);

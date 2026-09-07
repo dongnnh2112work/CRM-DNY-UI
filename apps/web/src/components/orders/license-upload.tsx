@@ -148,7 +148,7 @@ export function LicenseUpload({
                   <Typography.Text style={{ fontSize: ds.fontSize.caption }}>{item.name}</Typography.Text>
                 }
                 description={
-                  <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                  <Space orientation="vertical" size={4} style={{ width: "100%" }}>
                     <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
                       {item.uploadedBy} · {item.uploadedAt}
                     </Typography.Text>

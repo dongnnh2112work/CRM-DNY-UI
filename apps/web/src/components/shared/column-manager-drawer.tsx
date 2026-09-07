@@ -110,7 +110,7 @@ export function ColumnManagerDrawer({
       title={t("common.manageColumns")}
       open={open}
       onClose={requestClose}
-      width={400}
+      size={400}
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button onClick={requestClose}>{t("common.close")}</Button>
@@ -120,7 +120,7 @@ export function ColumnManagerDrawer({
         </div>
       }
     >
-      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Space orientation="vertical" style={{ width: "100%" }} size="middle">
         <span style={{ color: token.colorTextSecondary, fontSize: ds.fontSize.bodySm }}>
           {t("col.saveHint")}
         </span>

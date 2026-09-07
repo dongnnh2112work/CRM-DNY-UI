@@ -167,7 +167,7 @@ export default function PaymentDetailPage() {
         title={t("payment.addInstallment")}
         open={addOpen}
         onClose={() => confirmDiscardIfDirty(modal, form, closeAdd)}
-        width={400}
+        size={400}
         destroyOnClose
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

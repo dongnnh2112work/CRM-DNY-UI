@@ -34,7 +34,6 @@ import { useOrders } from "@/lib/orders-store";
 import { getPayrollScope } from "@/lib/payroll";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
-import type { AppNotification } from "@/lib/types";
 
 const { Header, Sider, Content } = Layout;
 
@@ -51,7 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { config } = useAppReminderConfig();
   const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
     useNotifications();
-  const { addEmail } = useEmails();
+  const { addEmails } = useEmails();
   const [collapsed, setCollapsed] = useState(false);
   const scannedRef = useRef(false);
   const isDark = appTheme === "dark";
@@ -67,22 +66,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ordersReady || !servicesReady || !notifReady || scannedRef.current) return;
     scannedRef.current = true;
-    scanOrderAlerts(orders, {
+    const created = scanOrderAlerts(orders, {
       services,
       vatWarnDays: config.vatIssueWarnDays,
-      mirrorEmail: (n: AppNotification) => {
-        const user = getUser(n.userId);
-        if (!user?.email) return;
-        addEmail({
-          subject: n.title,
-          recipients: [user.email],
-          recipientCount: 1,
-          status: "sent",
-          sentAt: new Date().toISOString().slice(0, 10),
-          body: `<p>${n.body}</p><p><a href="${n.href ?? "#"}">${t("shell.viewDetails")}</a></p>`,
-        });
-      },
     });
+    const today = new Date().toISOString().slice(0, 10);
+    const viewLabel = t("shell.viewDetails");
+    addEmails(
+      created.flatMap((n) => {
+        const user = getUser(n.userId);
+        if (!user?.email) return [];
+        return [
+          {
+            subject: n.title,
+            recipients: [user.email],
+            recipientCount: 1,
+            status: "sent" as const,
+            sentAt: today,
+            body: `<p>${n.body}</p><p><a href="${n.href ?? "#"}">${viewLabel}</a></p>`,
+          },
+        ];
+      }),
+    );
   }, [
     ordersReady,
     servicesReady,
@@ -91,7 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     services,
     config.vatIssueWarnDays,
     scanOrderAlerts,
-    addEmail,
+    addEmails,
     getUser,
     t,
   ]);

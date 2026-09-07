@@ -42,11 +42,13 @@ export function StatCard({
         value={value}
         prefix={prefix}
         suffix={suffix}
-        valueStyle={{
-          color: token.colorText,
-          fontWeight: 700,
-          fontSize: ds.fontSize.h3,
-          letterSpacing: "-0.3px",
+        styles={{
+          content: {
+            color: token.colorText,
+            fontWeight: 700,
+            fontSize: ds.fontSize.h3,
+            letterSpacing: "-0.3px",
+          },
         }}
       />
     </Card>
