@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageLoading } from "@/components/shared/page-loading";
 import { ApiError } from "@/lib/http/errors";
+import { clearOAuthRedirectParams, clearRememberedOAuthError, readOAuthRedirectError } from "@/lib/http/oauth-redirect";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { authApi } from "@/modules/auth/api";
@@ -19,12 +20,31 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [hashReady, setHashReady] = useState(false);
 
   useEffect(() => {
+    const apply = () => {
+      const fromRedirect = readOAuthRedirectError();
+      if (fromRedirect) {
+        setOauthError(fromRedirect);
+        clearOAuthRedirectParams();
+      }
+      setHashReady(true);
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, []);
+
+  useEffect(() => {
+    if (!hashReady || oauthError) return;
     if (status === "authenticated") router.replace("/dashboard");
-  }, [status, router]);
+  }, [hashReady, oauthError, status, router]);
 
   const onGoogle = () => {
+    clearRememberedOAuthError();
+    setOauthError(null);
     setGooglePending(true);
     authApi.loginWithGoogle();
   };
@@ -34,6 +54,7 @@ export default function LoginPage() {
     setFormError(null);
     try {
       const session = await authApi.login(values.email, values.password);
+      clearRememberedOAuthError();
       applySession(session);
       router.replace("/dashboard");
     } catch (err) {
@@ -45,7 +66,7 @@ export default function LoginPage() {
     }
   };
 
-  if (status === "loading" || status === "authenticated") {
+  if (!hashReady || (status === "loading" && !oauthError) || (status === "authenticated" && !oauthError)) {
     return <PageLoading />;
   }
 
@@ -77,8 +98,14 @@ export default function LoginPage() {
           <Typography.Text type="secondary">{t("auth.tagline")}</Typography.Text>
         </div>
 
-        {formError ? (
-          <Alert type="error" showIcon title={formError} style={{ marginBottom: 16 }} />
+        {oauthError || formError ? (
+          <Alert
+            type="error"
+            showIcon
+            title={oauthError ? t("auth.callbackError") : undefined}
+            description={oauthError ?? formError}
+            style={{ marginBottom: 16 }}
+          />
         ) : null}
 
         <Button
