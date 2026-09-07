@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Typography } from "antd";
 import { saveSession } from "@/lib/http/tokens";
+import { clearOAuthRedirectParams, readOAuthRedirectError } from "@/lib/http/oauth-redirect";
 import { useT } from "@/lib/use-t";
 
 export default function AuthCallbackPage() {
@@ -16,11 +17,13 @@ export default function AuthCallbackPage() {
     if (started.current) return;
     started.current = true;
 
-    const p = new URLSearchParams(window.location.hash.slice(1));
-    if (p.get("error")) {
-      setError(p.get("error_description") || p.get("error") || t("auth.callbackError"));
+    const redirectError = readOAuthRedirectError();
+    if (redirectError) {
+      setError(redirectError);
+      clearOAuthRedirectParams();
       return;
     }
+    const p = new URLSearchParams(window.location.hash.slice(1));
     const accessToken = p.get("access_token");
     const refreshToken = p.get("refresh_token");
     if (!accessToken || !refreshToken) return;
