@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -25,6 +26,7 @@ import {
 } from "@/lib/status-palette";
 import type { OrderStage } from "@/lib/types";
 import { ORDER_STAGES } from "@/lib/types";
+import { ORDER_STAGES_CONFIG_KEY, patchConfigDebounced } from "@/modules/config/api";
 
 export { STAGE_COLOR_PALETTE, nextFreeStageColor };
 
@@ -126,6 +128,7 @@ type Ctx = {
   removeStage: (key: OrderStage) => { ok: true } | { ok: false; reason: string };
   replaceStages: (next: OrderStageDefinition[]) => void;
   resetDefaults: () => void;
+  hydrateFromRemote: (raw: unknown | null) => void;
   stageOptions: { value: OrderStage; label: string; color: string }[];
 };
 
@@ -135,6 +138,7 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
   const { locale } = useAppConfig();
   const [stages, setStages] = useState<OrderStageDefinition[]>(defaultStages);
   const [ready, setReady] = useState(false);
+  const persistEnabled = useRef(false);
 
   useEffect(() => {
     const stored = loadJson<unknown>(KEY);
@@ -144,9 +148,19 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !persistEnabled.current) return;
     saveJson(KEY, { stages } satisfies PersistedV2);
+    patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages });
   }, [stages, ready]);
+
+  const hydrateFromRemote = useCallback((raw: unknown | null) => {
+    persistEnabled.current = false;
+    const parsed = parseStored(raw);
+    if (parsed) setStages(parsed);
+    window.setTimeout(() => {
+      persistEnabled.current = true;
+    }, 0);
+  }, []);
 
   const getMeta = useCallback(
     (module: StatusModule, status: string): DisplayStatusMeta => {
@@ -255,6 +269,7 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
       removeStage,
       replaceStages,
       resetDefaults,
+      hydrateFromRemote,
       stageOptions,
     }),
     [
@@ -266,6 +281,7 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
       removeStage,
       replaceStages,
       resetDefaults,
+      hydrateFromRemote,
       stageOptions,
     ],
   );

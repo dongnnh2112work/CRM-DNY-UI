@@ -205,15 +205,28 @@ export default function CustomerDetailPage() {
     );
   }
 
-  const changeStatus = (status: CustomerStatus) => {
+  const changeStatus = async (status: CustomerStatus) => {
     if (status === customer.status) return;
-    updateCustomer(customer.id, { status });
-    message.success(t("customer.statusUpdated"));
+    try {
+      const updated = await customersApi.update(customer.id, mapUiCustomerPatchToApi({ status }));
+      updateCustomer(customer.id, { ...mapApiCustomerToUi(updated), status });
+      message.success(t("customer.statusUpdated"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("customer.loadFailed")));
+    }
   };
 
-  const archive = () => {
-    updateCustomer(customer.id, { status: "archived" });
-    message.success(t("customer.archived"));
+  const archive = async () => {
+    try {
+      const updated = await customersApi.update(
+        customer.id,
+        mapUiCustomerPatchToApi({ status: "archived" }),
+      );
+      updateCustomer(customer.id, { ...mapApiCustomerToUi(updated), status: "archived" });
+      message.success(t("customer.archived"));
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("customer.loadFailed")));
+    }
   };
 
   return (
@@ -361,13 +374,14 @@ export default function CustomerDetailPage() {
                   company: values.company,
                   taxCode: values.taxCode,
                   owner: values.owner,
+                  status: values.status,
                   customFields: collectCustomFields(values, extraFields, customer.customFields),
                 }),
               );
               updateCustomer(customer.id, {
                 ...mapApiCustomerToUi(updated),
                 address: values.address,
-                status: values.status as CustomerStatus,
+                status: (values.status as CustomerStatus) ?? mapApiCustomerToUi(updated).status,
                 usedServiceIds: values.usedServiceIds ?? [],
                 customFields: collectCustomFields(values, extraFields, customer.customFields),
               });

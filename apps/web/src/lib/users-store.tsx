@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { translateRoleLabel, tt } from "@/lib/i18n";
+import { PAGE_PERMISSIONS_CONFIG_KEY, patchConfigDebounced } from "@/modules/config/api";
 import { MOCK_USERS } from "@/lib/mock-users";
 import {
   BUILT_IN_ROLES,
@@ -46,6 +47,7 @@ type UsersContextValue = {
   logout: () => void;
   replaceUsers: (items: AppUser[], currentUserId?: string) => void;
   mergeRemoteRoles: (items: RoleDefinition[]) => void;
+  hydratePagePermissions: (raw: unknown | null) => void;
 };
 
 const UsersContext = createContext<UsersContextValue | null>(null);
@@ -76,6 +78,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     useState<Record<string, RolePagePermissions>>(cloneDefaultRolePerms);
   const [currentUserId, setCurrentUserId] = useState<string | null>(DEFAULT_SESSION_ID);
   const [ready, setReady] = useState(false);
+  const persistPerms = useRef(false);
 
   useEffect(() => {
     const storedUsers = loadJson<AppUser[]>(USERS_KEY);
@@ -108,6 +111,9 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     saveJson(ROLE_PERMS_KEY, rolePermissions);
+    if (persistPerms.current) {
+      patchConfigDebounced(PAGE_PERMISSIONS_CONFIG_KEY, rolePermissions);
+    }
   }, [rolePermissions, ready]);
 
   useEffect(() => {
@@ -167,6 +173,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateRolePermissions = useCallback((role: UserRole, matrix: RolePagePermissions) => {
+    persistPerms.current = true;
     setRolePermissions((prev) => ({ ...prev, [role]: matrix }));
   }, []);
 
@@ -185,6 +192,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         rolePermissions.staff ||
         emptyPagePermissions();
       setRoles((prev) => [...prev, def]);
+      persistPerms.current = true;
       setRolePermissions((prev) => ({ ...prev, [finalKey]: structuredClone(base) }));
       return def;
     },
@@ -201,6 +209,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
         return { ok: false, reason: tt("user.roleInUse") };
       }
       setRoles((prev) => prev.filter((r) => r.key !== roleKey));
+      persistPerms.current = true;
       setRolePermissions((prev) => {
         const next = { ...prev };
         delete next[roleKey];
@@ -229,6 +238,22 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     setRoles([...BUILT_IN_ROLES, ...extras]);
   }, []);
 
+  const hydratePagePermissions = useCallback((raw: unknown | null) => {
+    persistPerms.current = false;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const merged: Record<string, RolePagePermissions> = { ...cloneDefaultRolePerms() };
+      for (const [role, matrix] of Object.entries(raw as Record<string, Partial<RolePagePermissions>>)) {
+        if (matrix && typeof matrix === "object") {
+          merged[role] = mergeStoredRoleMatrix(role, matrix);
+        }
+      }
+      setRolePermissions(merged);
+    }
+    window.setTimeout(() => {
+      persistPerms.current = true;
+    }, 0);
+  }, []);
+
   const value = useMemo(
     () => ({
       users,
@@ -249,6 +274,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       logout,
       replaceUsers,
       mergeRemoteRoles,
+      hydratePagePermissions,
     }),
     [
       users,
@@ -269,6 +295,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       logout,
       replaceUsers,
       mergeRemoteRoles,
+      hydratePagePermissions,
     ],
   );
 

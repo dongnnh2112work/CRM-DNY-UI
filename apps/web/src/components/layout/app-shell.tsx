@@ -14,6 +14,7 @@ import {
   MenuUnfoldOutlined,
   MoonOutlined,
   ProjectOutlined,
+  ReloadOutlined,
   SettingOutlined,
   SunOutlined,
   TeamOutlined,
@@ -45,11 +46,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { message } = App.useApp();
   const { token } = theme.useToken();
-  const { theme: appTheme, setTheme } = useAppConfig();
+  const { theme: appTheme, setTheme, locale } = useAppConfig();
   const t = useT();
   const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
   const { user: apiUser, can, logout: logoutApi } = useSession();
-  const { ready: hydrateReady, refreshing } = useApiHydrate();
+  const { ready: hydrateReady, refreshing, lastSyncedAt, refreshCurrent } = useApiHydrate();
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
@@ -241,6 +242,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             onSearch={onSearch}
           />
           <Space style={{ marginLeft: "auto" }} size={8}>
+            <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
+              {lastSyncedAt
+                ? t("shell.lastSynced", {
+                    time: new Date(lastSyncedAt).toLocaleString(
+                      locale === "zh" ? "zh-CN" : locale === "en" ? "en-US" : "vi-VN",
+                      { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" },
+                    ),
+                  })
+                : t("shell.lastSyncedNever")}
+            </Typography.Text>
+            <Button
+              type="text"
+              icon={<ReloadOutlined spin={refreshing} />}
+              onClick={() => void refreshCurrent()}
+              title={t("shell.refreshData")}
+              style={{ borderRadius: token.borderRadius }}
+            />
             {refreshing ? <Spin size="small" /> : null}
             <Button
               type="text"

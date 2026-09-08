@@ -8,6 +8,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { ApiError } from "@/lib/http/errors";
 import { clearOAuthRedirectParams, clearRememberedOAuthError, readOAuthRedirectError } from "@/lib/http/oauth-redirect";
 import { useSession } from "@/lib/session/session-provider";
+import { accessGate } from "@/lib/access-gate";
 import { useT } from "@/lib/use-t";
 import { authApi } from "@/modules/auth/api";
 
@@ -16,7 +17,7 @@ export default function LoginPage() {
   const { token } = theme.useToken();
   const { message } = App.useApp();
   const t = useT();
-  const { status, applySession } = useSession();
+  const { status, applySession, user } = useSession();
   const [submitting, setSubmitting] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -39,8 +40,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!hashReady || oauthError) return;
-    if (status === "authenticated") router.replace("/dashboard");
-  }, [hashReady, oauthError, status, router]);
+    if (status === "authenticated") {
+      router.replace(accessGate(user) === "ok" ? "/dashboard" : "/pending-approval");
+    }
+  }, [hashReady, oauthError, status, router, user]);
 
   const onGoogle = () => {
     clearRememberedOAuthError();
@@ -56,7 +59,7 @@ export default function LoginPage() {
       const session = await authApi.login(values.email, values.password);
       clearRememberedOAuthError();
       applySession(session);
-      router.replace("/dashboard");
+      router.replace(accessGate(session.user) === "ok" ? "/dashboard" : "/pending-approval");
     } catch (err) {
       const msg = err instanceof ApiError ? err.messages.join(" ") : t("auth.loginFailed");
       setFormError(msg);

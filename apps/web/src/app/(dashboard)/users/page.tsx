@@ -33,6 +33,7 @@ import {
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import { apiErrorMessage } from "@/lib/http/message";
+import { useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 import { identityAdminApi } from "@/modules/identity-admin/api";
@@ -67,6 +68,7 @@ export default function UsersPage() {
     deleteRole,
     getRoleLabel,
   } = useUsers();
+  const usersRemote = useRemoteList("users");
   const [profileOpen, setProfileOpen] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
   const [permRole, setPermRole] = useState<UserRole | null>(null);
@@ -219,6 +221,7 @@ export default function UsersPage() {
         columns={columns}
         dataSource={filtered}
         columnManagerKey="users"
+        remote={usersRemote}
         emptyDescription={
           query.trim() && users.length > 0 ? t("common.noResults") : t("user.empty")
         }

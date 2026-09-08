@@ -11,6 +11,7 @@ import { ExcelImportModal } from "@/components/shared/excel-import-modal";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
+import { useRemoteList } from "@/components/api-hydrator";
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import {
   getCustomerUsedServices,
@@ -26,6 +27,8 @@ import { matchesTableQuery } from "@/lib/table-search";
 import type { Customer, CustomerStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { customersApi } from "@/modules/customers/api";
+import { mapApiCustomerToUi, mapUiCustomerPatchToApi, mapUiCustomerToApi } from "@/modules/customers/map-to-ui";
+import { isBlankImportRow, validateCustomerImportRow } from "@/lib/customer-import";
 import { useT } from "@/lib/use-t";
 
 export default function CustomersPage() {
@@ -43,10 +46,11 @@ function CustomersPageContent() {
   const { message } = App.useApp();
   const { can } = useSession();
   const { customers, fieldDefs, saveFieldDefs, updateCustomer, deleteCustomer, addCustomers } = useCustomers();
-  const { users } = useUsers();
+  const { users, currentUser } = useUsers();
   const { orders } = useOrders();
   const { services } = useServices();
   const { getMeta, statusOptions, addStatus, updateStatus, removeStatus } = useCustomerStatusConfig();
+  const customerRemote = useRemoteList("customers");
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
@@ -105,9 +109,20 @@ function CustomersPageContent() {
   const selectedCustomers = () =>
     customers.filter((c) => selectedRowKeys.includes(c.id));
 
-  const bulkSetStatus = (status: CustomerStatus) => {
-    selectedRowKeys.forEach((id) => updateCustomer(String(id), { status }));
-    message.success(t("customer.statusUpdatedN", { count: selectedCount }));
+  const persistStatus = async (id: string, status: CustomerStatus) => {
+    try {
+      const updated = await customersApi.update(id, mapUiCustomerPatchToApi({ status }));
+      updateCustomer(id, { ...mapApiCustomerToUi(updated), status });
+      return true;
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("customer.loadFailed")));
+      return false;
+    }
+  };
+
+  const bulkSetStatus = async (status: CustomerStatus) => {
+    const ok = await Promise.all(selectedRowKeys.map((id) => persistStatus(String(id), status)));
+    if (ok.some(Boolean)) message.success(t("customer.statusUpdatedN", { count: ok.filter(Boolean).length }));
     clearSelection();
   };
 
@@ -215,6 +230,7 @@ function CustomersPageContent() {
         dataSource={filtered}
         rowKey="id"
         statusModule="customer"
+        remote={customerRemote}
         linkField={{ key: "name", onClick: (record) => router.push(`/customers/${record.id}`) }}
         columnOverrides={{
           status: {
@@ -223,10 +239,10 @@ function CustomersPageContent() {
                 module="customer"
                 value={String(value)}
                 options={statusOptions}
-                onChange={(v) => {
+                onChange={async (v) => {
                   if (v === record.status) return;
-                  updateCustomer(record.id, { status: v });
-                  message.success(t("customer.statusUpdated"));
+                  const ok = await persistStatus(record.id, v as CustomerStatus);
+                  if (ok) message.success(t("customer.statusUpdated"));
                 }}
                 manage={{
                   takenColors: statusOptions.map((s) => s.color),
@@ -320,21 +336,50 @@ function CustomersPageContent() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         expectedColumns={["Name", "Phone", "Email", "Company", "Tax Code"]}
-        onImport={(rows) => {
-          const newCustomers: Customer[] = rows.map((r, i) => ({
-            id: `imported-${Date.now()}-${i}`,
-            name: String(r.Name ?? r.name ?? ""),
-            phone: String(r.Phone ?? r.phone ?? ""),
-            email: String(r.Email ?? r.email ?? ""),
-            company: String(r.Company ?? r.company ?? ""),
-            taxCode: String(r["Tax Code"] ?? r.taxCode ?? ""),
-            owner: "Le Staff A",
-            status: "lead" as const,
-            createdAt: new Date().toISOString().slice(0, 10),
-            usedServiceIds: [],
-            customFields: {},
-          }));
-          addCustomers(newCustomers);
+        onImport={async (rows) => {
+          let empty = 0;
+          let invalid = 0;
+          const created: Customer[] = [];
+          const owner = currentUser?.id ?? "";
+          for (const row of rows) {
+            if (isBlankImportRow(row)) {
+              empty += 1;
+              continue;
+            }
+            const reason = validateCustomerImportRow(row);
+            if (reason) {
+              invalid += 1;
+              continue;
+            }
+            try {
+              const saved = await customersApi.create(
+                mapUiCustomerToApi({
+                  name: String(row.Name ?? row.name ?? "").trim(),
+                  phone: String(row.Phone ?? row.phone ?? "").trim(),
+                  email: String(row.Email ?? row.email ?? "").trim() || undefined,
+                  company: String(row.Company ?? row.company ?? "").trim() || undefined,
+                  taxCode: String(row["Tax Code"] ?? row.taxCode ?? "").trim() || undefined,
+                  owner,
+                  status: "lead",
+                }),
+              );
+              created.push(mapApiCustomerToUi(saved));
+            } catch {
+              invalid += 1;
+            }
+          }
+          if (created.length) addCustomers(created);
+          if (created.length) {
+            message.success(
+              t("import.saved", {
+                saved: String(created.length),
+                empty: String(empty),
+                invalid: String(invalid),
+              }),
+            );
+          } else {
+            message.warning(t("import.noneSaved", { empty: String(empty), invalid: String(invalid) }));
+          }
         }}
       />
       <Modal

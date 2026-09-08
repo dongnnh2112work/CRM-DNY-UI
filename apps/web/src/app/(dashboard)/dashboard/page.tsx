@@ -25,7 +25,8 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { MOCK_DASHBOARD } from "@/lib/mock-dashboard";
+import { useCustomers } from "@/lib/customers-store";
+import { buildPaidRevenueByMonth } from "@/lib/dashboard-metrics";
 import { ds } from "@/lib/design-tokens";
 import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
@@ -37,8 +38,7 @@ import { buildPayroll, getPayrollScope } from "@/lib/payroll";
 import { useT } from "@/lib/use-t";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
-
-const d = MOCK_DASHBOARD;
+import { useApiHydrate } from "@/components/api-hydrator";
 
 /** Compact tick labels for chart axes only (not list/table display). */
 function formatVndAxisTick(value: number) {
@@ -79,11 +79,17 @@ export default function DashboardPage() {
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
+  const { customers } = useCustomers();
+  const { listMeta } = useApiHydrate();
   const { stageOptions } = useOrderStatusConfig();
   const recentOrders = orders.slice(0, 5);
   const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
   const orderStatusData = buildOrderStatusChart(orders, stageOptions);
-  const totalOrders = orders.length;
+  const totalOrders = listMeta.orders?.total ?? orders.length;
+  const totalCustomers = listMeta.customers?.total ?? customers.length;
+  const revenueByMonth = useMemo(() => buildPaidRevenueByMonth(payments), [payments]);
+  const thisMonthKey = currentYearMonth();
+  const revenueThisMonth = revenueByMonth.find((item) => item.month === thisMonthKey)?.value ?? 0;
   const payrollScope = getPayrollScope(
     currentUser,
     currentUser ? getEffectivePermissions(currentUser) : null,
@@ -100,7 +106,7 @@ export default function DashboardPage() {
 
   const revenueData = useMemo(
     () =>
-      d.revenue.byMonth.map((item) => {
+      revenueByMonth.map((item) => {
         const [, m] = item.month.split("-");
         const n = Number(m);
         return {
@@ -108,7 +114,7 @@ export default function DashboardPage() {
           label: Number.isFinite(n) ? t("common.monthShort", { n }) : item.month,
         };
       }),
-    [t],
+    [t, revenueByMonth],
   );
 
   return (
@@ -119,7 +125,7 @@ export default function DashboardPage() {
           <Col xs={24} sm={12} lg={6}>
             <StatCard
               title={t("dash.revenueMonth")}
-              value={d.revenue.thisMonth}
+              value={revenueThisMonth}
               prefix={<DollarOutlined />}
               suffix="₫"
             />
@@ -128,7 +134,7 @@ export default function DashboardPage() {
             <StatCard title={t("dash.totalOrders")} value={totalOrders} prefix={<ProjectOutlined />} />
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            <StatCard title={t("dash.totalCustomers")} value={d.customers.total} prefix={<TeamOutlined />} />
+            <StatCard title={t("dash.totalCustomers")} value={totalCustomers} prefix={<TeamOutlined />} />
           </Col>
           <Col xs={24} sm={12} lg={6}>
             {payrollScope === "none" ? (

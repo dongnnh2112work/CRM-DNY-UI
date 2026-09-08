@@ -31,7 +31,11 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
   const rows = getExpenses(order.id);
   const flow = useMemo(() => buildOrderCashflow(payment, rows), [payment, rows]);
   const canReview = currentUser
-    ? canReviewExpense(Boolean(getEffectivePermissions(currentUser).expense_approvals?.edit))
+    ? canReviewExpense({
+        hasExpenseApprovePermission: Boolean(getEffectivePermissions(currentUser).expense_approvals?.edit),
+        currentUserId: currentUser.id,
+        reviewerId: order.reviewerId,
+      })
     : false;
 
   const monthColumns = useMemo(
@@ -109,7 +113,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
             return r.reviewedByName ?? "—";
           }
           if (!canReview || !currentUser) {
-            return <Tag>{t("common.viewOnly")}</Tag>;
+            return <Tag>{order.reviewerId ? t("common.viewOnly") : t("expense.onlyReviewer")}</Tag>;
           }
           return (
             <Space>

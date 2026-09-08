@@ -15,6 +15,7 @@ import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { PaymentRecord, PaymentStatus } from "@/lib/types";
 import { useT } from "@/lib/use-t";
+import { useRemoteList } from "@/components/api-hydrator";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -23,6 +24,7 @@ function compareText(a: string, b: string) {
 export default function PaymentsPage() {
   const t = useT();
   const { message } = App.useApp();
+  const paymentsRemote = useRemoteList("payments");
   const { payments } = usePayments();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -156,6 +158,7 @@ export default function PaymentsPage() {
         dataSource={filtered}
         loading={exporting}
         columnManagerKey="payments"
+        remote={paymentsRemote}
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}

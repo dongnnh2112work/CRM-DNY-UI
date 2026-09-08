@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -21,6 +22,7 @@ import {
   slugifyKey,
   uniqueKey,
 } from "@/lib/status-palette";
+import { CUSTOMER_STATUS_CATALOG_KEY, patchConfigDebounced } from "@/modules/config/api";
 
 const KEY = "dny-crm-customer-status-meta";
 
@@ -80,6 +82,7 @@ type Ctx = {
   updateStatus: (key: string, patch: Partial<Pick<CustomerStatusDefinition, "label" | "color">>) => void;
   addStatus: (label: string) => CustomerStatusDefinition | null;
   removeStatus: (key: string) => { ok: true } | { ok: false; reason: string };
+  hydrateFromRemote: (raw: unknown | null) => void;
   statusOptions: { value: string; label: string; color: string }[];
 };
 
@@ -89,6 +92,7 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   const { locale } = useAppConfig();
   const [statuses, setStatuses] = useState<CustomerStatusDefinition[]>(defaultStatuses);
   const [ready, setReady] = useState(false);
+  const persistEnabled = useRef(false);
 
   useEffect(() => {
     const stored = loadJson<unknown>(KEY);
@@ -98,9 +102,19 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !persistEnabled.current) return;
     saveJson(KEY, { statuses });
+    patchConfigDebounced(CUSTOMER_STATUS_CATALOG_KEY, { statuses });
   }, [statuses, ready]);
+
+  const hydrateFromRemote = useCallback((raw: unknown | null) => {
+    persistEnabled.current = false;
+    const parsed = parseStored(raw);
+    if (parsed) setStatuses(parsed);
+    window.setTimeout(() => {
+      persistEnabled.current = true;
+    }, 0);
+  }, []);
 
   const getMeta = useCallback((status: string): DisplayStatusMeta => {
     const found = statuses.find((s) => s.key === status);
@@ -179,8 +193,17 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ statuses, ready, getMeta, updateStatus, addStatus, removeStatus, statusOptions }),
-    [statuses, ready, getMeta, updateStatus, addStatus, removeStatus, statusOptions],
+    () => ({
+      statuses,
+      ready,
+      getMeta,
+      updateStatus,
+      addStatus,
+      removeStatus,
+      hydrateFromRemote,
+      statusOptions,
+    }),
+    [statuses, ready, getMeta, updateStatus, addStatus, removeStatus, hydrateFromRemote, statusOptions],
   );
 
   return <CustomerStatusContext.Provider value={value}>{children}</CustomerStatusContext.Provider>;

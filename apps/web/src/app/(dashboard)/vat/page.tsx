@@ -20,6 +20,7 @@ import { resolveContractNumber } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { vatApi } from "@/modules/vat/api";
+import { useRemoteList } from "@/components/api-hydrator";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -34,6 +35,7 @@ export default function VatPage() {
   const { message } = App.useApp();
   const { invoices, updateInvoice, deleteInvoices } = useVat();
   const { orders } = useOrders();
+  const vatRemote = useRemoteList("vat");
   const [query, setQuery] = useState("");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const applyUrlQuery = useCallback((q: string) => {
@@ -230,6 +232,7 @@ export default function VatPage() {
         dataSource={filtered}
         loading={exporting}
         columnManagerKey="vat"
+        remote={vatRemote}
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}
