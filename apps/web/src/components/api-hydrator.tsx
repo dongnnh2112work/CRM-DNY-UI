@@ -19,6 +19,7 @@ import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { primaryScopeForPath, scopesForPath, staleMsFor } from "@/lib/route-data-scopes";
 import { useServices } from "@/lib/services-store";
+import { isAwaitingAccess } from "@/lib/access-gate";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useVat } from "@/lib/vat-store";
@@ -147,7 +148,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
 
   const run = useCallback(
     async (scope: RefreshScope | RefreshScope[], options?: { page?: number; append?: boolean }) => {
-      if (status !== "authenticated") return;
+      if (status !== "authenticated" || isAwaitingAccess(user)) return;
       setRefreshing(true);
       try {
         await applyRemoteData(applier, user, scope, () => snapshotRef.current, options);
@@ -216,7 +217,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (status !== "authenticated") {
+    if (status !== "authenticated" || isAwaitingAccess(user)) {
       setReady(false);
       fetchedAtRef.current = {};
       return;
@@ -232,7 +233,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, user?.id, user?.status]);
 
   useEffect(() => {
     if (status !== "authenticated" || !ready) return;

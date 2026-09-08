@@ -5,19 +5,42 @@ const BLOCKED_STATUS = new Set(["SUSPENDED", "DEACTIVATED"]);
 
 export type AccessGate = "ok" | "pending" | "blocked";
 
-/** Google / new users wait until admin assigns roles. Password users with roles pass. */
+export function userStatus(user: AuthUser | null | undefined) {
+  return (user?.status ?? "").toUpperCase();
+}
+
+export function isPendingStatus(status: string | null | undefined) {
+  return PENDING_STATUS.has((status ?? "").toUpperCase());
+}
+
+export function isBlockedStatus(status: string | null | undefined) {
+  return BLOCKED_STATUS.has((status ?? "").toUpperCase());
+}
+
+/** Product rule: ACTIVE + at least one role + at least one permission. */
+export function canEnterCrm(user: AuthUser | null | undefined): boolean {
+  if (!user) return false;
+  return (
+    userStatus(user) === "ACTIVE" &&
+    (user.roleCodes?.length ?? 0) > 0 &&
+    (user.permissions?.length ?? 0) > 0
+  );
+}
+
 export function accessGate(user: AuthUser | null | undefined): AccessGate {
-  if (!user) return "ok";
-  const status = (user.status ?? "").toUpperCase();
-  if (BLOCKED_STATUS.has(status)) return "blocked";
-  if (PENDING_STATUS.has(status)) return "pending";
-  const roles = (user.roleCodes ?? []).map((r) => r.toUpperCase());
-  const isAdmin = roles.some((r) => r === "ADMIN" || r === "SUPER_ADMIN");
-  if (!isAdmin && roles.length === 0 && (user.permissions?.length ?? 0) === 0) return "pending";
+  if (!user) return "pending";
+  if (isBlockedStatus(user.status)) return "blocked";
+  if (isPendingStatus(user.status)) return "pending";
+  if ((user.roleCodes?.length ?? 0) === 0 && (user.permissions?.length ?? 0) === 0) return "pending";
+  if (!canEnterCrm(user)) return "pending";
   return "ok";
 }
 
 export function isAwaitingAccess(user: AuthUser | null | undefined) {
   const gate = accessGate(user);
   return gate === "pending" || gate === "blocked";
+}
+
+export function destinationForUser(user: AuthUser | null | undefined) {
+  return accessGate(user) === "ok" ? "/dashboard" : "/pending-approval";
 }

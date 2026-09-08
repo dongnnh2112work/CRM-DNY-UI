@@ -16,6 +16,7 @@ import {
   type TableColumnsType,
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -35,6 +36,7 @@ import { matchesTableQuery } from "@/lib/table-search";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
+import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { identityAdminApi } from "@/modules/identity-admin/api";
 import {
@@ -57,6 +59,7 @@ function formatDob(iso?: string) {
 export default function UsersPage() {
   const t = useT();
   const { message } = App.useApp();
+  const { can } = useSession();
   const {
     users,
     roles,
@@ -215,7 +218,13 @@ export default function UsersPage() {
         onSearch={setQuery}
         searchValue={query}
         primaryAction={{ label: t("user.newCta"), onClick: openCreate }}
-      />
+      >
+        {can("user.manage") ? (
+          <Link href="/users/pending">
+            <Button>{t("nav.pendingUsers")}</Button>
+          </Link>
+        ) : null}
+      </PageHeader>
       <DataTable<AppUser>
         rowKey="id"
         columns={columns}

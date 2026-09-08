@@ -38,9 +38,29 @@ function remembered() {
   }
 }
 
+export function hasOAuthTokensInLocation() {
+  const p = paramsFromLocation();
+  return Boolean(p.get("access_token") && p.get("refresh_token"));
+}
+
+export function readOAuthHashParams() {
+  const p = paramsFromLocation();
+  return {
+    accessToken: p.get("access_token"),
+    refreshToken: p.get("refresh_token"),
+    expiresIn: Number(p.get("expires_in") ?? 0),
+    error: p.get("error"),
+    errorDescription: decodeOAuthText(p.get("error_description")) || decodeOAuthText(p.get("error_code")),
+  };
+}
+
 /** Supabase / Nest OAuth errors may land on /login or /auth/callback as hash or query. */
 export function readOAuthRedirectError() {
   const p = paramsFromLocation();
+  if (p.get("access_token") && p.get("refresh_token")) {
+    clearRememberedOAuthError();
+    return null;
+  }
   const error = p.get("error");
   if (error) {
     const message =
@@ -51,6 +71,11 @@ export function readOAuthRedirectError() {
     return message;
   }
   return remembered();
+}
+
+export function readOAuthRedirectErrorCode() {
+  const p = paramsFromLocation();
+  return p.get("error");
 }
 
 export function clearOAuthRedirectParams() {
@@ -64,5 +89,34 @@ export function clearRememberedOAuthError() {
     sessionStorage.removeItem(STORAGE_KEY);
   } catch {
     /* ignore */
+  }
+}
+
+export function markOAuthLoginInProgress() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem("dyn-oauth-just-done", "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function consumeOAuthLoginInProgress() {
+  if (typeof window === "undefined") return false;
+  try {
+    const on = sessionStorage.getItem("dyn-oauth-just-done") === "1";
+    sessionStorage.removeItem("dyn-oauth-just-done");
+    return on;
+  } catch {
+    return false;
+  }
+}
+
+export function isOAuthLoginInProgress() {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem("dyn-oauth-just-done") === "1";
+  } catch {
+    return false;
   }
 }

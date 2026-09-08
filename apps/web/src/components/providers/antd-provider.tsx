@@ -10,6 +10,7 @@ import "dayjs/locale/en";
 import "dayjs/locale/vi";
 import "dayjs/locale/zh-cn";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { DevDebugListener } from "@/components/dev-debug-listener";
 import { ds, fontStack } from "@/lib/design-tokens";
 import { setI18nLocale, type AppLocale } from "@/lib/i18n";
 
@@ -206,7 +207,10 @@ export function AntdProvider({ children }: { children: ReactNode }) {
     <AppConfigContext.Provider value={{ locale, setLocale: handleSetLocale, theme, setTheme: handleSetTheme }}>
       <AntdRegistry>
         <ConfigProvider locale={LOCALE_MAP[locale]} theme={buildTheme(theme)}>
-          <App>{children}</App>
+          <App>
+            <DevDebugListener />
+            {children}
+          </App>
         </ConfigProvider>
       </AntdRegistry>
     </AppConfigContext.Provider>

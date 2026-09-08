@@ -5,6 +5,7 @@ import {
   AppstoreOutlined,
   CalculatorOutlined,
   BellOutlined,
+  ClockCircleOutlined,
   DashboardOutlined,
   DollarOutlined,
   FileTextOutlined,
@@ -140,7 +141,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">{t("nav.services")}</Link> },
       { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">{t("nav.emails")}</Link> },
       { type: "divider" as const },
-      { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.users")}</Link> },
+      ...(can("user.manage")
+        ? [
+            { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.users")}</Link> },
+            {
+              key: "/users/pending",
+              icon: <ClockCircleOutlined />,
+              label: <Link href="/users/pending">{t("nav.pendingUsers")}</Link>,
+            },
+          ]
+        : []),
       { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> },
     ];
     if (apiUser && !can("customer.view")) {

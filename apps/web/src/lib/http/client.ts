@@ -1,4 +1,9 @@
+import { isAwaitingAccess } from "@/lib/access-gate";
+import { reportApiError } from "@/lib/dev-debug";
+import { classifyApiError, isBlockedAccountError, isPendingMeError } from "@/lib/http/error-kind";
 import { ApiError, parseApiError } from "@/lib/http/errors";
+import { isOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
+import { readCachedAuthUser } from "@/lib/hydrate-cache";
 import {
   clearStoredSession,
   getApiBaseUrl,
@@ -13,6 +18,21 @@ type RequestOptions = RequestInit & {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
+function requestPath(path: string) {
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function isAuthEndpoint(path: string) {
+  const p = requestPath(path).split("?")[0];
+  return p === "/auth/me" || p === "/auth/logout" || p === "/auth/refresh" || p === "/auth/login";
+}
+
+function keepPendingSessionOnFailure(path: string) {
+  if (isAuthEndpoint(path)) return false;
+  const cached = readCachedAuthUser();
+  return Boolean(cached && isAwaitingAccess(cached));
+}
+
 async function refreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
@@ -24,7 +44,6 @@ async function refreshAccessToken(): Promise<boolean> {
       body: JSON.stringify({ refreshToken: stored.refreshToken }),
     });
     if (!res.ok) {
-      clearStoredSession();
       return false;
     }
     const data = (await res.json()) as { accessToken?: string; refreshToken?: string };
@@ -40,9 +59,25 @@ async function refreshAccessToken(): Promise<boolean> {
   return refreshInFlight;
 }
 
+function emitApiError(path: string, err: ApiError) {
+  reportApiError({
+    statusCode: err.statusCode,
+    path: requestPath(path).split("?")[0],
+    messages: err.messages,
+    kind: classifyApiError(err),
+  });
+}
+
+function logoutLocal() {
+  clearStoredSession();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("dyn-auth-logout"));
+  }
+}
+
 export async function apiRequest<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const { skipAuth, skipRefresh, headers, body, ...rest } = init;
-  const url = `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = `${getApiBaseUrl()}${requestPath(path)}`;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const stored = skipAuth ? null : readStoredSession();
 
@@ -54,7 +89,18 @@ export async function apiRequest<T>(path: string, init: RequestOptions = {}): Pr
     headerBag.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(url, { ...rest, headers: headerBag, body });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...rest, headers: headerBag, body });
+  } catch (err) {
+    reportApiError({
+      statusCode: 0,
+      path: requestPath(path).split("?")[0],
+      messages: [err instanceof Error ? err.message : "network"],
+      kind: "network",
+    });
+    throw err;
+  }
 
   if (res.status === 401 && !skipAuth) {
     if (!skipRefresh) {
@@ -63,15 +109,24 @@ export async function apiRequest<T>(path: string, init: RequestOptions = {}): Pr
         return apiRequest<T>(path, { ...init, skipRefresh: true });
       }
     }
-    clearStoredSession();
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("dyn-auth-logout"));
+    const err = await parseApiError(res);
+    emitApiError(path, err);
+    const pathOnly = requestPath(path).split("?")[0];
+    const validTokenButNoCrmAccess =
+      pathOnly === "/auth/me" &&
+      !isBlockedAccountError(err) &&
+      (skipRefresh || isPendingMeError(err) || isOAuthLoginInProgress());
+    if (validTokenButNoCrmAccess || keepPendingSessionOnFailure(path)) {
+      throw err;
     }
-    throw await parseApiError(res);
+    logoutLocal();
+    throw err;
   }
 
   if (!res.ok) {
-    throw await parseApiError(res);
+    const err = await parseApiError(res);
+    emitApiError(path, err);
+    throw err;
   }
 
   if (res.status === 204) {

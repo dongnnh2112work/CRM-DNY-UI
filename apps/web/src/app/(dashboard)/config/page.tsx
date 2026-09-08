@@ -1,8 +1,10 @@
 "use client";
 
 import { Card, Divider, InputNumber, Segmented, Switch, Typography } from "antd";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { useAppConfig, type AppLocale } from "@/components/providers/antd-provider";
+import { isDevDebugEnabled, setDevDebugEnabled } from "@/lib/dev-debug";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useT } from "@/lib/use-t";
 
@@ -12,6 +14,16 @@ export default function ConfigPage() {
   const { locale, setLocale, theme, setTheme } = useAppConfig();
   const { config, setVatIssueWarnDays } = useAppReminderConfig();
   const t = useT();
+  const [devDebug, setDevDebug] = useState(false);
+
+  useEffect(() => {
+    setDevDebug(isDevDebugEnabled());
+  }, []);
+
+  const onDevDebug = (v: boolean) => {
+    setDevDebug(v);
+    setDevDebugEnabled(v);
+  };
 
   return (
     <>
@@ -49,6 +61,18 @@ export default function ConfigPage() {
                 />
               </div>
             </div>
+          </div>
+        </Card>
+
+        <Card title={t("config.developer")} size="small" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+            <div>
+              <Typography.Text>{t("config.developerDebug")}</Typography.Text>
+              <div>
+                <Typography.Text type="secondary">{t("config.developerDebugHint")}</Typography.Text>
+              </div>
+            </div>
+            <Switch checked={devDebug} onChange={onDevDebug} />
           </div>
         </Card>
 
