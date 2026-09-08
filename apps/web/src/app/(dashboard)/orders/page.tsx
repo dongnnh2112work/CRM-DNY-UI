@@ -14,6 +14,7 @@ import { KanbanBoard } from "@/components/shared/kanban-board";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusSelect } from "@/components/shared/status-select";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
+import { useRemoteList } from "@/components/api-hydrator";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { taskAssignedDraft } from "@/lib/notification-targets";
@@ -59,6 +60,7 @@ export default function OrdersPage() {
   const { addNotifications } = useNotifications();
   const { getMeta, stageOptions } = useOrderStatusConfig();
   const { currentUser, getEffectivePermissions, users } = useUsers();
+  const ordersRemote = useRemoteList("orders");
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canViewStages = Boolean(perms?.order_statuses?.view);
   const canEditStages = Boolean(perms?.order_statuses?.edit);
@@ -432,6 +434,7 @@ export default function OrdersPage() {
           dataSource={filtered}
           loading={exporting}
           columnManagerKey="orders"
+          remote={ordersRemote}
           enableRowSelection
           selectedRowKeys={selectedRowKeys}
           onSelectedRowKeysChange={setSelectedRowKeys}

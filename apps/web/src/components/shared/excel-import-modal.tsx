@@ -11,14 +11,16 @@ import { useT } from "@/lib/use-t";
 interface ExcelImportModalProps {
   open: boolean;
   onClose: () => void;
-  onImport: (rows: Record<string, unknown>[]) => void;
+  onImport: (rows: Record<string, unknown>[]) => void | Promise<void>;
   expectedColumns?: string[];
 }
 
 export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: ExcelImportModalProps) {
   const t = useT();
-  const [preview, setPreview] = useState<Record<string, unknown>[]>([]);
+  const [allRows, setAllRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
+  const preview = allRows.slice(0, 10);
 
   const handleFile = useCallback((file: File) => {
     const reader = new FileReader();
@@ -26,39 +28,51 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const wb = XLSX.read(data, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
+      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       if (json.length > 0) {
         setColumns(Object.keys(json[0]));
-        setPreview(json.slice(0, 10));
+        setAllRows(json);
       }
     };
     reader.readAsArrayBuffer(file);
-    return false; // prevent default upload
+    return false;
   }, []);
 
-  const handleConfirm = () => {
-    onImport(preview);
-    setPreview([]);
+  const reset = () => {
+    setAllRows([]);
     setColumns([]);
-    onClose();
+  };
+
+  const handleConfirm = async () => {
+    setImporting(true);
+    try {
+      await onImport(allRows);
+      reset();
+      onClose();
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
     <Modal
       title={t("import.title")}
       open={open}
-      onCancel={() => { setPreview([]); setColumns([]); onClose(); }}
+      onCancel={() => {
+        reset();
+        onClose();
+      }}
       width={720}
       footer={
         <Space>
           <Button onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="primary" disabled={preview.length === 0} onClick={handleConfirm}>
-            {t("import.rows", { count: preview.length })}
+          <Button type="primary" disabled={allRows.length === 0} loading={importing} onClick={() => void handleConfirm()}>
+            {t("import.rows", { count: allRows.length })}
           </Button>
         </Space>
       }
     >
-      {preview.length === 0 ? (
+      {allRows.length === 0 ? (
         <Upload.Dragger beforeUpload={handleFile} accept=".xlsx,.xls,.csv" showUploadList={false}>
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">{t("import.drop")}</p>
@@ -71,7 +85,8 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
       ) : (
         <>
           <Typography.Text type="secondary">
-            {t("import.preview", { count: preview.length })}
+            {t("import.preview", { count: Math.min(10, allRows.length) })}
+            {allRows.length > 10 ? ` · ${t("import.totalRows", { count: allRows.length })}` : null}
           </Typography.Text>
           <Table
             rowKey={(_, i) => String(i)}

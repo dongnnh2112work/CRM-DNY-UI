@@ -79,6 +79,12 @@ interface DynamicTableProps<T extends object> {
   >;
   /** Persist ẩn/hiện cột extra (Thao tác…) — cùng rule Lưu mới áp dụng. */
   columnManagerKey?: string;
+  remote?: {
+    loaded: number;
+    total: number;
+    onLoadMore: () => void;
+    loading?: boolean;
+  };
 }
 
 function defsEqual(a: FieldDefinition[], b: FieldDefinition[]) {
@@ -109,6 +115,7 @@ export function DynamicTable<T extends object>({
   linkField,
   columnOverrides,
   columnManagerKey,
+  remote,
 }: DynamicTableProps<T>) {
   const t = useT();
   const { message, modal } = App.useApp();
@@ -312,6 +319,7 @@ export function DynamicTable<T extends object>({
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={onSelectedRowKeysChange}
         bulkToolbar={bulkToolbar}
+        remote={remote}
         toolbar={
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0" }}>
             <Button icon={<SettingOutlined />} size="small" onClick={() => setDrawerOpen(true)}>

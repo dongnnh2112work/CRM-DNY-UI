@@ -14,6 +14,7 @@ import { apiErrorMessage } from "@/lib/http/message";
 import type { Service } from "@/lib/types";
 import { servicesApi } from "@/modules/services/api";
 import { mapApiServiceToUi, mapUiServiceToApi } from "@/modules/services/map-to-ui";
+import { useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
 
 export default function ServicesPage() {
@@ -30,6 +31,7 @@ export default function ServicesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editService, setEditService] = useState<Service | null>(null);
   const [saving, setSaving] = useState(false);
+  const servicesRemote = useRemoteList("services");
 
   const filtered = services.filter((s) => serviceMatchesQuery(s, query));
 
@@ -103,6 +105,7 @@ export default function ServicesPage() {
         dataSource={filtered}
         rowKey="id"
         columnManagerKey="services"
+        remote={servicesRemote}
         statusModule="service"
         linkField={{ key: "name", onClick: openEdit }}
         enableRowSelection
@@ -174,7 +177,11 @@ export default function ServicesPage() {
             setSaving(true);
             try {
               if (editService) {
-                const updated = await servicesApi.update(editService.id, mapUiServiceToApi(payload));
+                const body = mapUiServiceToApi(payload);
+                let updated = await servicesApi.update(editService.id, body);
+                if (payload.status === "inactive" && updated.status?.toUpperCase() !== "ARCHIVED") {
+                  updated = await servicesApi.archive(editService.id);
+                }
                 updateService(editService.id, mapApiServiceToUi(updated));
                 message.success(t("service.updated"));
               } else {

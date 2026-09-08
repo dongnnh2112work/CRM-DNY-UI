@@ -9,6 +9,7 @@ import {
   type ColumnManagerItem,
 } from "@/components/shared/column-manager-drawer";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RemoteListStatus } from "@/components/shared/remote-list-status";
 import { tableIndexColumn, tableColumnKey, type TableColumn } from "@/lib/table-index-column";
 import { useT } from "@/lib/use-t";
 
@@ -68,6 +69,12 @@ export interface DataTableProps<T extends object> {
    * Persistence key: `dny-crm-columns:{id}`. Nested/detail tables should omit this.
    */
   columnManagerKey?: string;
+  remote?: {
+    loaded: number;
+    total: number;
+    onLoadMore: () => void;
+    loading?: boolean;
+  };
 }
 
 const DEFAULT_PAGINATION: { pageSize: number; showSizeChanger: boolean } = {
@@ -106,6 +113,7 @@ export function DataTable<T extends object>({
   bulkToolbar,
   padded = true,
   columnManagerKey,
+  remote,
 }: DataTableProps<T>) {
   const t = useT();
   const [managerOpen, setManagerOpen] = useState(false);
@@ -213,6 +221,14 @@ export function DataTable<T extends object>({
       ) : null}
       {bulkToolbar}
       {padded ? <div style={{ padding: 16 }}>{table}</div> : table}
+      {remote ? (
+        <RemoteListStatus
+          loaded={remote.loaded}
+          total={remote.total}
+          onLoadMore={remote.onLoadMore}
+          loading={remote.loading}
+        />
+      ) : null}
       {columnManagerKey ? (
         <ColumnManagerDrawer
           open={managerOpen}

@@ -1,9 +1,15 @@
-import { fetchAllPages, unwrapList } from "@/lib/http/paging";
+import { CATALOG_PAGE_SIZE, LIST_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
 import type { AppUser, Customer, Ctv, Order, OrderExpense, PaymentRecord, Service, VatInvoice } from "@/lib/types";
 import type { AuthUser } from "@/modules/auth/api";
 import { collaboratorsApi } from "@/modules/collaborators/api";
 import { mapApiCollaboratorToUi } from "@/modules/collaborators/map-to-ui";
-import { configApi, REMINDER_CONFIG_KEY } from "@/modules/config/api";
+import {
+  configApi,
+  CUSTOMER_STATUS_CATALOG_KEY,
+  ORDER_STAGES_CONFIG_KEY,
+  PAGE_PERMISSIONS_CONFIG_KEY,
+  REMINDER_CONFIG_KEY,
+} from "@/modules/config/api";
 import { contractsApi } from "@/modules/contracts/api";
 import { customersApi } from "@/modules/customers/api";
 import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
@@ -22,18 +28,21 @@ import { mapApiServiceToUi } from "@/modules/services/map-to-ui";
 import { vatApi } from "@/modules/vat/api";
 import { mapApiVatToUi } from "@/modules/vat/map-to-ui";
 
-export type RefreshScope =
-  | "all"
-  | "core"
-  | "deferred"
-  | "users"
-  | "customers"
-  | "services"
-  | "orders"
-  | "payments"
-  | "expenses"
-  | "vat"
-  | "notifications";
+import type { RefreshScope } from "@/lib/route-data-scopes";
+
+export type { RefreshScope } from "@/lib/route-data-scopes";
+export type ListSliceMeta = {
+  total: number;
+  page: number;
+  pageSize: number;
+  loaded: number;
+};
+
+export type ApplyRemoteOptions = {
+  page?: number;
+  append?: boolean;
+};
+
 
 export type ApiDataSnapshot = {
   users: AppUser[];
@@ -41,6 +50,9 @@ export type ApiDataSnapshot = {
   services: Service[];
   ctvs: Ctv[];
   orders: Order[];
+  payments: PaymentRecord[];
+  expenses: OrderExpense[];
+  invoices: VatInvoice[];
 };
 
 export type ApiDataApplier = {
@@ -55,6 +67,10 @@ export type ApiDataApplier = {
   replaceInvoices: (items: VatInvoice[]) => void;
   replaceNotifications: (items: ReturnType<typeof mapApiNotificationToUi>[]) => void;
   hydrateConfig: (next: { vatIssueWarnDays: number }) => void;
+  hydrateOrderStages: (raw: unknown | null) => void;
+  hydrateCustomerStatuses: (raw: unknown | null) => void;
+  hydratePagePermissions: (raw: unknown | null) => void;
+  setListMeta: (scope: RefreshScope, meta: ListSliceMeta) => void;
 };
 
 async function settled<T>(promise: Promise<T>, fallback: T): Promise<T> {
@@ -82,7 +98,6 @@ function mergeCustomerLocal(remote: Customer, local?: Customer): Customer {
   return {
     ...remote,
     address: local.address ?? remote.address,
-    status: local.status ?? remote.status,
     usedServiceIds: local.usedServiceIds?.length ? local.usedServiceIds : remote.usedServiceIds,
     customFields: { ...remote.customFields, ...local.customFields },
   };
@@ -104,23 +119,33 @@ function mergeOrderLocal(remote: Order, local?: Order): Order {
   };
 }
 
+function mergeById<T extends { id: string }>(prev: T[], next: T[]): T[] {
+  const map = new Map(prev.map((item) => [item.id, item]));
+  for (const item of next) map.set(item.id, item);
+  return [...map.values()];
+}
+
 export async function applyRemoteData(
   applier: ApiDataApplier,
   sessionUser: AuthUser | null | undefined,
   scopesInput: RefreshScope | RefreshScope[],
   getSnapshot: () => ApiDataSnapshot,
+  options: ApplyRemoteOptions = {},
 ): Promise<void> {
   const scopes = new Set(Array.isArray(scopesInput) ? scopesInput : [scopesInput]);
   const core = wantsCore(scopes);
-  const deferred = wantsDeferred(scopes);
+  const page = Math.max(1, options.page ?? 1);
+  const append = Boolean(options.append) && page > 1;
+  const listSize = LIST_PAGE_SIZE;
+  const catalogSize = CATALOG_PAGE_SIZE;
   const loadUsers = core || wants(scopes, "users");
-  const loadCustomers = core || wants(scopes, "customers");
+  const loadCustomers = wants(scopes, "customers");
   const loadServices = core || wants(scopes, "services");
-  const loadOrders = core || wants(scopes, "orders") || wants(scopes, "payments");
-  const loadExpenses = deferred || wants(scopes, "expenses");
-  const loadVat = deferred || wants(scopes, "vat");
-  const loadNotifs = deferred || wants(scopes, "notifications");
-  const loadConfig = deferred;
+  const loadOrders = wants(scopes, "orders") || wants(scopes, "payments");
+  const loadExpenses = wants(scopes, "expenses") || wantsDeferred(scopes);
+  const loadVat = wants(scopes, "vat") || wantsDeferred(scopes);
+  const loadNotifs = core || wants(scopes, "notifications") || wantsDeferred(scopes);
+  const loadConfig = core;
 
   const [
     apiUsers,
@@ -137,37 +162,37 @@ export async function applyRemoteData(
     apiRoles,
   ] = await Promise.all([
     loadUsers
-      ? settled(fetchAllPages((page, pageSize) => identityAdminApi.listUsers({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => identityAdminApi.listUsers({ page: p, pageSize: s }), page, catalogSize), null)
       : Promise.resolve(null),
     loadCustomers
-      ? settled(fetchAllPages((page, pageSize) => customersApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => customersApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadServices
-      ? settled(fetchAllPages((page, pageSize) => servicesApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => servicesApi.list({ page: p, pageSize: s }), page, catalogSize), null)
       : Promise.resolve(null),
     loadOrders
-      ? settled(fetchAllPages((page, pageSize) => ordersApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => ordersApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadOrders
-      ? settled(fetchAllPages((page, pageSize) => contractsApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => contractsApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadOrders
-      ? settled(fetchAllPages((page, pageSize) => collaboratorsApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => collaboratorsApi.list({ page: p, pageSize: s }), 1, catalogSize), null)
       : Promise.resolve(null),
     loadOrders
-      ? settled(fetchAllPages((page, pageSize) => paymentsApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => paymentsApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadExpenses
-      ? settled(fetchAllPages((page, pageSize) => expensesApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => expensesApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadVat
-      ? settled(fetchAllPages((page, pageSize) => vatApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => vatApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadNotifs
-      ? settled(fetchAllPages((page, pageSize) => notificationsApi.list({ page, pageSize })), [])
+      ? settled(fetchPage((p, s) => notificationsApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadConfig
-      ? settled(configApi.list(REMINDER_CONFIG_KEY), { items: [] as { valueJson?: unknown }[] })
+      ? settled(configApi.list(), { items: [] as { key?: string; valueJson?: unknown }[] })
       : Promise.resolve(null),
     loadUsers
       ? settled(identityAdminApi.listRoles().then(unwrapList), [])
@@ -178,11 +203,18 @@ export async function applyRemoteData(
 
   let uiUsers = current.users;
   if (apiUsers) {
-    uiUsers = apiUsers.map(mapIdentityUserToUi);
+    const mapped = apiUsers.items.map(mapIdentityUserToUi);
+    uiUsers = append ? mergeById(current.users, mapped) : mapped;
     if (sessionUser && !uiUsers.some((u) => u.id === sessionUser.id)) {
       uiUsers.unshift(mapAuthUserToUi(sessionUser));
     }
     applier.replaceUsers(uiUsers, sessionUser?.id);
+    applier.setListMeta("users", {
+      total: apiUsers.total,
+      page: apiUsers.page,
+      pageSize: apiUsers.pageSize,
+      loaded: uiUsers.length,
+    });
   }
   if (apiRoles) {
     applier.mergeRemoteRoles(apiRoles.map(mapIdentityRoleToUi));
@@ -191,19 +223,34 @@ export async function applyRemoteData(
   let customers = current.customers;
   if (apiCustomers) {
     const localById = new Map(current.customers.map((c) => [c.id, c]));
-    customers = apiCustomers.map((c) => mergeCustomerLocal(mapApiCustomerToUi(c), localById.get(c.id)));
+    const mapped = apiCustomers.items.map((c) => mergeCustomerLocal(mapApiCustomerToUi(c), localById.get(c.id)));
+    customers = append ? mergeById(current.customers, mapped) : mapped;
     applier.replaceCustomers(customers);
+    applier.setListMeta("customers", {
+      total: apiCustomers.total,
+      page: apiCustomers.page,
+      pageSize: apiCustomers.pageSize,
+      loaded: customers.length,
+    });
   }
 
   let services = current.services;
   if (apiServices) {
-    services = apiServices.map(mapApiServiceToUi);
+    const mapped = apiServices.items.map(mapApiServiceToUi);
+    services = append ? mergeById(current.services, mapped) : mapped;
     applier.replaceServices(services);
+    applier.setListMeta("services", {
+      total: apiServices.total,
+      page: apiServices.page,
+      pageSize: apiServices.pageSize,
+      loaded: services.length,
+    });
   }
 
   let ctvs = current.ctvs;
   if (apiCollaborators) {
-    ctvs = apiCollaborators.map(mapApiCollaboratorToUi);
+    const mapped = apiCollaborators.items.map(mapApiCollaboratorToUi);
+    ctvs = append ? mergeById(current.ctvs, mapped) : mapped;
     applier.replaceCtvs(ctvs);
   }
 
@@ -214,12 +261,12 @@ export async function applyRemoteData(
 
   let orders = current.orders;
   if (apiOrders) {
-    const contractById = new Map((apiContracts ?? []).map((c) => [c.id, c]));
+    const contractById = new Map((apiContracts?.items ?? []).map((c) => [c.id, c]));
     const localById = new Map(current.orders.map((o) => [o.id, o]));
-    orders = apiOrders.map((o) => {
+    const mapped = apiOrders.items.map((o) => {
       const contract = contractById.get(o.contractId);
       const contractNumber = contract ? Number(contract.contractNumber) : undefined;
-      const mapped = mapApiOrderToUi(o, {
+      const mappedOrder = mapApiOrderToUi(o, {
         customerName: customerName.get(o.customerId),
         serviceName: serviceName.get(o.serviceId),
         assignedUserName: userName.get(o.assignedUserId),
@@ -228,41 +275,80 @@ export async function applyRemoteData(
         ctvName: o.collaboratorId ? ctvName.get(o.collaboratorId) : undefined,
         contractNumber: Number.isFinite(contractNumber) ? contractNumber : undefined,
       });
-      return mergeOrderLocal(mapped, localById.get(o.id));
+      return mergeOrderLocal(mappedOrder, localById.get(o.id));
     });
+    orders = append ? mergeById(current.orders, mapped) : mapped;
     applier.replaceOrders(orders);
-    applier.replacePayments(mapPaymentsToRecords(orders, apiPayments ?? []));
+    applier.setListMeta("orders", {
+      total: apiOrders.total,
+      page: apiOrders.page,
+      pageSize: apiOrders.pageSize,
+      loaded: orders.length,
+    });
+    const paymentRows = apiPayments?.items ?? [];
+    const paymentRecords = mapPaymentsToRecords(orders, paymentRows);
+    applier.replacePayments(append ? mergeById(current.payments, paymentRecords) : paymentRecords);
+    if (apiPayments) {
+      applier.setListMeta("payments", {
+        total: apiPayments.total,
+        page: apiPayments.page,
+        pageSize: apiPayments.pageSize,
+        loaded: append ? mergeById(current.payments, paymentRecords).length : paymentRecords.length,
+      });
+    }
   }
 
   const orderNumber = new Map(orders.map((o) => [o.id, o.orderNumber]));
   if (apiExpenses) {
-    applier.replaceExpenses(
-      apiExpenses.map((e) =>
-        mapApiExpenseToUi(e, orderNumber.get(e.orderId), {
-          requestedByName: userName.get(e.requestedByUserId),
-          reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
-        }),
-      ),
-    );
-  }
-  if (apiVat) {
-    applier.replaceInvoices(
-      apiVat.map((v) => {
-        const order = orders.find((o) => o.id === v.orderId);
-        return mapApiVatToUi(v, order?.orderNumber, order?.contractNumber);
+    const mapped = apiExpenses.items.map((e) =>
+      mapApiExpenseToUi(e, orderNumber.get(e.orderId), {
+        requestedByName: userName.get(e.requestedByUserId),
+        reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
       }),
     );
+    const expenses = append ? mergeById(current.expenses, mapped) : mapped;
+    applier.replaceExpenses(expenses);
+    applier.setListMeta("expenses", {
+      total: apiExpenses.total,
+      page: apiExpenses.page,
+      pageSize: apiExpenses.pageSize,
+      loaded: expenses.length,
+    });
+  }
+  if (apiVat) {
+    const mapped = apiVat.items.map((v) => {
+      const order = orders.find((o) => o.id === v.orderId);
+      return mapApiVatToUi(v, order?.orderNumber, order?.contractNumber);
+    });
+    applier.replaceInvoices(append ? mergeById(current.invoices, mapped) : mapped);
+    applier.setListMeta("vat", {
+      total: apiVat.total,
+      page: apiVat.page,
+      pageSize: apiVat.pageSize,
+      loaded: mapped.length,
+    });
   }
   if (apiNotifs) {
-    applier.replaceNotifications(apiNotifs.map(mapApiNotificationToUi));
+    const mapped = apiNotifs.items.map(mapApiNotificationToUi);
+    applier.replaceNotifications(mapped);
+    applier.setListMeta("notifications", {
+      total: apiNotifs.total,
+      page: apiNotifs.page,
+      pageSize: apiNotifs.pageSize,
+      loaded: mapped.length,
+    });
   }
   if (apiConfig) {
-    const row = apiConfig.items?.[0];
-    const json = row?.valueJson;
-    if (json && typeof json === "object" && json !== null && "vatIssueWarnDays" in json) {
-      const days = Number((json as { vatIssueWarnDays?: unknown }).vatIssueWarnDays);
+    const items = apiConfig.items ?? [];
+    const byKey = new Map(items.map((row) => [row.key, row.valueJson]));
+    const reminders = byKey.get(REMINDER_CONFIG_KEY);
+    if (reminders && typeof reminders === "object" && reminders !== null && "vatIssueWarnDays" in reminders) {
+      const days = Number((reminders as { vatIssueWarnDays?: unknown }).vatIssueWarnDays);
       if (Number.isFinite(days)) applier.hydrateConfig({ vatIssueWarnDays: days });
     }
+    applier.hydrateOrderStages(byKey.get(ORDER_STAGES_CONFIG_KEY) ?? null);
+    applier.hydrateCustomerStatuses(byKey.get(CUSTOMER_STATUS_CATALOG_KEY) ?? null);
+    applier.hydratePagePermissions(byKey.get(PAGE_PERMISSIONS_CONFIG_KEY) ?? null);
   }
 }
 
@@ -275,9 +361,9 @@ export async function reloadOrderFinance(args: {
   const { order, users, upsertPayment, mergeExpensesForOrder } = args;
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const [payments, schedule, expenses] = await Promise.all([
-    settled(fetchAllPages((page, pageSize) => paymentsApi.list({ page, pageSize, orderId: order.id })), []),
+    settled(fetchPage((page, pageSize) => paymentsApi.list({ page, pageSize, orderId: order.id }), 1, CATALOG_PAGE_SIZE).then((r) => r.items), []),
     settled(ordersApi.listSchedule(order.id).then(unwrapSchedule), []),
-    settled(fetchAllPages((page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id })), []),
+    settled(fetchPage((page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id }), 1, CATALOG_PAGE_SIZE).then((r) => r.items), []),
   ]);
   const [record] = mapPaymentsToRecords([order], payments, new Map([[order.id, schedule]]));
   if (record) upsertPayment(record);

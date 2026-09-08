@@ -160,7 +160,13 @@ export function useExpenses() {
   return ctx;
 }
 
-/** Duyệt đề nghị theo ma trận phân quyền (Sửa trên trang Đề nghị thanh toán). */
-export function canReviewExpense(hasExpenseApprovePermission: boolean): boolean {
-  return Boolean(hasExpenseApprovePermission);
+/** Duyệt đề nghị: vừa có quyền trang, vừa là người được chọn trên đơn. */
+export function canReviewExpense(args: {
+  hasExpenseApprovePermission: boolean;
+  currentUserId?: string;
+  reviewerId?: string;
+}): boolean {
+  if (!args.hasExpenseApprovePermission || !args.currentUserId) return false;
+  if (!args.reviewerId) return false;
+  return args.reviewerId === args.currentUserId;
 }

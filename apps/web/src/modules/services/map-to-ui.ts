@@ -30,6 +30,7 @@ export function mapUiServiceToApi(input: {
   unitPrice?: number;
   processingDays?: number;
   licenseExpiryWarnMonths?: number;
+  status?: "active" | "inactive";
   customFields?: Record<string, unknown>;
 }): CreateServiceBody {
   return {
@@ -38,7 +39,7 @@ export function mapUiServiceToApi(input: {
     category: input.category || undefined,
     unitPrice: input.unitPrice,
     processingDays: input.processingDays,
-    status: "ACTIVE",
+    status: input.status === "inactive" ? "ARCHIVED" : "ACTIVE",
     customFields: {
       ...(input.customFields ?? {}),
       ...(input.licenseExpiryWarnMonths != null

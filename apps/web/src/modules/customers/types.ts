@@ -10,6 +10,8 @@ export type ApiCustomer = {
   phone: string | null;
   email: string | null;
   taxId: string | null;
+  /** Catalog key from UI (active / lead / archived / custom). Optional until BE persists it. */
+  status?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,6 +32,7 @@ export type CreateCustomerBody = {
   email?: string;
   taxId?: string;
   ownerId?: string;
+  status?: string;
 };
 
 export type UpdateCustomerBody = Partial<CreateCustomerBody>;

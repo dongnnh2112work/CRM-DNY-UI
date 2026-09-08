@@ -1,6 +1,11 @@
-import type { Customer } from "@/lib/types";
+import type { Customer, CustomerStatus } from "@/lib/types";
 import type { ApiCustomer, CreateCustomerBody, UpdateCustomerBody } from "@/modules/customers/types";
 import { isUuid } from "@/lib/http/message";
+
+function mapCustomerStatus(raw: string | null | undefined): CustomerStatus {
+  const key = (raw ?? "").trim().toLowerCase();
+  return (key || "active") as CustomerStatus;
+}
 
 export function mapApiCustomerToUi(c: ApiCustomer): Customer {
   return {
@@ -11,7 +16,7 @@ export function mapApiCustomerToUi(c: ApiCustomer): Customer {
     company: c.type === "COMPANY" ? c.legalName : undefined,
     taxCode: c.taxId ?? undefined,
     owner: c.ownerId,
-    status: "active",
+    status: mapCustomerStatus(c.status),
     createdAt: c.createdAt.slice(0, 10),
     usedServiceIds: [],
     customFields: c.industryOrField ? { industry: c.industryOrField } : {},
@@ -25,6 +30,7 @@ export function mapUiCustomerToApi(input: {
   company?: string;
   taxCode?: string;
   owner?: string;
+  status?: string;
   customFields?: Record<string, unknown>;
 }): CreateCustomerBody {
   const company = input.company?.trim();
@@ -38,6 +44,7 @@ export function mapUiCustomerToApi(input: {
     email: input.email || undefined,
     taxId: input.taxCode || undefined,
     industryOrField: industry,
+    status: input.status?.trim() || undefined,
   };
   if (isUuid(input.owner)) body.ownerId = input.owner;
   return body;
@@ -51,6 +58,7 @@ export function mapUiCustomerPatchToApi(
     company: string;
     taxCode: string;
     owner: string;
+    status: string;
     customFields: Record<string, unknown>;
   }>,
 ): UpdateCustomerBody {
@@ -69,6 +77,7 @@ export function mapUiCustomerPatchToApi(
   if (input.phone !== undefined) patch.phone = input.phone || undefined;
   if (input.email !== undefined) patch.email = input.email || undefined;
   if (input.taxCode !== undefined) patch.taxId = input.taxCode || undefined;
+  if (input.status !== undefined) patch.status = input.status;
   if (input.customFields && typeof input.customFields.industry === "string") {
     patch.industryOrField = input.customFields.industry;
   }

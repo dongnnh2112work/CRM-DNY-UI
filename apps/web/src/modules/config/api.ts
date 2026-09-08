@@ -22,3 +22,19 @@ export const configApi = {
 };
 
 export const REMINDER_CONFIG_KEY = "crm.reminders";
+export const ORDER_STAGES_CONFIG_KEY = "crm.orderStages";
+export const CUSTOMER_STATUS_CATALOG_KEY = "crm.customerStatusCatalog";
+export const PAGE_PERMISSIONS_CONFIG_KEY = "crm.pagePermissions";
+
+const patchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function patchConfigDebounced(key: string, valueJson: unknown, delayMs = 400) {
+  const prev = patchTimers.get(key);
+  if (prev) clearTimeout(prev);
+  patchTimers.set(
+    key,
+    setTimeout(() => {
+      void configApi.patch(key, valueJson).catch(() => undefined);
+    }, delayMs),
+  );
+}

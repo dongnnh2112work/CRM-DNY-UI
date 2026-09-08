@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { expenseReviewedDraft } from "@/lib/notification-targets";
-import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
+import { expenseProjectLabel, useExpenses, canReviewExpense } from "@/lib/expenses-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import { matchesTableQuery } from "@/lib/table-search";
@@ -21,6 +21,7 @@ import { useUsers } from "@/lib/users-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { expensesApi } from "@/modules/expenses/api";
 import { useT } from "@/lib/use-t";
+import { useRemoteList } from "@/components/api-hydrator";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -33,6 +34,7 @@ export default function ExpenseApprovalsPage() {
   const { expenses, reviewExpense } = useExpenses();
   const { addNotifications } = useNotifications();
   const { getById: getOrder } = useOrders();
+  const expensesRemote = useRemoteList("expenses");
   const [statusFilter, setStatusFilter] = useState<OrderExpenseStatus | "all">("pending");
   const [query, setQuery] = useState("");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -44,7 +46,7 @@ export default function ExpenseApprovalsPage() {
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canView = Boolean(perms?.expense_approvals?.view);
-  const canApprove = Boolean(perms?.expense_approvals?.edit);
+  const canApprovePage = Boolean(perms?.expense_approvals?.edit);
 
   const filtered = useMemo(() => {
     let list = [...expenses];
@@ -133,7 +135,16 @@ export default function ExpenseApprovalsPage() {
               "—"
             );
           }
-          if (!canApprove || !currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
+          if (!currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
+          const order = r.orderId ? getOrder(r.orderId) : undefined;
+          const canApproveRow = canReviewExpense({
+            hasExpenseApprovePermission: canApprovePage,
+            currentUserId: currentUser.id,
+            reviewerId: order?.reviewerId,
+          });
+          if (!canApproveRow) {
+            return <Tag>{t("expense.onlyReviewer")}</Tag>;
+          }
           return (
             <Space>
               <Popconfirm
@@ -194,7 +205,7 @@ export default function ExpenseApprovalsPage() {
         },
       },
     ],
-    [t, canApprove, currentUser, reviewExpense, addNotifications, getOrder, message],
+    [t, canApprovePage, currentUser, reviewExpense, addNotifications, getOrder, message],
   );
 
   if (!currentUser || !canView) {
@@ -239,6 +250,7 @@ export default function ExpenseApprovalsPage() {
         columns={columns}
         dataSource={filtered}
         columnManagerKey="expense-approvals"
+        remote={expensesRemote}
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}

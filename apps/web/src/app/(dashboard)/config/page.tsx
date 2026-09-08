@@ -54,7 +54,7 @@ export default function ConfigPage() {
 
         <Card title={t("config.about")} size="small">
           <Typography.Text>DNY CRM</Typography.Text>
-          <Divider type="vertical" />
+          <Divider orientation="vertical" />
           <Typography.Text type="secondary">
             {t("config.version")} {APP_VERSION}
           </Typography.Text>
