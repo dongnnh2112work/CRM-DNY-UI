@@ -1,9 +1,14 @@
+import { isDevDebugEnabled } from "@/lib/dev-debug";
 import { ApiError } from "@/lib/http/errors";
 
 export function apiErrorMessage(err: unknown, fallback: string) {
-  if (err instanceof ApiError) return err.messages.filter(Boolean).join(" ") || fallback;
-  if (err instanceof Error && err.message) return err.message;
-  return fallback;
+  let raw = fallback;
+  if (err instanceof ApiError) raw = err.messages.filter(Boolean).join(" ") || fallback;
+  else if (err instanceof Error && err.message) raw = err.message;
+  if (isDevDebugEnabled() && err instanceof ApiError) {
+    return `[${err.statusCode}] ${raw}`;
+  }
+  return raw;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -17,6 +17,19 @@ export type IdentityRole = {
   name: string;
 };
 
+export const APPROVAL_ROLE_CODES = [
+  "SALES",
+  "MANAGER",
+  "LAWYER",
+  "LEGAL_ASSISTANT",
+  "ACCOUNTING",
+  "ADMIN",
+  "SUPER_ADMIN",
+  "COLLABORATOR",
+] as const;
+
+export type ApprovalRoleCode = (typeof APPROVAL_ROLE_CODES)[number];
+
 export const identityAdminApi = {
   listUsers(query: { page?: number; pageSize?: number; search?: string; status?: string } = {}) {
     const params = new URLSearchParams();

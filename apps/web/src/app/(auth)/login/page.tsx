@@ -5,12 +5,30 @@ import { Alert, App, Button, Divider, Form, Input, Typography, theme } from "ant
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageLoading } from "@/components/shared/page-loading";
+import { destinationForUser } from "@/lib/access-gate";
+import { isDevDebugEnabled } from "@/lib/dev-debug";
+import { consumeAuthNotice, type AuthNotice, type AuthNoticeKind } from "@/lib/http/auth-notice";
+import { classifyApiError, classifyOAuthError } from "@/lib/http/error-kind";
 import { ApiError } from "@/lib/http/errors";
-import { clearOAuthRedirectParams, clearRememberedOAuthError, readOAuthRedirectError } from "@/lib/http/oauth-redirect";
+import {
+  clearOAuthRedirectParams,
+  clearRememberedOAuthError,
+  readOAuthHashParams,
+  readOAuthRedirectError,
+} from "@/lib/http/oauth-redirect";
 import { useSession } from "@/lib/session/session-provider";
-import { accessGate } from "@/lib/access-gate";
 import { useT } from "@/lib/use-t";
 import { authApi } from "@/modules/auth/api";
+
+function noticeCopyKey(kind: AuthNoticeKind) {
+  if (kind === "oauth_denied") return "auth.oauthDenied" as const;
+  if (kind === "oauth_invalid") return "auth.callbackInvalid" as const;
+  if (kind === "blocked") return "auth.accountBlockedBody" as const;
+  if (kind === "unauthorized") return "auth.sessionExpired" as const;
+  if (kind === "network") return "auth.networkError" as const;
+  if (kind === "server") return "auth.serverError" as const;
+  return "auth.callbackError" as const;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,15 +39,32 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<AuthNotice | null>(null);
   const [hashReady, setHashReady] = useState(false);
 
   useEffect(() => {
     const apply = () => {
-      const fromRedirect = readOAuthRedirectError();
-      if (fromRedirect) {
-        setOauthError(fromRedirect);
+      const hash = readOAuthHashParams();
+      if (hash.accessToken && hash.refreshToken) {
+        window.location.replace(`/auth/callback${window.location.hash}${window.location.search}`);
+        return;
+      }
+      const stored = consumeAuthNotice();
+      if (hash.error) {
+        const oauthKind = classifyOAuthError(hash.error, hash.errorDescription);
+        const kind: AuthNoticeKind =
+          oauthKind === "oauth_denied" ? "oauth_denied" : oauthKind === "oauth_invalid" ? "oauth_invalid" : "oauth_failed";
+        setNotice({ kind, debugDetail: hash.errorDescription ?? hash.error ?? undefined });
         clearOAuthRedirectParams();
+        clearRememberedOAuthError();
+      } else if (stored) {
+        setNotice(stored);
+      } else {
+        const fromRedirect = readOAuthRedirectError();
+        if (fromRedirect) {
+          setNotice({ kind: "oauth_failed", debugDetail: fromRedirect });
+          clearOAuthRedirectParams();
+        }
       }
       setHashReady(true);
     };
@@ -39,15 +74,15 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!hashReady || oauthError) return;
-    if (status === "authenticated") {
-      router.replace(accessGate(user) === "ok" ? "/dashboard" : "/pending-approval");
+    if (!hashReady || notice) return;
+    if (status === "authenticated" && user) {
+      router.replace(destinationForUser(user));
     }
-  }, [hashReady, oauthError, status, router, user]);
+  }, [hashReady, notice, status, router, user]);
 
   const onGoogle = () => {
     clearRememberedOAuthError();
-    setOauthError(null);
+    setNotice(null);
     setGooglePending(true);
     authApi.loginWithGoogle();
   };
@@ -59,19 +94,37 @@ export default function LoginPage() {
       const session = await authApi.login(values.email, values.password);
       clearRememberedOAuthError();
       applySession(session);
-      router.replace(accessGate(session.user) === "ok" ? "/dashboard" : "/pending-approval");
+      router.replace(destinationForUser(session.user));
     } catch (err) {
-      const msg = err instanceof ApiError ? err.messages.join(" ") : t("auth.loginFailed");
-      setFormError(msg);
+      const kind = classifyApiError(err);
+      const msg =
+        kind === "blocked"
+          ? t("auth.accountBlockedBody")
+          : kind === "unauthorized"
+            ? t("auth.loginFailed")
+            : kind === "network"
+              ? t("auth.networkError")
+              : kind === "server"
+                ? t("auth.serverError")
+                : err instanceof ApiError
+                  ? err.messages.join(" ")
+                  : t("auth.loginFailed");
+      setFormError(isDevDebugEnabled() && err instanceof ApiError ? `[${err.statusCode}] ${msg}` : msg);
       message.error(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!hashReady || (status === "loading" && !oauthError) || (status === "authenticated" && !oauthError)) {
+  if (!hashReady || status === "loading" || (status === "authenticated" && !notice)) {
     return <PageLoading />;
   }
+
+  const oauthDescription = notice
+    ? isDevDebugEnabled() && notice.debugDetail
+      ? `${t(noticeCopyKey(notice.kind))}\n${notice.debugDetail}`
+      : t(noticeCopyKey(notice.kind))
+    : null;
 
   return (
     <div
@@ -101,13 +154,13 @@ export default function LoginPage() {
           <Typography.Text type="secondary">{t("auth.tagline")}</Typography.Text>
         </div>
 
-        {oauthError || formError ? (
+        {notice || formError ? (
           <Alert
             type="error"
             showIcon
-            title={oauthError ? t("auth.callbackError") : undefined}
-            description={oauthError ?? formError}
-            style={{ marginBottom: 16 }}
+            title={notice ? t("auth.callbackError") : undefined}
+            description={oauthDescription ?? formError}
+            style={{ marginBottom: 16, whiteSpace: "pre-wrap" }}
           />
         ) : null}
 
