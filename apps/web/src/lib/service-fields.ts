@@ -45,9 +45,9 @@ export function splitServiceFormValues(
 ): {
   core: {
     name: string;
-    code: string;
+    code?: string;
     category: string;
-    unitPrice: number;
+    unitPrice?: number;
     processingDays: number;
     licenseExpiryWarnMonths: number;
     status?: ServiceStatus;
@@ -65,9 +65,7 @@ export function splitServiceFormValues(
   return {
     core: {
       name: String(values.name ?? ""),
-      code: String(values.code ?? ""),
       category: String(values.category ?? ""),
-      unitPrice: Number(values.unitPrice),
       processingDays: Number(values.processingDays),
       licenseExpiryWarnMonths: licenseWarnMonthsOf({
         licenseExpiryWarnMonths: Number(values.licenseExpiryWarnMonths),

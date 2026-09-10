@@ -1,9 +1,10 @@
 "use client";
 
-import { Breadcrumb, Button, Input, theme } from "antd";
+import { Breadcrumb, Button, DatePicker, Input, theme } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import type { DateRangeValue } from "@/lib/date-range";
 import { useT } from "@/lib/use-t";
 
 export function PageHeader({
@@ -11,6 +12,9 @@ export function PageHeader({
   searchPlaceholder,
   onSearch,
   searchValue,
+  dateRange,
+  onDateRangeChange,
+  datePicker = "date",
   primaryAction,
   children,
 }: {
@@ -18,6 +22,9 @@ export function PageHeader({
   searchPlaceholder?: string;
   onSearch?: (v: string) => void;
   searchValue?: string;
+  dateRange?: DateRangeValue;
+  onDateRangeChange?: (value: DateRangeValue) => void;
+  datePicker?: "date" | "month";
   /** Right-aligned primary CTA — use href (navigate) or onClick (e.g. open modal). */
   primaryAction?: { label: string; href?: string; onClick?: () => void };
   children?: ReactNode;
@@ -48,6 +55,15 @@ export function PageHeader({
             onChange={(e) => onSearch(e.target.value)}
           />
         )}
+        {onDateRangeChange ? (
+          <DatePicker.RangePicker
+            picker={datePicker}
+            allowEmpty={[true, true]}
+            value={dateRange}
+            onChange={(next) => onDateRangeChange(next)}
+            placeholder={[t("common.dateFrom"), t("common.dateTo")]}
+          />
+        ) : null}
         {children}
         <div style={{ flex: 1 }} />
         {primaryAction && (

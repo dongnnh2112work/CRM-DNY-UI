@@ -156,6 +156,8 @@ export function slugifyRoleKey(label: string): string {
 
 export type CustomerStatus = string;
 
+export type OrderChannel = "direct" | "website" | "referral" | "ctv";
+
 export interface Customer {
   id: string;
   name: string;
@@ -170,6 +172,8 @@ export interface Customer {
   /** Dịch vụ ghi nhận thủ công (union với dịch vụ từ đơn hàng khi hiển thị). */
   usedServiceIds?: string[];
   customFields: Record<string, unknown>;
+  /** Marketing / acquisition channel — persisted via industryOrField pack. */
+  channel?: OrderChannel;
 }
 
 /* ── Service ────────────────────────────────────────────────────── */
@@ -187,6 +191,7 @@ export interface Service {
   licenseExpiryWarnMonths?: number;
   status: ServiceStatus;
   customFields: Record<string, unknown>;
+  createdAt?: string;
 }
 
 /* ── Order ──────────────────────────────────────────────────────── */
@@ -213,8 +218,6 @@ export const ORDER_STAGE_CHART_COLORS: Record<string, string> = {
   completed: ds.accentGreen,
   cancelled: ds.inkFaint,
 };
-
-export type OrderChannel = "direct" | "website" | "referral" | "ctv";
 
 export type AttachmentType = "pdf" | "word" | "excel" | "other";
 

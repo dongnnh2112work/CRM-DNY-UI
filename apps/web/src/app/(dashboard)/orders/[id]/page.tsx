@@ -31,7 +31,6 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { useCustomers } from "@/lib/customers-store";
-import { useCtvs } from "@/lib/ctvs-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { ds } from "@/lib/design-tokens";
 import { taskAssignedDraft } from "@/lib/notification-targets";
@@ -59,12 +58,6 @@ import type { Order, OrderStage } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { orderHasContractNumber } from "@/lib/vat-helpers";
 import { useT } from "@/lib/use-t";
-import { hasMessageKey, type MessageKey } from "@/lib/i18n";
-
-function channelLabel(t: (key: MessageKey) => string, channel: string) {
-  const key = `channel.${channel}` as MessageKey;
-  return hasMessageKey(key) ? t(key) : channel;
-}
 
 export default function OrderDetailPage() {
   const t = useT();
@@ -79,14 +72,12 @@ export default function OrderDetailPage() {
   const { getByOrderId } = usePayments();
   const { customers } = useCustomers();
   const { services } = useServices();
-  const { ctvs } = useCtvs();
   const order = getById(id);
   const payment = order ? getByOrderId(order.id) : undefined;
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
   const needsVatEdit = Form.useWatch("needsVat", form) as boolean | undefined;
-  const channelEdit = Form.useWatch("channel", form) as string | undefined;
 
   const suggestedHd = useMemo(
     () => nextContractNumber(orders.filter((o) => o.id !== id)),
@@ -98,11 +89,8 @@ export default function OrderDetailPage() {
     form.setFieldsValue({
       customerId: order.customerId,
       serviceId: order.serviceId,
-      channel: order.channel,
-      ctvId: order.ctvId,
       value: order.value,
       commissionPercent: order.commissionPercent,
-      ctvPrice: order.ctvPrice,
       assignedUserId: order.assignedUserId,
       submitterId: order.submitterId,
       deadline: order.deadline ? dayjs(order.deadline) : null,
@@ -281,16 +269,11 @@ export default function OrderDetailPage() {
               "—"
             )}
           </Descriptions.Item>
-          <Descriptions.Item label={t("common.channel")}>{channelLabel(t, order.channel)}</Descriptions.Item>
           <Descriptions.Item label={t("order.issueVat")}>{order.needsVat ? t("common.yes") : t("common.no")}</Descriptions.Item>
           <Descriptions.Item label={t("common.contractNo")}>
             {order.contractNumber != null ? order.contractNumber : "—"}
           </Descriptions.Item>
           <Descriptions.Item label={t("common.deadline")}>{order.deadline ?? "—"}</Descriptions.Item>
-          {order.ctvName && <Descriptions.Item label={t("common.ctv")}>{order.ctvName}</Descriptions.Item>}
-          {order.channel === "ctv" && order.ctvPrice != null && (
-            <Descriptions.Item label={t("common.ctvPrice")}>{formatVndDisplay(order.ctvPrice)}</Descriptions.Item>
-          )}
           <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
           <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
           <Descriptions.Item label={t("common.createdAt")}>{order.createdAt}</Descriptions.Item>
@@ -358,7 +341,6 @@ export default function OrderDetailPage() {
               const service = services.find((s) => s.id === values.serviceId);
               const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
               const submitter = activeUsers.find((u) => u.id === values.submitterId);
-              const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
               if (!customer || !service || !assigned || !submitter) {
                 message.error(t("common.requiredMissing"));
                 return;
@@ -383,8 +365,6 @@ export default function OrderDetailPage() {
                 mapUiOrderToUpdateApi({
                   value,
                   vatRate,
-                  channel: values.channel,
-                  collaboratorId: values.channel === "ctv" ? (ctv?.id ?? null) : null,
                   notes: values.notes,
                 }),
               );
@@ -403,15 +383,11 @@ export default function OrderDetailPage() {
                 customerName: customer.name,
                 serviceId: service.id,
                 serviceName: service.name,
-                channel: values.channel,
-                ctvId: values.channel === "ctv" ? ctv?.id : undefined,
-                ctvName: values.channel === "ctv" ? ctv?.name : undefined,
                 value,
                 commissionPercent:
                   values.commissionPercent != null && values.commissionPercent !== ""
                     ? Number(values.commissionPercent)
                     : undefined,
-                ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
                 assignedUserId: assigned.id,
                 assignedUserName: assigned.name,
                 submitterId: submitter.id,
@@ -456,36 +432,15 @@ export default function OrderDetailPage() {
               onChange={(id) => {
                 const svc = services.find((s) => s.id === id);
                 if (!svc) return;
-                form.setFieldValue("value", svc.unitPrice);
                 const from = order.createdAt ? new Date(order.createdAt) : new Date();
                 form.setFieldValue("deadline", dayjs(deadlineFromService(svc.processingDays, from)));
               }}
               options={services.map((s) => ({
                 value: s.id,
-                label: `${s.name} — ${formatVndDisplay(s.unitPrice)}`,
+                label: s.name,
               }))}
             />
           </Form.Item>
-          <Form.Item name="channel" label={t("common.channel")} rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: "direct", label: t("channel.direct") },
-                { value: "website", label: t("channel.website") },
-                { value: "referral", label: t("channel.referral") },
-                { value: "ctv", label: t("channel.ctv") },
-              ]}
-            />
-          </Form.Item>
-          {channelEdit === "ctv" ? (
-            <>
-              <Form.Item name="ctvId" label={t("common.ctv")} rules={[{ required: true }]}>
-                <Select options={ctvs.map((c) => ({ value: c.id, label: c.name }))} />
-              </Form.Item>
-              <Form.Item name="ctvPrice" label={t("common.ctvPrice")} rules={[{ required: true }]}>
-                <InputNumber {...vndInputProps} />
-              </Form.Item>
-            </>
-          ) : null}
           <Form.Item name="value" label={t("common.listPrice")} rules={[{ required: true }]}>
             <InputNumber {...vndInputProps} />
           </Form.Item>

@@ -2,13 +2,14 @@ import type { Order, OrderAttachment } from "@/lib/types";
 import { tt } from "@/lib/i18n";
 
 export const DEFAULT_LICENSE_WARN_MONTHS = 2;
+export const MAX_LICENSE_WARN_MONTHS = 24;
 
 export function licenseWarnMonthsOf(
   service?: { licenseExpiryWarnMonths?: number } | null,
 ): number {
   const n = service?.licenseExpiryWarnMonths;
   if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_LICENSE_WARN_MONTHS;
-  return Math.min(6, Math.max(1, Math.round(n)));
+  return Math.min(MAX_LICENSE_WARN_MONTHS, Math.max(1, Math.round(n)));
 }
 
 export function licenseWarnMonthsForOrder(

@@ -63,7 +63,7 @@ export function mapPaymentsToRecords(
       });
     }
 
-    const totalAmount = order.channel === "ctv" && order.ctvPrice != null ? order.ctvPrice : order.value;
+    const totalAmount = order.value;
     const paidAmount = installments.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amount, 0);
     const remaining = Math.max(0, totalAmount - paidAmount);
     let status: PaymentStatus = "unpaid";

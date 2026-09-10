@@ -13,7 +13,6 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
 } from "antd";
@@ -22,6 +21,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useReloadOrderFinance } from "@/components/api-hydrator";
+import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
@@ -29,7 +29,6 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
-import { tableIndexColumn } from "@/lib/table-index-column";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -63,7 +62,6 @@ export default function PaymentDetailPage() {
 
   const installmentColumns = useMemo(
     () => [
-      tableIndexColumn<PaymentInstallment>(),
       {
         title: t("common.amount"),
         dataIndex: "amount",
@@ -169,12 +167,15 @@ export default function PaymentDetailPage() {
         <Typography.Title level={5} style={{ fontSize: ds.fontSize.body }}>
           {t("payment.installmentsSection")}
         </Typography.Title>
-        <Table
+        <DataTable<PaymentInstallment>
           rowKey="id"
           size="small"
           dataSource={payment.installments}
           pagination={false}
-          locale={{ emptyText: t("payment.noInstallments") }}
+          padded={false}
+          dateFilterField="dueDate"
+          enableLocalSearch
+          emptyDescription={t("payment.noInstallments")}
           columns={installmentColumns}
         />
       </div>

@@ -7,9 +7,9 @@ import { useState } from "react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
+import { ReadMoreText } from "@/components/shared/read-more-text";
 import { ServiceForm } from "@/components/services/service-form";
 import { ds } from "@/lib/design-tokens";
-import { formatVndDisplay } from "@/lib/format-vnd";
 import { getServiceFormExtraFields } from "@/lib/service-fields";
 import { useServices } from "@/lib/services-store";
 import { useT } from "@/lib/use-t";
@@ -83,9 +83,7 @@ export default function ServiceDetailPage() {
               label: t("service.info"),
               children: (
                 <Descriptions bordered column={1} size="small" style={{ maxWidth: 560 }}>
-                  <Descriptions.Item label={t("common.code")}>{service.code}</Descriptions.Item>
                   <Descriptions.Item label={t("common.category")}>{service.category}</Descriptions.Item>
-                  <Descriptions.Item label={t("common.unitPrice")}>{formatVndDisplay(service.unitPrice)}</Descriptions.Item>
                   <Descriptions.Item label={t("common.processingTime")}>
                     {t("common.days", { n: service.processingDays })}
                   </Descriptions.Item>
@@ -102,7 +100,11 @@ export default function ServiceDetailPage() {
                           : String(raw);
                     return (
                       <Descriptions.Item key={def.key} label={def.label}>
-                        {display}
+                        {typeof display === "string" && display.length > 80 ? (
+                          <ReadMoreText text={display} />
+                        ) : (
+                          display
+                        )}
                       </Descriptions.Item>
                     );
                   })}

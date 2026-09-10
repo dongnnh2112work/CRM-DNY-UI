@@ -20,6 +20,7 @@ export function mapApiServiceToUi(s: ApiService): Service {
     }),
     status: s.status?.toUpperCase() === "ARCHIVED" ? "inactive" : "active",
     customFields,
+    createdAt: s.createdAt?.slice(0, 10),
   };
 }
 
@@ -33,11 +34,9 @@ export function mapUiServiceToApi(input: {
   status?: "active" | "inactive";
   customFields?: Record<string, unknown>;
 }): CreateServiceBody {
-  return {
+  const body: CreateServiceBody = {
     name: input.name,
-    code: input.code || undefined,
     category: input.category || undefined,
-    unitPrice: input.unitPrice,
     processingDays: input.processingDays,
     status: input.status === "inactive" ? "ARCHIVED" : "ACTIVE",
     customFields: {
@@ -47,4 +46,9 @@ export function mapUiServiceToApi(input: {
         : {}),
     },
   };
+  if (input.code?.trim()) body.code = input.code.trim();
+  if (typeof input.unitPrice === "number" && Number.isFinite(input.unitPrice) && input.unitPrice > 0) {
+    body.unitPrice = input.unitPrice;
+  }
+  return body;
 }

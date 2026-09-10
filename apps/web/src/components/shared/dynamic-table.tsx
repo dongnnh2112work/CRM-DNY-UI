@@ -16,7 +16,8 @@ import {
   type TableColumnsType,
 } from "antd";
 import { useEffect, useMemo, useRef, useState, type Key, type ReactNode } from "react";
-import { DataTable } from "@/components/shared/data-table";
+import { DataTable, type DataTableDateFilter } from "@/components/shared/data-table";
+import { ReadMoreText } from "@/components/shared/read-more-text";
 import { useManagedColumns } from "@/components/shared/column-manager-drawer";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
@@ -85,6 +86,13 @@ interface DynamicTableProps<T extends object> {
     onLoadMore: () => void;
     loading?: boolean;
   };
+  dateFilterField?: DataTableDateFilter<T>;
+  datePicker?: "date" | "month";
+  search?: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+  };
 }
 
 function defsEqual(a: FieldDefinition[], b: FieldDefinition[]) {
@@ -116,6 +124,9 @@ export function DynamicTable<T extends object>({
   columnOverrides,
   columnManagerKey,
   remote,
+  dateFilterField,
+  datePicker,
+  search,
 }: DynamicTableProps<T>) {
   const t = useT();
   const { message, modal } = App.useApp();
@@ -224,8 +235,15 @@ export function DynamicTable<T extends object>({
           if (def.type === "number" && typeof value === "number") {
             return isMoneyField(def) ? formatVndDisplay(value) : value.toLocaleString("vi-VN");
           }
-          if (Array.isArray(value)) return value.length ? value.map(String).join(", ") : "—";
-          return value != null && value !== "" ? String(value) : "—";
+          if (Array.isArray(value)) {
+            const joined = value.length ? value.map(String).join(", ") : "";
+            return joined ? <ReadMoreText text={joined} /> : "—";
+          }
+          if (value != null && value !== "") {
+            const text = String(value);
+            return def.type === "text" || text.length > 80 ? <ReadMoreText text={text} /> : text;
+          }
+          return "—";
         },
       };
     });
@@ -320,6 +338,9 @@ export function DynamicTable<T extends object>({
         onSelectedRowKeysChange={onSelectedRowKeysChange}
         bulkToolbar={bulkToolbar}
         remote={remote}
+        dateFilterField={dateFilterField}
+        datePicker={datePicker}
+        search={search}
         toolbar={
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 16px 0" }}>
             <Button icon={<SettingOutlined />} size="small" onClick={() => setDrawerOpen(true)}>

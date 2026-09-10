@@ -9,8 +9,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { useCustomers } from "@/lib/customers-store";
-import { useCtvs } from "@/lib/ctvs-store";
-import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { vndInputProps } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
@@ -39,25 +38,19 @@ function NewOrderPageContent() {
   const { message, modal } = App.useApp();
   const { services } = useServices();
   const { customers } = useCustomers();
-  const { ctvs, addJob } = useCtvs();
   const { orders, replaceOrders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
   const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
-  const channel = Form.useWatch("channel", form);
-  const serviceId = Form.useWatch("serviceId", form) as string | undefined;
   const needsVat = Form.useWatch("needsVat", form) as boolean | undefined;
 
   const suggestedHd = useMemo(() => nextContractNumber(orders), [orders]);
 
-  const selectedService = services.find((s) => s.id === serviceId);
-
   const onServiceChange = (id: string) => {
     const svc = services.find((s) => s.id === id);
     if (!svc) return;
-    form.setFieldValue("value", svc.unitPrice);
     form.setFieldValue("deadline", dayjs(deadlineFromService(svc.processingDays)));
   };
 
@@ -76,7 +69,6 @@ function NewOrderPageContent() {
             const service = services.find((s) => s.id === values.serviceId);
             const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
             const submitter = activeUsers.find((u) => u.id === values.submitterId);
-            const ctv = values.ctvId ? ctvs.find((c) => c.id === values.ctvId) : undefined;
             if (!customer || !service || !assigned || !submitter) {
               message.error(t("common.requiredMissing"));
               return;
@@ -101,7 +93,7 @@ function NewOrderPageContent() {
               customerId: customer.id,
               title: `${customer.name} · ${service.name}`,
             });
-            let apiOrder = await ordersApi.create(
+            const apiOrder = await ordersApi.create(
               mapUiOrderToCreateApi({
                 orderNumber: nextDossierNumber(orders, new Date()),
                 contractId: contract.id,
@@ -110,31 +102,24 @@ function NewOrderPageContent() {
                 value,
                 assignedUserId: assigned.id,
                 submitterUserId: submitter.id,
-                collaboratorId: ctv?.id,
                 vatRate,
                 stage: "new",
                 notes: values.notes,
               }),
             );
-            if (values.channel) {
-              apiOrder = await ordersApi.update(apiOrder.id, { channel: values.channel });
-            }
             const created = {
               ...mapApiOrderToUi(apiOrder, {
                 customerName: customer.name,
                 serviceName: service.name,
                 assignedUserName: assigned.name,
                 submitterName: submitter.name,
-                ctvName: ctv?.name,
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
               }),
-              channel: values.channel,
               commissionPercent:
                 values.commissionPercent != null && values.commissionPercent !== ""
                   ? Number(values.commissionPercent)
                   : undefined,
               zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
-              ctvPrice: values.channel === "ctv" ? Number(values.ctvPrice) : undefined,
               deadline: values.deadline ? values.deadline.format("YYYY-MM-DD") : undefined,
               needsVat: Boolean(values.needsVat),
             };
@@ -145,20 +130,6 @@ function NewOrderPageContent() {
               taskAssignedDraft(created),
               currentUser?.id,
             );
-
-            if (ctv && values.channel === "ctv") {
-              const ratecard = Number(values.value);
-              const price = Number(values.ctvPrice);
-              addJob(ctv.id, {
-                orderId: created.id,
-                orderNumber: created.orderNumber,
-                customerName: customer.name,
-                serviceName: service.name,
-                ratecard,
-                ctvPrice: price,
-                commission: price - ratecard,
-              });
-            }
 
             message.success(t("order.created"));
             router.push(`/orders/${created.id}`);
@@ -183,38 +154,15 @@ function NewOrderPageContent() {
               .filter((s) => s.status === "active")
               .map((s) => ({
                 value: s.id,
-                label: `${s.name} — ${formatVndDisplay(s.unitPrice)}`,
+                label: s.name,
               }))}
           />
         </Form.Item>
-        <Form.Item name="channel" label={t("common.channel")} rules={[{ required: true }]}>
-          <Select
-            options={[
-              { value: "direct", label: t("channel.direct") },
-              { value: "website", label: t("channel.website") },
-              { value: "referral", label: t("channel.referral") },
-              { value: "ctv", label: t("channel.ctv") },
-            ]}
-          />
-        </Form.Item>
-        {channel === "ctv" && (
-          <Form.Item name="ctvId" label={t("order.selectCtv")} rules={[{ required: true, message: t("order.selectCtv") }]}>
-            <Select
-              options={ctvs
-                .filter((c) => c.status === "active")
-                .map((c) => ({ value: c.id, label: c.name }))}
-            />
-          </Form.Item>
-        )}
         <Form.Item
           name="value"
           label={t("order.listPriceVnd")}
           rules={[{ required: true, message: t("order.enterListPrice") }]}
-          extra={
-            selectedService
-              ? t("order.listPriceHint", { amount: formatVndDisplay(selectedService.unitPrice) })
-              : t("order.listPriceExtra")
-          }
+          extra={t("order.listPriceExtra")}
         >
           <InputNumber {...vndInputProps} />
         </Form.Item>
@@ -225,17 +173,6 @@ function NewOrderPageContent() {
         >
           <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
         </Form.Item>
-        {channel === "ctv" && (
-          <>
-            <Form.Item
-              name="ctvPrice"
-              label={t("order.ctvPriceVnd")}
-              rules={[{ required: true, message: t("order.enterCtvPrice") }]}
-            >
-              <InputNumber {...vndInputProps} />
-            </Form.Item>
-          </>
-        )}
         <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
           <Select
             options={activeUsers

@@ -100,6 +100,7 @@ function mergeCustomerLocal(remote: Customer, local?: Customer): Customer {
     address: local.address ?? remote.address,
     usedServiceIds: local.usedServiceIds?.length ? local.usedServiceIds : remote.usedServiceIds,
     customFields: { ...remote.customFields, ...local.customFields },
+    channel: local.channel ?? remote.channel,
   };
 }
 

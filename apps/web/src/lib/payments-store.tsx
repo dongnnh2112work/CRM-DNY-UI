@@ -13,7 +13,6 @@ import { useOrders } from "@/lib/orders-store";
 import type { Order, PaymentInstallment, PaymentRecord, PaymentStatus } from "@/lib/types";
 
 function orderTotal(order: Order): number {
-  if (order.channel === "ctv" && order.ctvPrice != null) return order.ctvPrice;
   return order.value;
 }
 

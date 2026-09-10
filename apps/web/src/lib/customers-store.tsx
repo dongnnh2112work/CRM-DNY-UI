@@ -27,6 +27,7 @@ export type NewCustomerInput = {
   status?: CustomerStatus;
   usedServiceIds?: string[];
   customFields?: Record<string, unknown>;
+  channel?: Customer["channel"];
 };
 
 type CustomersContextValue = {
@@ -80,6 +81,7 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString().slice(0, 10),
       usedServiceIds: input.usedServiceIds ?? [],
       customFields: input.customFields ?? {},
+      channel: input.channel,
     };
     setCustomers((prev) => [...prev, created]);
     return created;
@@ -159,5 +161,6 @@ export const CUSTOMER_LOCKED_FIELD_KEYS = [
   "owner",
   "status",
   "usedServiceIds",
+  "channel",
   "createdAt",
 ];

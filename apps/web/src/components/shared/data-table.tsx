@@ -1,6 +1,6 @@
 "use client";
 
-import { Input, Table, type TableColumnsType, type TableProps } from "antd";
+import { DatePicker, Input, Table, type TableColumnsType, type TableProps } from "antd";
 import { useEffect, useMemo, useState, type Key, type ReactNode } from "react";
 import {
   ColumnManagerButton,
@@ -10,6 +10,9 @@ import {
 } from "@/components/shared/column-manager-drawer";
 import { EmptyState } from "@/components/shared/empty-state";
 import { RemoteListStatus } from "@/components/shared/remote-list-status";
+import { enhanceColumnsWithFilters } from "@/components/shared/table-column-filters";
+import { getRecordDate, isInDateRange, type DateRangeValue } from "@/lib/date-range";
+import { matchesTableQuery } from "@/lib/table-search";
 import { tableIndexColumn, tableColumnKey, type TableColumn } from "@/lib/table-index-column";
 import { useT } from "@/lib/use-t";
 
@@ -19,11 +22,13 @@ export type DataTableEmptyAction = {
   onClick?: () => void;
 };
 
+export type DataTableDateFilter<T extends object> = string | ((row: T) => string | undefined | null);
+
 /**
  * Shared list-table chrome around Ant Design Table.
  *
  * - Search: prefer PageHeader; optional `search` renders Input.Search above the table.
- * - Sort / filter: declare on each column (`sorter`, `filters`); `onChange` is forwarded.
+ * - Sort / filter: auto column filters + optional date range; extra `filters` on columns are kept.
  * - Columns: fully custom per module via `columns` (render, align, width, fixed…).
  * - Bulk: `enableRowSelection` + `bulkToolbar` (BulkActionBar).
  */
@@ -58,6 +63,11 @@ export interface DataTableProps<T extends object> {
     onChange: (value: string) => void;
     placeholder?: string;
   };
+  /** Date field used by the Từ–Đến RangePicker. Hidden when omitted. */
+  dateFilterField?: DataTableDateFilter<T>;
+  datePicker?: "date" | "month";
+  /** Local search box when the page has no PageHeader search (nested tables). */
+  enableLocalSearch?: boolean;
   /** Optional chrome above search/bulk (e.g. column manager). */
   toolbar?: ReactNode;
   /** Rendered between toolbar/search and table (typically BulkActionBar). */
@@ -109,6 +119,9 @@ export function DataTable<T extends object>({
   sortDirections,
   showSorterTooltip,
   search,
+  dateFilterField,
+  datePicker = "date",
+  enableLocalSearch = false,
   toolbar,
   bulkToolbar,
   padded = true,
@@ -118,6 +131,8 @@ export function DataTable<T extends object>({
   const t = useT();
   const [managerOpen, setManagerOpen] = useState(false);
   const [pageState, setPageState] = useState({ current: 1, pageSize: DEFAULT_PAGINATION.pageSize });
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
+  const [localQuery, setLocalQuery] = useState("");
 
   const managerItems: ColumnManagerItem[] = useMemo(
     () =>
@@ -136,19 +151,38 @@ export function DataTable<T extends object>({
       })
     : columns;
 
+  const rangedData = useMemo(() => {
+    let rows = dataSource;
+    if (dateFilterField) {
+      rows = rows.filter((row) =>
+        isInDateRange(getRecordDate(row, dateFilterField), dateRange, datePicker),
+      );
+    }
+    const q = search?.value ?? (enableLocalSearch ? localQuery : "");
+    if (q.trim()) {
+      rows = rows.filter((row) => matchesTableQuery(q, [row]));
+    }
+    return rows;
+  }, [dataSource, dateFilterField, dateRange, datePicker, search?.value, enableLocalSearch, localQuery]);
+
+  const filteredColumns = useMemo(
+    () => enhanceColumnsWithFilters(visibleColumns as TableColumnsType<T>, rangedData, t),
+    [visibleColumns, rangedData, t],
+  );
+
   useEffect(() => {
     if (pagination === false) return;
-    const maxPage = Math.max(1, Math.ceil(dataSource.length / pageState.pageSize) || 1);
+    const maxPage = Math.max(1, Math.ceil(rangedData.length / pageState.pageSize) || 1);
     if (pageState.current > maxPage) {
       setPageState((prev) => ({ ...prev, current: maxPage }));
     }
-  }, [dataSource.length, pageState.pageSize, pageState.current, pagination]);
+  }, [rangedData.length, pageState.pageSize, pageState.current, pagination]);
 
   const indexOffset =
     pagination === false ? 0 : (pageState.current - 1) * pageState.pageSize;
   const columnsWithIndex = useMemo(
-    () => [tableIndexColumn<T>(indexOffset), ...(visibleColumns as TableColumn<T>[])],
-    [visibleColumns, indexOffset, t],
+    () => [tableIndexColumn<T>(indexOffset), ...(filteredColumns as TableColumn<T>[])],
+    [filteredColumns, indexOffset],
   );
   const rowSelection: TableProps<T>["rowSelection"] =
     rowSelectionProp ??
@@ -184,7 +218,7 @@ export function DataTable<T extends object>({
     <Table<T>
       rowKey={rowKey}
       columns={columnsWithIndex}
-      dataSource={dataSource}
+      dataSource={rangedData}
       loading={loading}
       size={size}
       pagination={resolvedPagination}
@@ -202,21 +236,48 @@ export function DataTable<T extends object>({
     />
   );
 
+  const showFilterBar =
+    Boolean(search) || enableLocalSearch || Boolean(dateFilterField) || Boolean(columnManagerKey);
+
   return (
     <>
       {toolbar}
-      {columnManagerKey ? (
-        <ColumnManagerButton onClick={() => setManagerOpen(true)} />
-      ) : null}
-      {search ? (
-        <div style={{ padding: "8px 16px 0" }}>
-          <Input.Search
-            allowClear
-            placeholder={search.placeholder ?? t("common.search")}
-            value={search.value}
-            onChange={(e) => search.onChange(e.target.value)}
-            style={{ maxWidth: 320 }}
-          />
+      {showFilterBar ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px 0",
+          }}
+        >
+          {search || enableLocalSearch ? (
+            <Input.Search
+              allowClear
+              placeholder={search?.placeholder ?? t("common.search")}
+              value={search?.value ?? localQuery}
+              onChange={(e) => {
+                if (search) search.onChange(e.target.value);
+                else setLocalQuery(e.target.value);
+              }}
+              style={{ maxWidth: 320 }}
+            />
+          ) : null}
+          {dateFilterField ? (
+            <DatePicker.RangePicker
+              picker={datePicker}
+              allowEmpty={[true, true]}
+              value={dateRange}
+              onChange={(next) => {
+                setDateRange(next);
+                setPageState((prev) => ({ ...prev, current: 1 }));
+              }}
+              placeholder={[t("common.dateFrom"), t("common.dateTo")]}
+            />
+          ) : null}
+          <div style={{ flex: 1 }} />
+          {columnManagerKey ? <ColumnManagerButton onClick={() => setManagerOpen(true)} /> : null}
         </div>
       ) : null}
       {bulkToolbar}

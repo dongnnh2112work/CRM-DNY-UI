@@ -13,6 +13,7 @@ import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import { getStatusMeta } from "@/lib/status-config";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { VatInvoice, VatStatus } from "@/lib/types";
 import { useT } from "@/lib/use-t";
@@ -37,6 +38,7 @@ export default function VatPage() {
   const { orders } = useOrders();
   const vatRemote = useRemoteList("vat");
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const applyUrlQuery = useCallback((q: string) => {
     setQuery(q);
@@ -58,8 +60,11 @@ export default function VatPage() {
   const draftCount = rows.filter((v) => v.status === "draft").length;
   const issuedCount = rows.filter((v) => v.status === "issued").length;
 
-  const filtered = rows.filter((v) =>
-    matchesTableQuery(query, [
+  const filtered = rows.filter((v) => {
+    if (dateRange?.[0] || dateRange?.[1]) {
+      if (!isInDateRange(v.issueDate, dateRange)) return false;
+    }
+    return matchesTableQuery(query, [
       v.contractNumber,
       v.customerName,
       v.orderNumber,
@@ -72,8 +77,8 @@ export default function VatPage() {
       v.status,
       getStatusMeta("vat", v.status).label,
       ...(v.lines ?? []).map((line) => line.description),
-    ]),
-  );
+    ]);
+  });
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -211,6 +216,11 @@ export default function VatPage() {
           clearSelection();
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          clearSelection();
+        }}
         primaryAction={{ label: t("vat.newCta"), href: "/vat/new" }}
       />
       <div style={{ padding: "16px 16px 0" }}>

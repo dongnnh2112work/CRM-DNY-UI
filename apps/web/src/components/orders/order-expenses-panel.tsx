@@ -1,8 +1,9 @@
 "use client";
 
-import { App, Button, Popconfirm, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Popconfirm, Space, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
 import { PaymentRequestDrawer } from "@/components/orders/payment-request-drawer";
+import { DataTable } from "@/components/shared/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
 import { canReviewExpense, useExpenses } from "@/lib/expenses-store";
@@ -11,7 +12,6 @@ import { expenseReviewedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import { buildOrderCashflow, formatYearMonth } from "@/lib/order-cashflow";
 import { usePayments } from "@/lib/payments-store";
-import { tableIndexColumn } from "@/lib/table-index-column";
 import type { Order, OrderExpense } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -73,7 +73,6 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
 
   const expenseColumns = useMemo(
     () => [
-      tableIndexColumn<OrderExpense>(),
       { title: t("common.content"), dataIndex: "title", ellipsis: true },
       {
         title: t("common.amount"),
@@ -207,15 +206,20 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
       <Typography.Title level={5} style={{ fontSize: ds.fontSize.body, margin: "0 0 8px" }}>
         {t("order.byMonth")}
       </Typography.Title>
-      <Table
+      <div style={{ marginBottom: 24, maxWidth: 560 }}>
+      <DataTable
         rowKey="month"
         size="small"
         pagination={false}
-        style={{ marginBottom: 24, maxWidth: 560 }}
+        padded={false}
+        dateFilterField="month"
+        datePicker="month"
+        enableLocalSearch
         dataSource={flow.months}
-        locale={{ emptyText: t("order.cashflowEmpty") }}
+        emptyDescription={t("order.cashflowEmpty")}
         columns={monthColumns}
       />
+      </div>
 
       <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }} wrap>
         <Typography.Title level={5} style={{ fontSize: ds.fontSize.body, margin: 0 }}>
@@ -227,13 +231,16 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
       </Space>
       <PaymentRequestDrawer open={addOpen} onClose={() => setAddOpen(false)} lockedOrder={order} />
 
-      <Table<OrderExpense>
+      <DataTable<OrderExpense>
         rowKey="id"
         size="small"
         pagination={false}
+        padded={false}
         scroll={{ x: 960 }}
         dataSource={rows}
-        locale={{ emptyText: t("expense.empty") }}
+        dateFilterField="requestedAt"
+        enableLocalSearch
+        emptyDescription={t("expense.empty")}
         columns={expenseColumns}
       />
     </div>

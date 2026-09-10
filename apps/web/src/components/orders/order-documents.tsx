@@ -1,13 +1,13 @@
 "use client";
 
 import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
-import { App, Button, Table, Tag, Typography, Upload } from "antd";
+import { App, Button, Tag, Typography, Upload } from "antd";
 import type { UploadProps } from "antd";
 import { useMemo } from "react";
 import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
+import { DataTable } from "@/components/shared/data-table";
 import type { OrderAttachment } from "@/lib/types";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
-import { tableIndexColumn } from "@/lib/table-index-column";
 import { apiErrorMessage } from "@/lib/http/message";
 import { documentsApi } from "@/modules/documents/api";
 import { mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
@@ -71,7 +71,6 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin", 
 
   const columns = useMemo(
     () => [
-      tableIndexColumn<OrderAttachment>(),
       {
         title: t("common.file"),
         dataIndex: "name",
@@ -126,15 +125,19 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin", 
         <p className="ant-upload-hint">{t("docs.uploadHint")}</p>
       </Upload.Dragger>
 
-      <Table
-        style={{ marginTop: 16 }}
-        rowKey="id"
-        size="small"
-        pagination={false}
-        dataSource={visible}
-        locale={{ emptyText: t("docs.empty") }}
-        columns={columns}
-      />
+      <div style={{ marginTop: 16 }}>
+        <DataTable<OrderAttachment>
+          rowKey="id"
+          size="small"
+          pagination={false}
+          padded={false}
+          dataSource={visible}
+          dateFilterField="uploadedAt"
+          enableLocalSearch
+          emptyDescription={t("docs.empty")}
+          columns={columns}
+        />
+      </div>
     </div>
   );
 }

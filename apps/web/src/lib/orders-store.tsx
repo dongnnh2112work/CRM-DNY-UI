@@ -18,7 +18,7 @@ export type NewOrderInput = {
   customerName: string;
   serviceId: string;
   serviceName: string;
-  channel: Order["channel"];
+  channel?: Order["channel"];
   ctvId?: string;
   ctvName?: string;
   value: number;
@@ -92,7 +92,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         serviceId: input.serviceId,
         serviceName: input.serviceName,
         stage: "new",
-        channel: input.channel,
+        channel: input.channel ?? "direct",
         ctvId: input.ctvId,
         ctvName: input.ctvName,
         value: input.value,

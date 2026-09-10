@@ -190,6 +190,7 @@ export default function CustomerDetailPage() {
       address: customer.address,
       owner: customer.owner,
       status: customer.status,
+      channel: customer.channel,
       usedServiceIds: customer.usedServiceIds ?? [],
       ...customer.customFields,
     });
@@ -308,6 +309,17 @@ export default function CustomerDetailPage() {
           <Descriptions.Item label={t("field.taxCode")}>{customer.taxCode || "—"}</Descriptions.Item>
           <Descriptions.Item label={t("field.address")}>{customer.address || "—"}</Descriptions.Item>
           <Descriptions.Item label={t("field.owner")}>{customer.owner}</Descriptions.Item>
+          <Descriptions.Item label={t("common.channel")}>
+            {customer.channel === "direct"
+              ? t("channel.direct")
+              : customer.channel === "website"
+                ? t("channel.website")
+                : customer.channel === "referral"
+                  ? t("channel.referral")
+                  : customer.channel === "ctv"
+                    ? t("channel.ctv")
+                    : "—"}
+          </Descriptions.Item>
           <Descriptions.Item label={t("field.createdAt")} span={2}>
             {customer.createdAt}
           </Descriptions.Item>
@@ -327,6 +339,8 @@ export default function CustomerDetailPage() {
                   columns={orderColumns}
                   dataSource={relatedOrders}
                   padded={false}
+                  dateFilterField="createdAt"
+                  enableLocalSearch
                   emptyDescription={t("customer.noOrders")}
                   emptyAction={{ label: t("common.createOrder"), href: `/orders/new?customerId=${customer.id}` }}
                 />
@@ -340,6 +354,8 @@ export default function CustomerDetailPage() {
                   rowKey="serviceId"
                   padded={false}
                   dataSource={usedServices}
+                  dateFilterField="lastOrderAt"
+                  enableLocalSearch
                   emptyDescription={t("customer.noUsedServices")}
                   emptyAction={{ label: t("customer.editTitle"), onClick: () => setEditOpen(true) }}
                   columns={usedServiceColumns}
@@ -375,6 +391,7 @@ export default function CustomerDetailPage() {
                   taxCode: values.taxCode,
                   owner: values.owner,
                   status: values.status,
+                  channel: values.channel,
                   customFields: collectCustomFields(values, extraFields, customer.customFields),
                 }),
               );
@@ -383,6 +400,7 @@ export default function CustomerDetailPage() {
                 address: values.address,
                 status: (values.status as CustomerStatus) ?? mapApiCustomerToUi(updated).status,
                 usedServiceIds: values.usedServiceIds ?? [],
+                channel: values.channel,
                 customFields: collectCustomFields(values, extraFields, customer.customFields),
               });
               setLiveCustomer(mapApiCustomerToUi(updated));
@@ -415,6 +433,17 @@ export default function CustomerDetailPage() {
           </Form.Item>
           <Form.Item name="owner" label={t("field.owner")} rules={[{ required: true }]}>
             <Select options={users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name }))} />
+          </Form.Item>
+          <Form.Item name="channel" label={t("common.channel")}>
+            <Select
+              allowClear
+              options={[
+                { value: "direct", label: t("channel.direct") },
+                { value: "website", label: t("channel.website") },
+                { value: "referral", label: t("channel.referral") },
+                { value: "ctv", label: t("channel.ctv") },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="status" label={t("field.status")} rules={[{ required: true }]}>
             <Select options={statusOptions} />

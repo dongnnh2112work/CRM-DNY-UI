@@ -38,6 +38,7 @@ import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useExpenses } from "@/lib/expenses-store";
 import { getStatusMeta } from "@/lib/status-config";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { Order, OrderStage } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
@@ -68,6 +69,7 @@ export default function OrdersPage() {
   const [userFilter, setUserFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const applyUrlQuery = useCallback((q: string) => {
     setQuery(q);
@@ -101,6 +103,9 @@ export default function OrdersPage() {
     let list = [...orders];
     if (userFilter !== "all") list = list.filter((o) => o.assignedUserId === userFilter);
     if (monthFilter !== "all") list = list.filter((o) => o.month === monthFilter);
+    if (dateRange?.[0] || dateRange?.[1]) {
+      list = list.filter((o) => isInDateRange(o.createdAt, dateRange));
+    }
     if (query.trim()) {
       list = list.filter((o) =>
         matchesTableQuery(query, [
@@ -133,7 +138,7 @@ export default function OrdersPage() {
       );
     }
     return list;
-  }, [orders, userFilter, monthFilter, query, getMeta, cashflowByOrder]);
+  }, [orders, userFilter, monthFilter, dateRange, query, getMeta, cashflowByOrder]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -240,7 +245,8 @@ export default function OrdersPage() {
   };
 
   const months = [...new Set(orders.map((o) => o.month))].sort();
-  const hasActiveFilters = Boolean(query.trim()) || userFilter !== "all" || monthFilter !== "all";
+  const hasActiveFilters =
+    Boolean(query.trim()) || userFilter !== "all" || monthFilter !== "all" || Boolean(dateRange?.[0] || dateRange?.[1]);
   const listEmptyDescription =
     hasActiveFilters && orders.length > 0 ? t("common.noResults") : t("order.empty");
   const listEmptyAction =
@@ -379,6 +385,11 @@ export default function OrdersPage() {
           clearSelection();
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          clearSelection();
+        }}
         primaryAction={{ label: t("order.newCta"), href: "/orders/new" }}
       >
         <Select

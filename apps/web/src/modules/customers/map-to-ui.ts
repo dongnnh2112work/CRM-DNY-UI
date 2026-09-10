@@ -1,3 +1,4 @@
+import { packIndustryOrField, unpackIndustryOrField } from "@/lib/customer-channel";
 import type { Customer, CustomerStatus } from "@/lib/types";
 import type { ApiCustomer, CreateCustomerBody, UpdateCustomerBody } from "@/modules/customers/types";
 import { isUuid } from "@/lib/http/message";
@@ -8,6 +9,7 @@ function mapCustomerStatus(raw: string | null | undefined): CustomerStatus {
 }
 
 export function mapApiCustomerToUi(c: ApiCustomer): Customer {
+  const { channel, industry } = unpackIndustryOrField(c.industryOrField);
   return {
     id: c.id,
     name: c.displayName || c.legalName,
@@ -19,7 +21,8 @@ export function mapApiCustomerToUi(c: ApiCustomer): Customer {
     status: mapCustomerStatus(c.status),
     createdAt: c.createdAt.slice(0, 10),
     usedServiceIds: [],
-    customFields: c.industryOrField ? { industry: c.industryOrField } : {},
+    customFields: industry ? { industry } : {},
+    channel,
   };
 }
 
@@ -32,6 +35,7 @@ export function mapUiCustomerToApi(input: {
   owner?: string;
   status?: string;
   customFields?: Record<string, unknown>;
+  channel?: string;
 }): CreateCustomerBody {
   const company = input.company?.trim();
   const industry =
@@ -43,7 +47,7 @@ export function mapUiCustomerToApi(input: {
     phone: input.phone || undefined,
     email: input.email || undefined,
     taxId: input.taxCode || undefined,
-    industryOrField: industry,
+    industryOrField: packIndustryOrField(input.channel, industry),
     status: input.status?.trim() || undefined,
   };
   if (isUuid(input.owner)) body.ownerId = input.owner;
@@ -60,6 +64,7 @@ export function mapUiCustomerPatchToApi(
     owner: string;
     status: string;
     customFields: Record<string, unknown>;
+    channel: string;
   }>,
 ): UpdateCustomerBody {
   const patch: UpdateCustomerBody = {};
@@ -78,8 +83,12 @@ export function mapUiCustomerPatchToApi(
   if (input.email !== undefined) patch.email = input.email || undefined;
   if (input.taxCode !== undefined) patch.taxId = input.taxCode || undefined;
   if (input.status !== undefined) patch.status = input.status;
-  if (input.customFields && typeof input.customFields.industry === "string") {
-    patch.industryOrField = input.customFields.industry;
+  if (input.channel !== undefined || input.customFields !== undefined) {
+    const industry =
+      input.customFields && typeof input.customFields.industry === "string"
+        ? input.customFields.industry
+        : undefined;
+    patch.industryOrField = packIndustryOrField(input.channel, industry);
   }
   if (isUuid(input.owner)) patch.ownerId = input.owner;
   return patch;

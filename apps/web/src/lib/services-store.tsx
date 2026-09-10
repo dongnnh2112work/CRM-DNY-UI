@@ -19,9 +19,9 @@ const FIELDS_KEY = "dny-crm-service-fields";
 
 export type NewServiceInput = {
   name: string;
-  code: string;
+  code?: string;
   category: string;
-  unitPrice: number;
+  unitPrice?: number;
   processingDays: number;
   licenseExpiryWarnMonths?: number;
   customFields?: Record<string, unknown>;
@@ -60,7 +60,11 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
     if (storedFields && Array.isArray(storedFields)) {
-      setFieldDefs(mergeSeedFieldDefs(storedFields, SERVICE_FIELD_DEFS));
+      setFieldDefs(
+        mergeSeedFieldDefs(storedFields, SERVICE_FIELD_DEFS).map((d) =>
+          d.key === "code" || d.key === "unitPrice" ? { ...d, visible: false } : d,
+        ),
+      );
     }
     setReady(true);
   }, []);
@@ -77,15 +81,16 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
   const addService = useCallback((input: NewServiceInput) => {
     const created: Service = {
       name: input.name,
-      code: input.code,
+      code: input.code ?? "",
       category: input.category,
-      unitPrice: input.unitPrice,
+      unitPrice: input.unitPrice ?? 0,
       processingDays: input.processingDays,
       licenseExpiryWarnMonths: licenseWarnMonthsOf({
         licenseExpiryWarnMonths: input.licenseExpiryWarnMonths ?? DEFAULT_LICENSE_WARN_MONTHS,
       }),
       id: `s-${Date.now()}`,
       status: "active",
+      createdAt: new Date().toISOString().slice(0, 10),
       customFields: input.customFields ?? {},
     };
     setServices((prev) => [...prev, created]);

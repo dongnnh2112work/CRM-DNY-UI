@@ -7,10 +7,7 @@ import { ExtraFormFields } from "@/components/shared/extra-form-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
-import {
-  collectCustomFields,
-  getCustomerFormExtraFields,
-} from "@/lib/customer-helpers";
+import { collectCustomFields, getCustomerFormExtraFields } from "@/lib/customer-helpers";
 import { useCustomers } from "@/lib/customers-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useServices } from "@/lib/services-store";
@@ -48,6 +45,7 @@ export default function NewCustomerPage() {
                 company: values.company,
                 taxCode: values.taxCode,
                 owner: values.owner,
+                channel: values.channel,
                 customFields: collectCustomFields(values, extraFields),
               }),
             );
@@ -56,6 +54,7 @@ export default function NewCustomerPage() {
                 ...mapApiCustomerToUi(created),
                 address: values.address,
                 usedServiceIds: values.usedServiceIds ?? [],
+                channel: values.channel,
                 customFields: collectCustomFields(values, extraFields),
               },
             ]);
@@ -88,6 +87,17 @@ export default function NewCustomerPage() {
         </Form.Item>
         <Form.Item name="owner" label={t("field.owner")}>
           <Select options={users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name }))} />
+        </Form.Item>
+        <Form.Item name="channel" label={t("common.channel")}>
+          <Select
+            allowClear
+            options={[
+              { value: "direct", label: t("channel.direct") },
+              { value: "website", label: t("channel.website") },
+              { value: "referral", label: t("channel.referral") },
+              { value: "ctv", label: t("channel.ctv") },
+            ]}
+          />
         </Form.Item>
         <Form.Item
           name="usedServiceIds"

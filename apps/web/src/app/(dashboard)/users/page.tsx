@@ -32,6 +32,7 @@ import {
   type UserRole,
 } from "@/lib/types";
 import { getStatusMeta } from "@/lib/status-config";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useRemoteList } from "@/components/api-hydrator";
@@ -78,14 +79,18 @@ export default function UsersPage() {
   const [draftPerms, setDraftPerms] = useState<RolePagePermissions | null>(null);
   const [newRoleLabel, setNewRoleLabel] = useState("");
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const applyUrlQuery = useCallback((q: string) => {
     setQuery(q);
   }, []);
   const [saving, setSaving] = useState(false);
   const [savingPerms, setSavingPerms] = useState(false);
 
-  const filtered = users.filter((u) =>
-    matchesTableQuery(query, [
+  const filtered = users.filter((u) => {
+    if (dateRange?.[0] || dateRange?.[1]) {
+      if (!isInDateRange(u.createdAt, dateRange)) return false;
+    }
+    return matchesTableQuery(query, [
       u.name,
       u.email,
       u.phone,
@@ -98,8 +103,8 @@ export default function UsersPage() {
       getStatusMeta("user", u.status).label,
       u.authMethod,
       u.useCustomPermissions ? "custom" : null,
-    ]),
-  );
+    ]);
+  });
 
   useEffect(() => {
     if (permRole) {
@@ -217,6 +222,8 @@ export default function UsersPage() {
         searchPlaceholder={t("common.searchTable")}
         onSearch={setQuery}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
         primaryAction={{ label: t("user.newCta"), onClick: openCreate }}
       >
         {can("user.manage") ? (

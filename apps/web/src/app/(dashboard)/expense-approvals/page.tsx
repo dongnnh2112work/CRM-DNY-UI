@@ -15,6 +15,7 @@ import { expenseReviewedDraft } from "@/lib/notification-targets";
 import { expenseProjectLabel, useExpenses, canReviewExpense } from "@/lib/expenses-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
@@ -37,6 +38,7 @@ export default function ExpenseApprovalsPage() {
   const expensesRemote = useRemoteList("expenses");
   const [statusFilter, setStatusFilter] = useState<OrderExpenseStatus | "all">("pending");
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const applyUrlQuery = useCallback((q: string) => {
@@ -51,6 +53,9 @@ export default function ExpenseApprovalsPage() {
   const filtered = useMemo(() => {
     let list = [...expenses];
     if (statusFilter !== "all") list = list.filter((e) => e.status === statusFilter);
+    if (dateRange?.[0] || dateRange?.[1]) {
+      list = list.filter((e) => isInDateRange(e.requestedAt, dateRange));
+    }
     if (query.trim()) {
       list = list.filter((e) =>
         matchesTableQuery(query, [
@@ -70,7 +75,7 @@ export default function ExpenseApprovalsPage() {
       );
     }
     return list.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
-  }, [expenses, statusFilter, query]);
+  }, [expenses, statusFilter, dateRange, query]);
 
   const selectedSum = useMemo(() => {
     const ids = new Set(selectedRowKeys.map(String));
@@ -228,6 +233,11 @@ export default function ExpenseApprovalsPage() {
           setSelectedRowKeys([]);
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          setSelectedRowKeys([]);
+        }}
         primaryAction={{ label: t("expense.newCta"), onClick: () => setCreateOpen(true) }}
       >
         <Select

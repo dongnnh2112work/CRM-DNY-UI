@@ -23,6 +23,7 @@ import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
 import { useSession } from "@/lib/session/session-provider";
 import { useServices } from "@/lib/services-store";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { Customer, CustomerStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
@@ -52,8 +53,10 @@ function CustomersPageContent() {
   const { getMeta, statusOptions, addStatus, updateStatus, removeStatus } = useCustomerStatusConfig();
   const customerRemote = useRemoteList("customers");
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [channelFilter, setChannelFilter] = useState<string>("all");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -80,6 +83,10 @@ function CustomersPageContent() {
     let list = [...customers];
     if (statusFilter !== "all") list = list.filter((c) => c.status === statusFilter);
     if (ownerFilter !== "all") list = list.filter((c) => c.owner === ownerFilter);
+    if (channelFilter !== "all") list = list.filter((c) => c.channel === channelFilter);
+    if (dateRange?.[0] || dateRange?.[1]) {
+      list = list.filter((c) => isInDateRange(c.createdAt, dateRange));
+    }
     if (query.trim()) {
       list = list.filter((c) =>
         matchesTableQuery(query, [
@@ -93,18 +100,23 @@ function CustomersPageContent() {
           c.status,
           getMeta(c.status).label,
           c.createdAt,
+          c.channel,
           c.customFields,
           usedServiceNames(usedByCustomer.get(c.id) ?? []),
         ]),
       );
     }
     return list;
-  }, [customers, statusFilter, ownerFilter, query, usedByCustomer, getMeta]);
+  }, [customers, statusFilter, ownerFilter, channelFilter, dateRange, query, usedByCustomer, getMeta]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
   const hasActiveFilters =
-    Boolean(query.trim()) || statusFilter !== "all" || ownerFilter !== "all";
+    Boolean(query.trim()) ||
+    statusFilter !== "all" ||
+    ownerFilter !== "all" ||
+    channelFilter !== "all" ||
+    Boolean(dateRange?.[0] || dateRange?.[1]);
 
   const selectedCustomers = () =>
     customers.filter((c) => selectedRowKeys.includes(c.id));
@@ -145,6 +157,16 @@ function CustomersPageContent() {
     [t("common.taxCode")]: c.taxCode ?? "",
     [t("common.status")]: c.status,
     [t("common.owner")]: c.owner,
+    [t("common.channel")]:
+      c.channel === "direct"
+        ? t("channel.direct")
+        : c.channel === "website"
+          ? t("channel.website")
+          : c.channel === "referral"
+            ? t("channel.referral")
+            : c.channel === "ctv"
+              ? t("channel.ctv")
+              : "",
     [t("customer.usedServices")]: usedServiceNames(usedByCustomer.get(c.id) ?? []).join(", "),
   });
 
@@ -189,6 +211,11 @@ function CustomersPageContent() {
           clearSelection();
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          clearSelection();
+        }}
         primaryAction={
           can("customer.create") ? { label: t("customer.newCta"), href: "/customers/new" } : undefined
         }
@@ -203,6 +230,21 @@ function CustomersPageContent() {
           options={[
             { value: "all", label: t("common.allStatuses") },
             ...statusOptions,
+          ]}
+        />
+        <Select
+          value={channelFilter}
+          onChange={(v) => {
+            setChannelFilter(v);
+            clearSelection();
+          }}
+          style={{ width: 160 }}
+          options={[
+            { value: "all", label: t("common.allChannels") },
+            { value: "direct", label: t("channel.direct") },
+            { value: "website", label: t("channel.website") },
+            { value: "referral", label: t("channel.referral") },
+            { value: "ctv", label: t("channel.ctv") },
           ]}
         />
         <Select
@@ -229,10 +271,20 @@ function CustomersPageContent() {
         lockedFieldKeys={CUSTOMER_LOCKED_FIELD_KEYS}
         dataSource={filtered}
         rowKey="id"
+        columnManagerKey="customers"
         statusModule="customer"
         remote={customerRemote}
         linkField={{ key: "name", onClick: (record) => router.push(`/customers/${record.id}`) }}
         columnOverrides={{
+          channel: {
+            render: (value) => {
+              if (value === "direct") return t("channel.direct");
+              if (value === "website") return t("channel.website");
+              if (value === "referral") return t("channel.referral");
+              if (value === "ctv") return t("channel.ctv");
+              return value ? String(value) : "—";
+            },
+          },
           status: {
             render: (value, record) => (
               <StatusSelect

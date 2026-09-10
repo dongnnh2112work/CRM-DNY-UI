@@ -193,6 +193,7 @@ function PayrollStaffPageContent() {
         columns={columns}
         dataSource={lines}
         columnManagerKey="payroll-detail"
+        enableLocalSearch
         emptyDescription={t("payroll.emptyStaff")}
       />
       {lines.length > 0 ? (

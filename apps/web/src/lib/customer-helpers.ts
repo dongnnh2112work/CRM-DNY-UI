@@ -81,6 +81,7 @@ export const CUSTOMER_CORE_FIELD_KEYS = new Set([
   "owner",
   "status",
   "usedServiceIds",
+  "channel",
   "createdAt",
 ]);
 

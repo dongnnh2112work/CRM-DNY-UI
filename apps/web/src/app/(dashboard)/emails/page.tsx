@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { useEmails } from "@/lib/emails-store";
 import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { EmailRecord, EmailStatus } from "@/lib/types";
 import { useT } from "@/lib/use-t";
@@ -33,6 +34,7 @@ export default function EmailsPage() {
   const { message } = App.useApp();
   const { emails, setStatus, deleteEmails } = useEmails();
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const applyUrlQuery = useCallback((q: string) => {
@@ -43,6 +45,9 @@ export default function EmailsPage() {
   const filtered = useMemo(() => {
     let list = [...emails];
     if (statusFilter !== "all") list = list.filter((e) => e.status === statusFilter);
+    if (dateRange?.[0] || dateRange?.[1]) {
+      list = list.filter((e) => isInDateRange(emailDate(e), dateRange));
+    }
     if (query.trim()) {
       list = list.filter((e) =>
         matchesTableQuery(query, [
@@ -58,11 +63,12 @@ export default function EmailsPage() {
       );
     }
     return list;
-  }, [emails, statusFilter, query]);
+  }, [emails, statusFilter, dateRange, query]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
-  const hasActiveFilters = Boolean(query.trim()) || statusFilter !== "all";
+  const hasActiveFilters =
+    Boolean(query.trim()) || statusFilter !== "all" || Boolean(dateRange?.[0] || dateRange?.[1]);
 
   const bulkSetStatus = (status: EmailStatus) => {
     setStatus(selectedRowKeys.map(String), status);
@@ -103,6 +109,7 @@ export default function EmailsPage() {
       },
       {
         title: t("email.sendAt"),
+        dataIndex: "sentAt",
         key: "date",
         sorter: (a, b) => compareText(emailDate(a), emailDate(b)),
         render: (_, r) => r.sentAt ?? r.scheduledAt ?? "—",
@@ -122,6 +129,11 @@ export default function EmailsPage() {
           clearSelection();
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          clearSelection();
+        }}
         primaryAction={{ label: t("email.newCta"), href: "/emails/new" }}
       >
         <Select

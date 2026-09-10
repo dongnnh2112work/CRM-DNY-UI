@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { ServiceForm } from "@/components/services/service-form";
 import { ds } from "@/lib/design-tokens";
+import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { SERVICE_LOCKED_FIELD_KEYS, serviceMatchesQuery } from "@/lib/service-fields";
 import { useServices } from "@/lib/services-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -23,6 +24,7 @@ export default function ServicesPage() {
   const { services, fieldDefs, saveFieldDefs, setServiceStatus, deleteService, updateService, replaceServices } =
     useServices();
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const applyUrlQuery = useCallback((q: string) => {
     setQuery(q);
@@ -33,7 +35,12 @@ export default function ServicesPage() {
   const [saving, setSaving] = useState(false);
   const servicesRemote = useRemoteList("services");
 
-  const filtered = services.filter((s) => serviceMatchesQuery(s, query));
+  const filtered = services.filter((s) => {
+    if (dateRange?.[0] || dateRange?.[1]) {
+      if (!isInDateRange(s.createdAt, dateRange)) return false;
+    }
+    return serviceMatchesQuery(s, query);
+  });
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -96,6 +103,11 @@ export default function ServicesPage() {
           clearSelection();
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          clearSelection();
+        }}
         primaryAction={{ label: t("service.newCta"), onClick: openCreate }}
       />
       <DynamicTable<Service>
@@ -144,10 +156,12 @@ export default function ServicesPage() {
           </BulkActionBar>
         }
         emptyDescription={
-          query.trim() && services.length > 0 ? t("common.noResults") : t("service.empty")
+          (query.trim() || dateRange?.[0] || dateRange?.[1]) && services.length > 0
+            ? t("common.noResults")
+            : t("service.empty")
         }
         emptyAction={
-          query.trim() && services.length > 0
+          (query.trim() || dateRange?.[0] || dateRange?.[1]) && services.length > 0
             ? undefined
             : { label: t("common.createService"), onClick: openCreate }
         }

@@ -10,6 +10,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { earliestDate, isInDateRange, type DateRangeValue } from "@/lib/date-range";
+import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
@@ -26,7 +28,9 @@ export default function PaymentsPage() {
   const { message } = App.useApp();
   const paymentsRemote = useRemoteList("payments");
   const { payments } = usePayments();
+  const { orders } = useOrders();
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const applyUrlQuery = useCallback((q: string) => {
@@ -36,8 +40,20 @@ export default function PaymentsPage() {
   const [exporting, setExporting] = useState(false);
 
   const filtered = useMemo(() => {
+    const createdByOrder = new Map(orders.map((o) => [o.id, o.createdAt]));
     let list = [...payments];
     if (statusFilter !== "all") list = list.filter((p) => p.status === statusFilter);
+    if (dateRange?.[0] || dateRange?.[1]) {
+      list = list.filter((p) =>
+        isInDateRange(
+          earliestDate(
+            ...p.installments.flatMap((i) => [i.dueDate, i.paidDate]),
+            createdByOrder.get(p.orderId),
+          ),
+          dateRange,
+        ),
+      );
+    }
     if (query.trim()) {
       list = list.filter((p) =>
         matchesTableQuery(query, [
@@ -53,11 +69,24 @@ export default function PaymentsPage() {
       );
     }
     return list;
-  }, [payments, statusFilter, query]);
+  }, [payments, orders, statusFilter, dateRange, query]);
 
   const selectedCount = selectedRowKeys.length;
+  const selectedSums = useMemo(() => {
+    const ids = new Set(selectedRowKeys.map(String));
+    return filtered
+      .filter((p) => ids.has(p.id))
+      .reduce(
+        (acc, p) => ({
+          paid: acc.paid + p.paidAmount,
+          remaining: acc.remaining + p.remaining,
+        }),
+        { paid: 0, remaining: 0 },
+      );
+  }, [filtered, selectedRowKeys]);
   const clearSelection = () => setSelectedRowKeys([]);
-  const hasActiveFilters = Boolean(query.trim()) || statusFilter !== "all";
+  const hasActiveFilters =
+    Boolean(query.trim()) || statusFilter !== "all" || Boolean(dateRange?.[0] || dateRange?.[1]);
 
   const bulkExport = async () => {
     setExporting(true);
@@ -141,6 +170,11 @@ export default function PaymentsPage() {
           clearSelection();
         }}
         searchValue={query}
+        dateRange={dateRange}
+        onDateRangeChange={(v) => {
+          setDateRange(v);
+          clearSelection();
+        }}
       >
         <Select
           value={statusFilter}
@@ -173,7 +207,10 @@ export default function PaymentsPage() {
             : { label: t("common.createOrder"), href: "/orders/new" }
         }
         bulkToolbar={
-          <BulkActionBar count={selectedCount}>
+          <BulkActionBar
+            count={selectedCount}
+            summary={`${t("payment.selectedPaid", { amount: formatVndDisplay(selectedSums.paid) })} · ${t("payment.selectedRemaining", { amount: formatVndDisplay(selectedSums.remaining) })}`}
+          >
             <Button size="small" onClick={bulkExport}>
               {t("common.exportExcel")}
             </Button>
