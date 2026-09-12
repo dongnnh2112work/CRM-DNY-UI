@@ -55,7 +55,7 @@ NEXT_PUBLIC_API_URL=https://apidyn.otcayxe.com/api/v1
 
 ## Live resources
 
-> **FE start here:** [FRONTEND_HANDOFF_AUTH.md](./FRONTEND_HANDOFF_AUTH.md)
+> **FE start here:** [FRONTEND_HANDOFF_AUTH.md](./FRONTEND_HANDOFF_AUTH.md) · RBAC: [FRONTEND_HANDOFF_RBAC.md](./FRONTEND_HANDOFF_RBAC.md) · audit: [../RBAC_FE_AUDIT.md](../RBAC_FE_AUDIT.md)
 
 | Resource | Doc | Status |
 |----------|-----|--------|

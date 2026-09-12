@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { loadJson, saveJson } from "@/lib/demo-storage";
 import { translateRoleLabel, tt } from "@/lib/i18n";
-import { PAGE_PERMISSIONS_CONFIG_KEY, patchConfigDebounced } from "@/modules/config/api";
+import { PAGE_PERMISSIONS_CONFIG_KEY, parseConfigValue, persistAndVerifyConfig } from "@/modules/config/api";
 import { MOCK_USERS } from "@/lib/mock-users";
 import {
   BUILT_IN_ROLES,
@@ -40,9 +40,9 @@ type UsersContextValue = {
   createUser: (user: Omit<AppUser, "id" | "createdAt"> & { id?: string }) => AppUser;
   updateUser: (id: string, patch: Partial<AppUser>) => void;
   setUserStatus: (id: string, status: UserStatus) => void;
-  updateRolePermissions: (role: UserRole, matrix: RolePagePermissions) => void;
-  createRole: (label: string, baseRoleKey?: string) => RoleDefinition;
-  deleteRole: (roleKey: string) => { ok: boolean; reason?: string };
+  updateRolePermissions: (role: UserRole, matrix: RolePagePermissions) => Promise<void>;
+  createRole: (label: string, baseRoleKey?: string) => Promise<RoleDefinition>;
+  deleteRole: (roleKey: string) => Promise<{ ok: boolean; reason?: string }>;
   loginAs: (userId: string) => void;
   logout: () => void;
   replaceUsers: (items: AppUser[], currentUserId?: string) => void;
@@ -78,7 +78,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     useState<Record<string, RolePagePermissions>>(cloneDefaultRolePerms);
   const [currentUserId, setCurrentUserId] = useState<string | null>(DEFAULT_SESSION_ID);
   const [ready, setReady] = useState(false);
-  const persistPerms = useRef(false);
+  const rolePermissionsRef = useRef(rolePermissions);
+  rolePermissionsRef.current = rolePermissions;
 
   useEffect(() => {
     const storedUsers = loadJson<AppUser[]>(USERS_KEY);
@@ -111,10 +112,12 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     saveJson(ROLE_PERMS_KEY, rolePermissions);
-    if (persistPerms.current) {
-      patchConfigDebounced(PAGE_PERMISSIONS_CONFIG_KEY, rolePermissions);
-    }
   }, [rolePermissions, ready]);
+
+  const persistRolePermissions = useCallback(async (next: Record<string, RolePagePermissions>) => {
+    await persistAndVerifyConfig(PAGE_PERMISSIONS_CONFIG_KEY, next);
+    setRolePermissions(next);
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -172,15 +175,19 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, status } : u)));
   }, []);
 
-  const updateRolePermissions = useCallback((role: UserRole, matrix: RolePagePermissions) => {
-    persistPerms.current = true;
-    setRolePermissions((prev) => ({ ...prev, [role]: matrix }));
-  }, []);
+  const updateRolePermissions = useCallback(
+    async (role: UserRole, matrix: RolePagePermissions) => {
+      const next = { ...rolePermissionsRef.current, [role]: matrix };
+      await persistRolePermissions(next);
+    },
+    [persistRolePermissions],
+  );
 
   const createRole = useCallback(
-    (label: string, baseRoleKey?: string) => {
+    async (label: string, baseRoleKey?: string) => {
       const trimmed = label.trim();
-      const existingKeys = new Set([...roles.map((r) => r.key), ...Object.keys(rolePermissions)]);
+      const current = rolePermissionsRef.current;
+      const existingKeys = new Set([...roles.map((r) => r.key), ...Object.keys(current)]);
       let finalKey = slugifyRoleKey(trimmed);
       let n = 2;
       while (existingKeys.has(finalKey)) {
@@ -188,19 +195,22 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       }
       const def = { key: finalKey, label: trimmed, builtin: false as const };
       const base =
-        (baseRoleKey && rolePermissions[baseRoleKey]) ||
-        rolePermissions.staff ||
-        emptyPagePermissions();
+        (baseRoleKey && current[baseRoleKey]) || current.staff || emptyPagePermissions();
+      const next = { ...current, [finalKey]: structuredClone(base) };
       setRoles((prev) => [...prev, def]);
-      persistPerms.current = true;
-      setRolePermissions((prev) => ({ ...prev, [finalKey]: structuredClone(base) }));
+      try {
+        await persistRolePermissions(next);
+      } catch (err) {
+        setRoles((prev) => prev.filter((r) => r.key !== def.key));
+        throw err;
+      }
       return def;
     },
-    [rolePermissions, roles],
+    [persistRolePermissions, roles],
   );
 
   const deleteRole = useCallback(
-    (roleKey: string) => {
+    async (roleKey: string) => {
       const def = roles.find((r) => r.key === roleKey);
       if (!def) return { ok: false, reason: tt("user.roleNotFound") };
       if (def.builtin) return { ok: false, reason: tt("user.cannotDeleteBuiltin") };
@@ -208,16 +218,19 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       if (inUse) {
         return { ok: false, reason: tt("user.roleInUse") };
       }
+      const prevRoles = roles;
+      const next = { ...rolePermissionsRef.current };
+      delete next[roleKey];
       setRoles((prev) => prev.filter((r) => r.key !== roleKey));
-      persistPerms.current = true;
-      setRolePermissions((prev) => {
-        const next = { ...prev };
-        delete next[roleKey];
-        return next;
-      });
+      try {
+        await persistRolePermissions(next);
+      } catch (err) {
+        setRoles(prevRoles);
+        throw err;
+      }
       return { ok: true };
     },
-    [roles, users],
+    [persistRolePermissions, roles, users],
   );
 
   const loginAs = useCallback((userId: string) => {
@@ -239,19 +252,16 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hydratePagePermissions = useCallback((raw: unknown | null) => {
-    persistPerms.current = false;
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const parsed = parseConfigValue(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
       const merged: Record<string, RolePagePermissions> = { ...cloneDefaultRolePerms() };
-      for (const [role, matrix] of Object.entries(raw as Record<string, Partial<RolePagePermissions>>)) {
+      for (const [role, matrix] of Object.entries(parsed as Record<string, Partial<RolePagePermissions>>)) {
         if (matrix && typeof matrix === "object") {
           merged[role] = mergeStoredRoleMatrix(role, matrix);
         }
       }
       setRolePermissions(merged);
     }
-    window.setTimeout(() => {
-      persistPerms.current = true;
-    }, 0);
   }, []);
 
   const value = useMemo(

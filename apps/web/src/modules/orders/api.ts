@@ -42,6 +42,7 @@ export type CreateOrderBody = {
   totalGross: number;
   assignedUserId: string;
   submitterUserId?: string;
+  reviewerUserId?: string | null;
   collaboratorId?: string;
   vatRate?: number;
   currency?: string;
@@ -59,6 +60,7 @@ export type UpdateOrderBody = {
   currency?: string;
   notes?: string | null;
   channel?: string;
+  reviewerUserId?: string | null;
 };
 
 export const ordersApi = {

@@ -14,6 +14,7 @@ import {
 type RequestOptions = RequestInit & {
   skipAuth?: boolean;
   skipRefresh?: boolean;
+  skipErrorEmit?: boolean;
 };
 
 let refreshInFlight: Promise<boolean> | null = null;
@@ -76,7 +77,7 @@ function logoutLocal() {
 }
 
 export async function apiRequest<T>(path: string, init: RequestOptions = {}): Promise<T> {
-  const { skipAuth, skipRefresh, headers, body, ...rest } = init;
+  const { skipAuth, skipRefresh, skipErrorEmit, headers, body, ...rest } = init;
   const url = `${getApiBaseUrl()}${requestPath(path)}`;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const stored = skipAuth ? null : readStoredSession();
@@ -110,7 +111,7 @@ export async function apiRequest<T>(path: string, init: RequestOptions = {}): Pr
       }
     }
     const err = await parseApiError(res);
-    emitApiError(path, err);
+    if (!skipErrorEmit) emitApiError(path, err);
     const pathOnly = requestPath(path).split("?")[0];
     const validTokenButNoCrmAccess =
       pathOnly === "/auth/me" &&
@@ -125,7 +126,7 @@ export async function apiRequest<T>(path: string, init: RequestOptions = {}): Pr
 
   if (!res.ok) {
     const err = await parseApiError(res);
-    emitApiError(path, err);
+    if (!skipErrorEmit) emitApiError(path, err);
     throw err;
   }
 

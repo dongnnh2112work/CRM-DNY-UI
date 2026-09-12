@@ -37,6 +37,7 @@ import { usePayments } from "@/lib/payments-store";
 import { buildPayroll, getPayrollScope } from "@/lib/payroll";
 import { useT } from "@/lib/use-t";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
+import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useApiHydrate } from "@/components/api-hydrator";
 
@@ -76,6 +77,7 @@ export default function DashboardPage() {
   const t = useT();
   const { token } = theme.useToken();
   const { currentUser, getEffectivePermissions } = useUsers();
+  const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
@@ -93,6 +95,7 @@ export default function DashboardPage() {
   const payrollScope = getPayrollScope(
     currentUser,
     currentUser ? getEffectivePermissions(currentUser) : null,
+    apiUser?.permissions,
   );
   const payrollThisMonth = useMemo(() => {
     if (payrollScope === "none") return 0;

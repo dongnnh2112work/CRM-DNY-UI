@@ -6,7 +6,9 @@ import { PaymentRequestDrawer } from "@/components/orders/payment-request-drawer
 import { DataTable } from "@/components/shared/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
-import { canReviewExpense, useExpenses } from "@/lib/expenses-store";
+import { useExpenses } from "@/lib/expenses-store";
+import { PERMISSION, expenseReviewBlock } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { expenseReviewedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
@@ -21,7 +23,8 @@ import { useT } from "@/lib/use-t";
 export function OrderExpensesPanel({ order }: { order: Order }) {
   const t = useT();
   const { message } = App.useApp();
-  const { currentUser, getEffectivePermissions } = useUsers();
+  const { currentUser } = useUsers();
+  const { can } = useSession();
   const { getByOrderId } = usePayments();
   const { getByOrderId: getExpenses, reviewExpense } = useExpenses();
   const { addNotifications } = useNotifications();
@@ -30,13 +33,15 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
   const payment = getByOrderId(order.id);
   const rows = getExpenses(order.id);
   const flow = useMemo(() => buildOrderCashflow(payment, rows), [payment, rows]);
-  const canReview = currentUser
-    ? canReviewExpense({
-        hasExpenseApprovePermission: Boolean(getEffectivePermissions(currentUser).expense_approvals?.edit),
+  const canApproveApi = can(PERMISSION.expenseApprove);
+  const reviewBlock = currentUser
+    ? expenseReviewBlock({
+        hasExpenseApprovePermission: canApproveApi,
         currentUserId: currentUser.id,
         reviewerId: order.reviewerId,
       })
-    : false;
+    : "no_permission";
+  const canReview = reviewBlock === "ok";
 
   const monthColumns = useMemo(
     () => [
@@ -112,7 +117,15 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
             return r.reviewedByName ?? "—";
           }
           if (!canReview || !currentUser) {
-            return <Tag>{order.reviewerId ? t("common.viewOnly") : t("expense.onlyReviewer")}</Tag>;
+            return (
+              <Tag>
+                {reviewBlock === "no_permission"
+                  ? t("expense.needApprovePerm")
+                  : reviewBlock === "no_reviewer"
+                    ? t("expense.noReviewerOnOrder")
+                    : t("expense.onlyReviewer")}
+              </Tag>
+            );
           }
           return (
             <Space>
@@ -174,7 +187,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
         },
       },
     ],
-    [t, canReview, currentUser, addNotifications, message, order.reviewerId, reviewExpense],
+    [t, canReview, currentUser, addNotifications, message, order.reviewerId, reviewExpense, reviewBlock],
   );
 
   return (
@@ -225,9 +238,11 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
         <Typography.Title level={5} style={{ fontSize: ds.fontSize.body, margin: 0 }}>
           {t("nav.expenses")}
         </Typography.Title>
-        <Button type="primary" onClick={() => setAddOpen(true)}>
-          {t("expense.newCta")}
-        </Button>
+        {can(PERMISSION.expenseCreate) ? (
+          <Button type="primary" onClick={() => setAddOpen(true)}>
+            {t("expense.newCta")}
+          </Button>
+        ) : null}
       </Space>
       <PaymentRequestDrawer open={addOpen} onClose={() => setAddOpen(false)} lockedOrder={order} />
 

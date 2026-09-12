@@ -25,9 +25,10 @@ FE đã sửa phần không cần API mới. **Không** thêm endpoint/dashboard
 
 ---
 
-## 2. Catalog giai đoạn đơn + status khách — persist qua config có sẵn
+## 2. Catalog + ma trận trang — `PATCH /config/:key` phải persist thật
 
-UI đã `PATCH /config/:key` (cần `config.manage`):
+UI gọi đúng Swagger (`UpdateConfigDto`): `PATCH /api/v1/config/{key}` body `{ valueJson }`.  
+**Hiện tượng FE:** đổi View/Edit tab → toast/cache đổi → F5 về mặc định. Không cần API mới.
 
 | Key | `valueJson` |
 |-----|-------------|
@@ -35,9 +36,27 @@ UI đã `PATCH /config/:key` (cần `config.manage`):
 | `crm.customerStatusCatalog` | `{ statuses: [{ key, label, color }] }` |
 | `crm.pagePermissions` | `{ [roleKey]: { [pageKey]: { view, edit } } }` |
 
-`GET /config` (không filter) phải trả các key này. Upsert `PATCH` đã có — **không** tạo API catalog mới.
+`pageKey`: `dashboard` `orders` `customers` `payments` `expense_approvals` `payroll` `vat` `services` `emails` `users` `config` `order_statuses`.  
+`roleKey` FE: `super_admin` `admin` `staff` `accountant` `ctv_role` (+ custom).
 
-Admin không có `config.manage` thì catalog chỉ local; gán `config.manage` cho role quản trị là đủ.
+**BE cần (bắt buộc) — test 4 bước:**
+
+1. Role admin có `config.manage`. Thiếu → PATCH 403; FE không được giả lưu.
+2. `PATCH /config/crm.pagePermissions` **upsert** đúng key (dấu `.` là **một** key, không cắt thành `crm`). Lưu **nguyên** `valueJson`, không allowlist bỏ key, không ghi `{}`.
+3. Ngay sau đó `GET /config/crm.pagePermissions` **và** `GET /config` (list) phải trả cùng `valueJson` vừa ghi. 200 mà GET ra seed/cũ = bug (F5 mất quyền).
+4. Không wrap hai lần (`{ valueJson: { valueJson: … } }`) và không stringify rồi quên parse — FE đọc `valueJson` object.
+
+```http
+PATCH /api/v1/config/crm.pagePermissions
+{ "valueJson": { "staff": { "vat": { "view": true, "edit": false } } } }
+
+GET /api/v1/config/crm.pagePermissions
+→ 200, valueJson.staff.vat.view === true
+```
+
+**Không làm:** API catalog mới, websocket, map matrix → RBAC trong PATCH này (xem mục 5).
+
+Admin không có `config.manage` thì gán permission đó cho SUPER_ADMIN/ADMIN là đủ.
 
 ---
 
@@ -89,6 +108,9 @@ BE thật: User → Role → PermissionGroup → Permission (`resource.action` t
 | emails | **chưa có API email** — đừng seed permission giả |
 
 User phải **refresh `/auth/me`** sau khi gán role. Không xây RBAC thứ hai.
+
+**UI nhóm quyền (đã làm):** `/users` → **Nhóm quyền** gọi `GET /permission-groups` + `PUT /roles/:id/permission-groups`.  
+`GET /roles/:id` nên trả `permissionGroups` hoặc `permissionGroupCodes` để FE không ghi đè mù.
 
 ---
 

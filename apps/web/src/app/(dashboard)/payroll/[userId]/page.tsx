@@ -15,6 +15,7 @@ import { currentYearMonth, formatYearMonth } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { buildPayroll, collectPayrollMonths, getPayrollScope, type PayrollLine } from "@/lib/payroll";
+import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useT } from "@/lib/use-t";
 
@@ -44,12 +45,13 @@ function PayrollStaffPageContent() {
   const { userId } = useParams<{ userId: string }>();
   const searchParams = useSearchParams();
   const { currentUser, getEffectivePermissions, getById } = useUsers();
+  const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
-  const scope = getPayrollScope(currentUser, perms);
+  const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
 
   const month = isYearMonth(searchParams.get("month")) ? searchParams.get("month")! : currentYearMonth();
 

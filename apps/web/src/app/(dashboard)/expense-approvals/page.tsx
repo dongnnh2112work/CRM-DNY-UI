@@ -12,7 +12,9 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { expenseReviewedDraft } from "@/lib/notification-targets";
-import { expenseProjectLabel, useExpenses, canReviewExpense } from "@/lib/expenses-store";
+import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
+import { PERMISSION, expenseReviewBlock } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
@@ -31,7 +33,8 @@ function compareText(a: string, b: string) {
 export default function ExpenseApprovalsPage() {
   const t = useT();
   const { message } = App.useApp();
-  const { currentUser, getEffectivePermissions } = useUsers();
+  const { currentUser } = useUsers();
+  const { can } = useSession();
   const { expenses, reviewExpense } = useExpenses();
   const { addNotifications } = useNotifications();
   const { getById: getOrder } = useOrders();
@@ -46,9 +49,9 @@ export default function ExpenseApprovalsPage() {
     setSelectedRowKeys([]);
   }, []);
 
-  const perms = currentUser ? getEffectivePermissions(currentUser) : null;
-  const canView = Boolean(perms?.expense_approvals?.view);
-  const canApprovePage = Boolean(perms?.expense_approvals?.edit);
+  const canView = can(PERMISSION.expenseView);
+  const canApproveApi = can(PERMISSION.expenseApprove);
+  const canCreateExpense = can(PERMISSION.expenseCreate);
 
   const filtered = useMemo(() => {
     let list = [...expenses];
@@ -142,13 +145,21 @@ export default function ExpenseApprovalsPage() {
           }
           if (!currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
           const order = r.orderId ? getOrder(r.orderId) : undefined;
-          const canApproveRow = canReviewExpense({
-            hasExpenseApprovePermission: canApprovePage,
+          const block = expenseReviewBlock({
+            hasExpenseApprovePermission: canApproveApi,
             currentUserId: currentUser.id,
             reviewerId: order?.reviewerId,
           });
-          if (!canApproveRow) {
-            return <Tag>{t("expense.onlyReviewer")}</Tag>;
+          if (block !== "ok") {
+            return (
+              <Tag>
+                {block === "no_permission"
+                  ? t("expense.needApprovePerm")
+                  : block === "no_reviewer"
+                    ? t("expense.noReviewerOnOrder")
+                    : t("expense.onlyReviewer")}
+              </Tag>
+            );
           }
           return (
             <Space>
@@ -210,7 +221,7 @@ export default function ExpenseApprovalsPage() {
         },
       },
     ],
-    [t, canApprovePage, currentUser, reviewExpense, addNotifications, getOrder, message],
+    [t, canApproveApi, currentUser, reviewExpense, addNotifications, getOrder, message],
   );
 
   if (!currentUser || !canView) {
@@ -238,7 +249,9 @@ export default function ExpenseApprovalsPage() {
           setDateRange(v);
           setSelectedRowKeys([]);
         }}
-        primaryAction={{ label: t("expense.newCta"), onClick: () => setCreateOpen(true) }}
+        primaryAction={
+          canCreateExpense ? { label: t("expense.newCta"), onClick: () => setCreateOpen(true) } : undefined
+        }
       >
         <Select
           value={statusFilter}
@@ -280,7 +293,9 @@ export default function ExpenseApprovalsPage() {
         emptyAction={
           query.trim() && expenses.length > 0
             ? undefined
-            : { label: t("expense.create"), onClick: () => setCreateOpen(true) }
+            : canCreateExpense
+              ? { label: t("expense.create"), onClick: () => setCreateOpen(true) }
+              : undefined
         }
       />
       <PaymentRequestDrawer open={createOpen} onClose={() => setCreateOpen(false)} />

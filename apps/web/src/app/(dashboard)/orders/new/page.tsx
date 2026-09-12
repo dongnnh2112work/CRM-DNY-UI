@@ -16,6 +16,8 @@ import { useNotifications } from "@/lib/notifications-store";
 import { deadlineFromService, nextContractNumber, nextDossierNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useServices } from "@/lib/services-store";
+import { PERMISSION } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { contractsApi } from "@/modules/contracts/api";
 import { ordersApi } from "@/modules/orders/api";
@@ -41,6 +43,7 @@ function NewOrderPageContent() {
   const { orders, replaceOrders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
+  const { can } = useSession();
   const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -69,6 +72,9 @@ function NewOrderPageContent() {
             const service = services.find((s) => s.id === values.serviceId);
             const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
             const submitter = activeUsers.find((u) => u.id === values.submitterId);
+            const reviewer = values.reviewerId
+              ? activeUsers.find((u) => u.id === values.reviewerId)
+              : undefined;
             if (!customer || !service || !assigned || !submitter) {
               message.error(t("common.requiredMissing"));
               return;
@@ -102,6 +108,7 @@ function NewOrderPageContent() {
                 value,
                 assignedUserId: assigned.id,
                 submitterUserId: submitter.id,
+                reviewerUserId: reviewer?.id ?? null,
                 vatRate,
                 stage: "new",
                 notes: values.notes,
@@ -113,6 +120,7 @@ function NewOrderPageContent() {
                 serviceName: service.name,
                 assignedUserName: assigned.name,
                 submitterName: submitter.name,
+                reviewerName: reviewer?.name,
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
               }),
               commissionPercent:
@@ -174,12 +182,16 @@ function NewOrderPageContent() {
           <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
         </Form.Item>
         <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
-          <Select
-            options={activeUsers
-              .filter((u) => u.role === "staff")
-              .map((u) => ({ value: u.id, label: u.name }))}
-          />
+          <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
         </Form.Item>
+        {can(PERMISSION.orderUpdate) || can(PERMISSION.orderCreate) ? (
+          <Form.Item name="reviewerId" label={t("order.reviewerOptional")} extra={t("order.reviewerExtra")}>
+            <Select
+              allowClear
+              options={activeUsers.map((u) => ({ value: u.id, label: u.name }))}
+            />
+          </Form.Item>
+        ) : null}
         <Form.Item
           name="submitterId"
           label={t("order.submitterLabel")}

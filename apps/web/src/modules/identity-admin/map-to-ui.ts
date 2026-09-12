@@ -1,6 +1,10 @@
 import type { AppUser, RoleDefinition, UserRole, UserStatus } from "@/lib/types";
 import type { AuthUser } from "@/modules/auth/api";
-import type { IdentityRole, IdentityUser } from "@/modules/identity-admin/api";
+import type {
+  IdentityPermissionGroup,
+  IdentityRole,
+  IdentityUser,
+} from "@/modules/identity-admin/api";
 
 const BUILTIN_KEYS = new Set(["super_admin", "admin", "accountant", "staff", "ctv_role"]);
 
@@ -23,6 +27,49 @@ export function uiRoleToApiCodes(role: UserRole): string[] {
     ctv_role: "CTV",
   };
   return [map[role] ?? String(role).toUpperCase()];
+}
+
+const UI_ROLE_API_ALIASES: Record<string, string[]> = {
+  super_admin: ["SUPER_ADMIN"],
+  admin: ["ADMIN"],
+  accountant: ["ACCOUNTANT", "ACCOUNTING"],
+  staff: ["SALES", "STAFF"],
+  ctv_role: ["CTV", "COLLABORATOR"],
+};
+
+export function findIdentityRoleForUi(roles: IdentityRole[], uiKey: string): IdentityRole | undefined {
+  const aliases = (UI_ROLE_API_ALIASES[uiKey] ?? uiRoleToApiCodes(uiKey)).map((c) => c.toUpperCase());
+  return (
+    roles.find((r) => aliases.includes(r.code.toUpperCase())) ??
+    roles.find((r) => mapApiRoleCodeToUi(r.code) === uiKey)
+  );
+}
+
+export function unwrapIdentityEntity<T extends object>(raw: unknown): T | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as { data?: unknown };
+  if (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data)) {
+    return obj.data as T;
+  }
+  return raw as T;
+}
+
+export function permissionCodesOf(group: IdentityPermissionGroup): string[] {
+  return (group.permissions ?? [])
+    .map((item) => (typeof item === "string" ? item : item.code))
+    .filter(Boolean);
+}
+
+export function roleHasGroupField(role: IdentityRole | undefined | null): boolean {
+  if (!role) return false;
+  return Array.isArray(role.permissionGroupCodes) || Array.isArray(role.permissionGroups);
+}
+
+export function roleGroupCodes(role: IdentityRole | undefined | null): string[] {
+  if (!role) return [];
+  if (role.permissionGroupCodes?.length) return [...role.permissionGroupCodes];
+  if (role.permissionGroups?.length) return role.permissionGroups.map((g) => g.code);
+  return [];
 }
 
 export function uiStatusToApi(status: UserStatus | undefined): "ACTIVE" | "SUSPENDED" {

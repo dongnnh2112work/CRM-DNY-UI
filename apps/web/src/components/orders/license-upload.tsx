@@ -10,6 +10,8 @@ import type { OrderAttachment } from "@/lib/types";
 import { ds } from "@/lib/design-tokens";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
 import { apiErrorMessage } from "@/lib/http/message";
+import { PERMISSION } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { documentsApi } from "@/modules/documents/api";
 import { encodeLicenseFileType, mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
 import { useT } from "@/lib/use-t";
@@ -31,11 +33,17 @@ export function LicenseUpload({
 }: LicenseUploadProps) {
   const t = useT();
   const { message } = App.useApp();
+  const { can } = useSession();
+  const canUpload = can(PERMISSION.documentUpload);
   const visible = (files ?? []).filter((a) => !a.deleted);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [dateForm] = Form.useForm();
 
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
+    if (!canUpload) {
+      message.error(t("docs.needUploadPerm"));
+      return Upload.LIST_IGNORE;
+    }
     const type = getAttachmentType(file.name);
     if (type === "other") {
       message.error(t("file.allowedTypes"));
@@ -110,6 +118,7 @@ export function LicenseUpload({
         beforeUpload={beforeUpload}
         showUploadList={false}
         multiple={false}
+        disabled={!canUpload}
         style={compact ? { padding: "12px 8px" } : undefined}
       >
         <p className="ant-upload-drag-icon" style={compact ? { marginBottom: 4 } : undefined}>
