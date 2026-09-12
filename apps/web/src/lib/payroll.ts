@@ -7,17 +7,17 @@ import {
 } from "@/lib/order-cashflow";
 import type { Order, OrderExpense, PaymentRecord, RolePagePermissions } from "@/lib/types";
 
-/** `edit` = BOD / admin / kế toán xem cả công ty. `view` (hoặc role staff) = chỉ lương của mình. */
+/** `commission.view` (hoặc matrix payroll.edit) = cả công ty. User đã login = lương của mình. */
 export type PayrollScope = "all" | "self" | "none";
 
 export function getPayrollScope(
   user: { role: string } | null | undefined,
   perms: RolePagePermissions | null | undefined,
+  apiPermissions?: string[] | null,
 ): PayrollScope {
   if (!user) return "none";
-  if (perms?.payroll?.edit) return "all";
-  if (perms?.payroll?.view || user.role === "staff") return "self";
-  return "none";
+  if (apiPermissions?.includes("commission.view") || perms?.payroll?.edit) return "all";
+  return "self";
 }
 
 export type PayrollLine = {

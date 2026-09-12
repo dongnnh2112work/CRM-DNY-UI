@@ -16,6 +16,7 @@ import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { buildPayroll, collectPayrollMonths, getPayrollScope, type StaffPayroll } from "@/lib/payroll";
 import { matchesTableQuery } from "@/lib/table-search";
+import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useT } from "@/lib/use-t";
 
@@ -44,6 +45,7 @@ function PayrollPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentUser, getEffectivePermissions } = useUsers();
+  const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
@@ -51,7 +53,7 @@ function PayrollPageContent() {
   const applyUrlQuery = useCallback((q: string) => setQuery(q), []);
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
-  const scope = getPayrollScope(currentUser, perms);
+  const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
 
   const month = isYearMonth(searchParams.get("month")) ? searchParams.get("month")! : currentYearMonth();
 

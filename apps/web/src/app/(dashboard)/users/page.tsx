@@ -2,6 +2,7 @@
 
 import { PlusOutlined, UserOutlined } from "@ant-design/icons";
 import {
+  Alert,
   App,
   Avatar,
   Button,
@@ -22,6 +23,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { PermissionMatrix } from "@/components/users/permission-matrix";
+import { RolePermissionGroupsModal } from "@/components/users/role-permission-groups-modal";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
 import {
@@ -34,7 +36,10 @@ import {
 import { getStatusMeta } from "@/lib/status-config";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
+import { ApiError } from "@/lib/http/errors";
 import { apiErrorMessage } from "@/lib/http/message";
+import { PERMISSION } from "@/lib/rbac";
+import { ConfigNotPersistedError } from "@/modules/config/api";
 import { useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
 import { useSession } from "@/lib/session/session-provider";
@@ -60,7 +65,7 @@ function formatDob(iso?: string) {
 export default function UsersPage() {
   const t = useT();
   const { message } = App.useApp();
-  const { can } = useSession();
+  const { can, user: apiUser, refreshMe } = useSession();
   const {
     users,
     roles,
@@ -85,6 +90,7 @@ export default function UsersPage() {
   }, []);
   const [saving, setSaving] = useState(false);
   const [savingPerms, setSavingPerms] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   const filtered = users.filter((u) => {
     if (dateRange?.[0] || dateRange?.[1]) {
@@ -137,6 +143,13 @@ export default function UsersPage() {
   };
 
   const selectedRoleDef = permRole ? roles.find((r) => r.key === permRole) : null;
+  const canManageConfig = can(PERMISSION.configManage);
+
+  const savePermsError = (err: unknown) => {
+    if (err instanceof ConfigNotPersistedError) return t("user.savePermsNotPersisted");
+    if (err instanceof ApiError && err.isForbidden) return t("user.savePermsForbidden");
+    return apiErrorMessage(err, t("user.savePermsFailed"));
+  };
 
   const columns: TableColumnsType<AppUser> = [
     {
@@ -226,6 +239,9 @@ export default function UsersPage() {
         onDateRangeChange={setDateRange}
         primaryAction={{ label: t("user.newCta"), onClick: openCreate }}
       >
+        {can(PERMISSION.roleManage) ? (
+          <Button onClick={() => setGroupsOpen(true)}>{t("user.roleGroups")}</Button>
+        ) : null}
         {can("user.manage") ? (
           <Link href="/users/pending">
             <Button>{t("nav.pendingUsers")}</Button>
@@ -293,6 +309,8 @@ export default function UsersPage() {
                 });
                 if (values.role && values.role !== editUser.role) {
                   await identityAdminApi.setUserRoles(editUser.id, uiRoleToApiCodes(values.role));
+                  if (apiUser?.id === editUser.id) await refreshMe();
+                  else message.info(t("user.refreshSessionHint"));
                 }
                 const mapped = mapIdentityUserToUi({
                   ...updated,
@@ -354,13 +372,15 @@ export default function UsersPage() {
         okText={t("user.saveMatrix")}
         cancelText={t("common.cancel")}
         confirmLoading={savingPerms}
-        onOk={() => {
+        onOk={async () => {
           if (!permRole || !draftPerms) return;
           setSavingPerms(true);
           try {
-            updateRolePermissions(permRole, draftPerms);
+            await updateRolePermissions(permRole, draftPerms);
             message.success(t("user.savedPerms", { role: getRoleLabel(permRole) }));
             setPermRole(null);
+          } catch (err) {
+            message.error(savePermsError(err));
           } finally {
             setSavingPerms(false);
           }
@@ -369,6 +389,24 @@ export default function UsersPage() {
         <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
           {t("user.rolePermsHint")}
         </Typography.Paragraph>
+        {can(PERMISSION.roleManage) ? (
+          <Button
+            style={{ marginBottom: 12 }}
+            onClick={() => {
+              setGroupsOpen(true);
+            }}
+          >
+            {t("user.openRoleGroups")}
+          </Button>
+        ) : null}
+        {!canManageConfig ? (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={t("user.matrixNeedsConfigManage")}
+          />
+        ) : null}
 
         <Space wrap style={{ width: "100%", marginBottom: 12 }} align="start">
           <Select
@@ -387,14 +425,18 @@ export default function UsersPage() {
               okText={t("common.delete")}
               cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
-              onConfirm={() => {
-                const res = deleteRole(selectedRoleDef.key);
-                if (!res.ok) {
-                  message.warning(res.reason);
-                  return;
+              onConfirm={async () => {
+                try {
+                  const res = await deleteRole(selectedRoleDef.key);
+                  if (!res.ok) {
+                    message.warning(res.reason);
+                    return;
+                  }
+                  message.success(t("user.roleDeleted"));
+                  setPermRole("staff");
+                } catch (err) {
+                  message.error(savePermsError(err));
                 }
-                message.success(t("user.roleDeleted"));
-                setPermRole("staff");
               }}
             >
               <Button danger size="small">
@@ -411,18 +453,22 @@ export default function UsersPage() {
             onChange={(e) => setNewRoleLabel(e.target.value)}
             onPressEnter={async () => {
               if (!newRoleLabel.trim()) return;
-              const created = createRole(newRoleLabel, permRole ?? "staff");
               try {
-                await identityAdminApi.createRole({
-                  code: created.key.toUpperCase(),
-                  name: created.label,
-                });
+                const created = await createRole(newRoleLabel, permRole ?? "staff");
+                try {
+                  await identityAdminApi.createRole({
+                    code: created.key.toUpperCase(),
+                    name: created.label,
+                  });
+                } catch (err) {
+                  message.warning(apiErrorMessage(err, created.label));
+                }
+                message.success(t("user.roleCreated", { label: created.label }));
+                setNewRoleLabel("");
+                openRolePerms(created.key);
               } catch (err) {
-                message.warning(apiErrorMessage(err, created.label));
+                message.error(savePermsError(err));
               }
-              message.success(t("user.roleCreated", { label: created.label }));
-              setNewRoleLabel("");
-              openRolePerms(created.key);
             }}
           />
           <Button
@@ -433,18 +479,22 @@ export default function UsersPage() {
                 message.warning(t("user.enterRoleName"));
                 return;
               }
-              const created = createRole(newRoleLabel, permRole ?? "staff");
               try {
-                await identityAdminApi.createRole({
-                  code: created.key.toUpperCase(),
-                  name: created.label,
-                });
+                const created = await createRole(newRoleLabel, permRole ?? "staff");
+                try {
+                  await identityAdminApi.createRole({
+                    code: created.key.toUpperCase(),
+                    name: created.label,
+                  });
+                } catch (err) {
+                  message.warning(apiErrorMessage(err, created.label));
+                }
+                message.success(t("user.roleCreated", { label: created.label }));
+                setNewRoleLabel("");
+                openRolePerms(created.key);
               } catch (err) {
-                message.warning(apiErrorMessage(err, created.label));
+                message.error(savePermsError(err));
               }
-              message.success(t("user.roleCreated", { label: created.label }));
-              setNewRoleLabel("");
-              openRolePerms(created.key);
             }}
           >
             {t("user.addRole")}
@@ -455,6 +505,12 @@ export default function UsersPage() {
           <PermissionMatrix value={draftPerms} onChange={setDraftPerms} />
         ) : null}
       </Modal>
+
+      <RolePermissionGroupsModal
+        open={groupsOpen}
+        onClose={() => setGroupsOpen(false)}
+        initialUiRole={permRole}
+      />
     </>
   );
 }

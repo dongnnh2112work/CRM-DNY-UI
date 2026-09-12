@@ -8,6 +8,7 @@ import {
   CUSTOMER_STATUS_CATALOG_KEY,
   ORDER_STAGES_CONFIG_KEY,
   PAGE_PERMISSIONS_CONFIG_KEY,
+  parseConfigValue,
   REMINDER_CONFIG_KEY,
 } from "@/modules/config/api";
 import { contractsApi } from "@/modules/contracts/api";
@@ -126,6 +127,31 @@ function mergeById<T extends { id: string }>(prev: T[], next: T[]): T[] {
   return [...map.values()];
 }
 
+/** Append must not replace a row that already has installments with an empty rebuild. */
+function mergePaymentRecords(prev: PaymentRecord[], next: PaymentRecord[]): PaymentRecord[] {
+  const map = new Map(prev.map((item) => [item.orderId, item]));
+  for (const item of next) {
+    const existing = map.get(item.orderId);
+    if (!existing) {
+      map.set(item.orderId, item);
+      continue;
+    }
+    const incomingEmpty = item.installments.length === 0 && item.paidAmount === 0;
+    const existingHasData = existing.installments.length > 0 || existing.paidAmount > 0;
+    if (incomingEmpty && existingHasData) {
+      map.set(item.orderId, {
+        ...existing,
+        orderNumber: item.orderNumber || existing.orderNumber,
+        customerName: item.customerName || existing.customerName,
+        totalAmount: item.totalAmount || existing.totalAmount,
+      });
+      continue;
+    }
+    map.set(item.orderId, item);
+  }
+  return [...map.values()];
+}
+
 export async function applyRemoteData(
   applier: ApiDataApplier,
   sessionUser: AuthUser | null | undefined,
@@ -193,7 +219,21 @@ export async function applyRemoteData(
       ? settled(fetchPage((p, s) => notificationsApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadConfig
-      ? settled(configApi.list(), { items: [] as { key?: string; valueJson?: unknown }[] })
+      ? settled(
+          Promise.all([
+            configApi.list(),
+            configApi.get(PAGE_PERMISSIONS_CONFIG_KEY, { silent: true }).catch(() => undefined),
+          ]).then(([list, pagePerms]) => {
+            const items = [...(list.items ?? [])];
+            if (pagePerms?.key) {
+              const idx = items.findIndex((row) => row.key === pagePerms.key);
+              if (idx >= 0) items[idx] = pagePerms;
+              else items.push(pagePerms);
+            }
+            return { items };
+          }),
+          { items: [] as { key?: string; valueJson?: unknown }[] },
+        )
       : Promise.resolve(null),
     loadUsers
       ? settled(identityAdminApi.listRoles().then(unwrapList), [])
@@ -287,16 +327,17 @@ export async function applyRemoteData(
       loaded: orders.length,
     });
     const paymentRows = apiPayments?.items ?? [];
-    const paymentRecords = mapPaymentsToRecords(orders, paymentRows);
-    applier.replacePayments(append ? mergeById(current.payments, paymentRecords) : paymentRecords);
-    if (apiPayments) {
-      applier.setListMeta("payments", {
-        total: apiPayments.total,
-        page: apiPayments.page,
-        pageSize: apiPayments.pageSize,
-        loaded: append ? mergeById(current.payments, paymentRecords).length : paymentRecords.length,
-      });
-    }
+    const paymentSourceOrders = append ? mapped : orders;
+    const paymentRecords = mapPaymentsToRecords(paymentSourceOrders, paymentRows);
+    applier.replacePayments(
+      append ? mergePaymentRecords(current.payments, paymentRecords) : paymentRecords,
+    );
+    applier.setListMeta("payments", {
+      total: apiOrders.total,
+      page: apiOrders.page,
+      pageSize: apiOrders.pageSize,
+      loaded: orders.length,
+    });
   }
 
   const orderNumber = new Map(orders.map((o) => [o.id, o.orderNumber]));
@@ -341,7 +382,7 @@ export async function applyRemoteData(
   }
   if (apiConfig) {
     const items = apiConfig.items ?? [];
-    const byKey = new Map(items.map((row) => [row.key, row.valueJson]));
+    const byKey = new Map(items.map((row) => [row.key, parseConfigValue(row.valueJson)]));
     const reminders = byKey.get(REMINDER_CONFIG_KEY);
     if (reminders && typeof reminders === "object" && reminders !== null && "vatIssueWarnDays" in reminders) {
       const days = Number((reminders as { vatIssueWarnDays?: unknown }).vatIssueWarnDays);

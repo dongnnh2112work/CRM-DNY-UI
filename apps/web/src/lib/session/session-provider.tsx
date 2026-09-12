@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { isAwaitingAccess } from "@/lib/access-gate";
+import { accessGate, isAwaitingAccess } from "@/lib/access-gate";
 import { classifyApiError, isBlockedAccountError, isPendingMeError, placeholderPendingUser } from "@/lib/http/error-kind";
 import { writeAuthNotice } from "@/lib/http/auth-notice";
 import { consumeOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
@@ -24,6 +24,8 @@ type SessionContextValue = {
   status: SessionStatus;
   user: AuthUser | null;
   can: (permission: string) => boolean;
+  hasPermission: (permission: string) => boolean;
+  isPendingApproval: boolean;
   applySession: (session: SessionResponse) => void;
   applyProfile: (user: AuthUser) => void;
   refreshMe: () => Promise<AuthUser | null>;
@@ -178,9 +180,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const isPendingApproval = accessGate(user) === "pending";
+
   const value = useMemo(
-    () => ({ status, user, can, applySession, applyProfile, refreshMe, logout }),
-    [status, user, can, applySession, applyProfile, refreshMe, logout],
+    () => ({
+      status,
+      user,
+      can,
+      hasPermission: can,
+      isPendingApproval,
+      applySession,
+      applyProfile,
+      refreshMe,
+      logout,
+    }),
+    [status, user, can, isPendingApproval, applySession, applyProfile, refreshMe, logout],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

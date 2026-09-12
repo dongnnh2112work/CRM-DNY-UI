@@ -71,6 +71,7 @@ export function mapUiOrderToCreateApi(input: {
   value: number;
   assignedUserId: string;
   submitterUserId?: string;
+  reviewerUserId?: string | null;
   collaboratorId?: string;
   vatRate?: number;
   stage?: string;
@@ -88,6 +89,7 @@ export function mapUiOrderToCreateApi(input: {
     totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
     assignedUserId: input.assignedUserId,
     submitterUserId: input.submitterUserId,
+    reviewerUserId: input.reviewerUserId,
     collaboratorId: input.collaboratorId,
     vatRate,
     stage: input.stage ?? "new",
@@ -101,6 +103,7 @@ export function mapUiOrderToUpdateApi(input: {
   channel?: string;
   collaboratorId?: string | null;
   notes?: string | null;
+  reviewerUserId?: string | null;
 }): UpdateOrderBody {
   const vatRate = input.vatRate ?? 0;
   const value = input.value;
@@ -112,5 +115,6 @@ export function mapUiOrderToUpdateApi(input: {
     channel: input.channel,
     collaboratorId: input.collaboratorId,
     notes: input.notes,
+    reviewerUserId: input.reviewerUserId,
   };
 }

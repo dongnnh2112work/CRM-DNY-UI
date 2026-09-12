@@ -37,6 +37,7 @@ import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import { getPayrollScope } from "@/lib/payroll";
+import { canSeeMenuPage } from "@/lib/rbac";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 
@@ -63,10 +64,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isDark = appTheme === "dark";
 
   const userId = currentUser?.id;
-  const payrollScope = getPayrollScope(
-    currentUser,
-    currentUser ? getEffectivePermissions(currentUser) : null,
-  );
+  const pageMatrix = currentUser ? getEffectivePermissions(currentUser) : null;
+  const payrollScope = getPayrollScope(currentUser, pageMatrix, apiUser?.permissions);
   const myNotifs = userId ? forUser(userId).slice(0, 8) : [];
   const unread = userId ? unreadCount(userId) : 0;
 
@@ -153,11 +152,27 @@ export function AppShell({ children }: { children: ReactNode }) {
         : []),
       { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> },
     ];
-    if (apiUser && !can("customer.view")) {
-      return items.filter((i) => !("key" in i) || i.key !== "/customers");
-    }
-    return items;
-  }, [t, payrollScope, apiUser, can]);
+    const pageByPath: Record<string, Parameters<typeof canSeeMenuPage>[0]["page"]> = {
+      "/orders": "orders",
+      "/customers": "customers",
+      "/payments": "payments",
+      "/expense-approvals": "expense_approvals",
+      "/payroll": "payroll",
+      "/vat": "vat",
+      "/services": "services",
+      "/emails": "emails",
+      "/users": "users",
+      "/users/pending": "users",
+      "/config": "config",
+      "/dashboard": "dashboard",
+    };
+    return items.filter((i) => {
+      if (!("key" in i) || typeof i.key !== "string") return true;
+      const page = pageByPath[i.key];
+      if (!page) return true;
+      return canSeeMenuPage({ page, apiUser, matrix: pageMatrix });
+    });
+  }, [t, payrollScope, apiUser, can, pageMatrix]);
 
   const selectedKey = useMemo(() => {
     const keys = menuItems.filter((i) => "key" in i).map((i) => (i as { key: string }).key);

@@ -9,6 +9,8 @@ import { DataTable } from "@/components/shared/data-table";
 import type { OrderAttachment } from "@/lib/types";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
 import { apiErrorMessage } from "@/lib/http/message";
+import { PERMISSION } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { documentsApi } from "@/modules/documents/api";
 import { mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
 import { useT } from "@/lib/use-t";
@@ -30,9 +32,15 @@ interface OrderDocumentsProps {
 export function OrderDocuments({ attachments, onChange, uploaderName = "Admin", orderId }: OrderDocumentsProps) {
   const t = useT();
   const { message } = App.useApp();
+  const { can } = useSession();
+  const canUpload = can(PERMISSION.documentUpload);
   const visible = attachments.filter((a) => !a.deleted);
 
   const beforeUpload: UploadProps["beforeUpload"] = async (file) => {
+    if (!canUpload) {
+      message.error(t("docs.needUploadPerm"));
+      return Upload.LIST_IGNORE;
+    }
     const type = getAttachmentType(file.name);
     if (type === "other") {
       message.error(t("file.allowedTypes"));
@@ -117,7 +125,13 @@ export function OrderDocuments({ attachments, onChange, uploaderName = "Admin", 
       <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
         {t("docs.intro")}
       </Typography.Paragraph>
-      <Upload.Dragger accept={ACCEPT_FILE_TYPES} beforeUpload={beforeUpload} showUploadList={false} multiple>
+      <Upload.Dragger
+        accept={ACCEPT_FILE_TYPES}
+        beforeUpload={beforeUpload}
+        showUploadList={false}
+        multiple
+        disabled={!canUpload}
+      >
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
