@@ -2,7 +2,7 @@ import type { OrderChannel } from "@/lib/types";
 
 export const CUSTOMER_CHANNELS: OrderChannel[] = ["direct", "website", "referral", "ctv"];
 
-const PACKED = /^__ch:([a-z]+)__(.*)$/s;
+const PACKED = /^__ch:([a-z]+)__(.*)$/;
 
 function asChannel(value: string | undefined): OrderChannel | undefined {
   if (value === "direct" || value === "website" || value === "referral" || value === "ctv") return value;
