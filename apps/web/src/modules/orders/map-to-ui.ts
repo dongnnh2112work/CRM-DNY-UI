@@ -29,7 +29,7 @@ export function mapApiOrderToUi(
     contractNumber?: number;
   } = {},
 ): Order {
-  const created = o.createdAt.slice(0, 10);
+  const created = typeof o.createdAt === "string" ? o.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
   const vatRate = num(o.vatRate);
   return {
     id: o.id,

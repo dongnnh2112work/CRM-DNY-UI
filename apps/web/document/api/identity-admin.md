@@ -68,3 +68,14 @@ Admin seed token: `test:11111111-1111-4111-8111-111111111101` (role ADMIN có `i
 3. Attach groups to role: `PUT /roles/:id/permission-groups`  
 4. Assign roles to user: `PUT /users/:id/roles`  
 5. User re-login / refresh `/auth/me` để thấy `permissions` mới  
+
+### Park users when a group/role is removed (FE)
+
+Documented APIs only (Swagger has **no** DELETE for groups/roles):
+
+1. Detach group: `PUT /roles/:id/permission-groups` remaining codes  
+2. Empty group: `PUT /permission-groups/:id/permissions` `{ permissionCodes: [] }`  
+3. Users left with no roles: `PUT /users/:id/roles` `{ roleCodes: [] }` then `PATCH /users/:id` `{ status: "PENDING_APPROVAL" }`  
+4. They appear on `GET /users?status=PENDING_APPROVAL`
+
+**BE gap:** `DELETE /permission-groups/:id` and `DELETE /roles/:id` so catalog rows actually disappear.

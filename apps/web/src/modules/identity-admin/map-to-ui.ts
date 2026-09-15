@@ -37,12 +37,26 @@ const UI_ROLE_API_ALIASES: Record<string, string[]> = {
   ctv_role: ["CTV", "COLLABORATOR"],
 };
 
+export function apiCodesForUiRole(uiKey: string): string[] {
+  return UI_ROLE_API_ALIASES[uiKey] ?? uiRoleToApiCodes(uiKey);
+}
+
 export function findIdentityRoleForUi(roles: IdentityRole[], uiKey: string): IdentityRole | undefined {
-  const aliases = (UI_ROLE_API_ALIASES[uiKey] ?? uiRoleToApiCodes(uiKey)).map((c) => c.toUpperCase());
+  const aliases = apiCodesForUiRole(uiKey).map((c) => c.toUpperCase());
   return (
     roles.find((r) => aliases.includes(r.code.toUpperCase())) ??
     roles.find((r) => mapApiRoleCodeToUi(r.code) === uiKey)
   );
+}
+
+export function userHasApiRole(user: Pick<IdentityUser, "roleCodes">, codes: string[]): boolean {
+  const aliases = new Set(codes.map((c) => c.toUpperCase()));
+  return (user.roleCodes ?? []).some((code) => aliases.has(code.toUpperCase()));
+}
+
+export function stripApiRoleCodes(roleCodes: string[] | undefined, drop: string[]): string[] {
+  const aliases = new Set(drop.map((c) => c.toUpperCase()));
+  return (roleCodes ?? []).filter((code) => !aliases.has(code.toUpperCase()));
 }
 
 export function unwrapIdentityEntity<T extends object>(raw: unknown): T | undefined {

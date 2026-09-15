@@ -214,10 +214,6 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       const def = roles.find((r) => r.key === roleKey);
       if (!def) return { ok: false, reason: tt("user.roleNotFound") };
       if (def.builtin) return { ok: false, reason: tt("user.cannotDeleteBuiltin") };
-      const inUse = users.some((u) => u.role === roleKey);
-      if (inUse) {
-        return { ok: false, reason: tt("user.roleInUse") };
-      }
       const prevRoles = roles;
       const next = { ...rolePermissionsRef.current };
       delete next[roleKey];
@@ -230,7 +226,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       }
       return { ok: true };
     },
-    [persistRolePermissions, roles, users],
+    [persistRolePermissions, roles],
   );
 
   const loginAs = useCallback((userId: string) => {

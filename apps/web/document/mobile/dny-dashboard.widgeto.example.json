@@ -1,0 +1,116 @@
+{
+  "app": "Widgeto",
+  "schemaVersion": 1,
+  "name": "DNY CRM Dashboard",
+  "baseUrl": "https://apidyn.otcayxe.com/api/v1",
+  "importNotes": [
+    "Widgeto (ex API Widgets): Import file này, hoặc tạo từng widget → URL + header Authorization: Bearer <token>.",
+    "API Widget key (app cũ, chỉ URL public, không gửi Bearer): v1::w12::dark::json::<url> — CRM sẽ 401 nếu không gắn token.",
+    "Access token hết hạn ~1 giờ. Lấy mới: POST /auth/login { email, password } rồi thay auth.token.",
+    "Dashboard web không có GET /dashboard. KPI gộp từ các GET bên dưới."
+  ],
+  "auth": {
+    "type": "bearer",
+    "header": "Authorization",
+    "token": "{{accessToken}}",
+    "login": {
+      "method": "POST",
+      "url": "https://apidyn.otcayxe.com/api/v1/auth/login",
+      "body": { "email": "{{email}}", "password": "{{password}}" }
+    }
+  },
+  "sharedHeaders": {
+    "Accept": "application/json",
+    "Authorization": "Bearer {{accessToken}}"
+  },
+  "widgets": [
+    {
+      "name": "CRM · Đơn hàng",
+      "visualization": "table",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/orders?page=1&pageSize=50"
+      },
+      "map": {
+        "kpi": "total",
+        "rows": "items",
+        "title": "orderNumber",
+        "subtitle": "stage",
+        "value": "value"
+      },
+      "usedOnWebFor": ["dash.totalOrders", "dash.ordersByStatus", "dash.recentOrders", "payroll KPI"]
+    },
+    {
+      "name": "CRM · Khách hàng",
+      "visualization": "text",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/customers?page=1&pageSize=50"
+      },
+      "map": { "kpi": "total" },
+      "usedOnWebFor": ["dash.totalCustomers"]
+    },
+    {
+      "name": "CRM · Thanh toán",
+      "visualization": "table",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/payments?page=1&pageSize=50"
+      },
+      "map": {
+        "rows": "items",
+        "title": "orderId",
+        "subtitle": "verificationStatus",
+        "value": "amount"
+      },
+      "usedOnWebFor": ["dash.revenueMonth", "dash.revenueByMonth", "dash.upcomingPayments"],
+      "note": "Web chỉ cộng installment VERIFIED/paid sau khi map schedule. Widget raw list payments."
+    },
+    {
+      "name": "CRM · Hợp đồng",
+      "visualization": "table",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/contracts?page=1&pageSize=50"
+      },
+      "usedOnWebFor": ["hydrate order labels (cùng lúc với orders)"]
+    },
+    {
+      "name": "CRM · CTV",
+      "visualization": "table",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/collaborators?page=1&pageSize=100"
+      },
+      "usedOnWebFor": ["hydrate order collaborator (cùng lúc với orders)"]
+    },
+    {
+      "name": "CRM · Giai đoạn đơn",
+      "visualization": "pie",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/config/crm.orderStages"
+      },
+      "usedOnWebFor": ["dash.ordersByStatus labels/colors"]
+    },
+    {
+      "name": "CRM · Chi phí (payroll)",
+      "visualization": "table",
+      "request": {
+        "method": "GET",
+        "url": "https://apidyn.otcayxe.com/api/v1/expenses?page=1&pageSize=50"
+      },
+      "usedOnWebFor": ["dash.commissionPaid / dash.myPayroll"],
+      "note": "Web dashboard route KHÔNG gọi API này; KPI lương dùng store nếu đã load từ /payroll hoặc /expense."
+    }
+  ],
+  "shellApisNotKpi": [
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/auth/me" },
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/users?page=1&pageSize=100" },
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/roles" },
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/services?page=1&pageSize=100" },
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/notifications?page=1&pageSize=50" },
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/config" },
+    { "method": "GET", "url": "https://apidyn.otcayxe.com/api/v1/config/crm.pagePermissions" }
+  ]
+}

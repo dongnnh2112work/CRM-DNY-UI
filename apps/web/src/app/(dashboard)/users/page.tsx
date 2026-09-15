@@ -8,7 +8,6 @@ import {
   Button,
   Input,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Tag,
@@ -38,18 +37,24 @@ import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import { ApiError } from "@/lib/http/errors";
 import { apiErrorMessage } from "@/lib/http/message";
+import { unwrapList } from "@/lib/http/paging";
 import { PERMISSION } from "@/lib/rbac";
 import { ConfigNotPersistedError } from "@/modules/config/api";
-import { useRemoteList } from "@/components/api-hydrator";
+import { useRemoteList, useApiRefresh } from "@/components/api-hydrator";
+import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
 import { useT } from "@/lib/use-t";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
-import { identityAdminApi } from "@/modules/identity-admin/api";
+import { identityAdminApi, type IdentityUser } from "@/modules/identity-admin/api";
 import {
+  apiCodesForUiRole,
+  findIdentityRoleForUi,
   mapIdentityUserToUi,
+  stripApiRoleCodes,
   uiRoleToApiCodes,
   uiStatusToApi,
 } from "@/modules/identity-admin/map-to-ui";
+import { applyLostRoles, loadUsersWithRoles } from "@/modules/identity-admin/reassign-pending";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -78,6 +83,7 @@ export default function UsersPage() {
     getRoleLabel,
   } = useUsers();
   const usersRemote = useRemoteList("users");
+  const refresh = useApiRefresh();
   const [profileOpen, setProfileOpen] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
   const [permRole, setPermRole] = useState<UserRole | null>(null);
@@ -91,6 +97,11 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [savingPerms, setSavingPerms] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [deleteRoleOpen, setDeleteRoleOpen] = useState(false);
+  const [deleteRoleUsers, setDeleteRoleUsers] = useState<IdentityUser[]>([]);
+  const [deleteRoleRemaining, setDeleteRoleRemaining] = useState<Map<string, string[]>>(new Map());
+  const [deleteRoleSkipSelf, setDeleteRoleSkipSelf] = useState(false);
+  const [deletingRole, setDeletingRole] = useState(false);
 
   const filtered = users.filter((u) => {
     if (dateRange?.[0] || dateRange?.[1]) {
@@ -144,6 +155,93 @@ export default function UsersPage() {
 
   const selectedRoleDef = permRole ? roles.find((r) => r.key === permRole) : null;
   const canManageConfig = can(PERMISSION.configManage);
+  const canManageUsers = can(PERMISSION.userManage);
+
+  const openDeleteRole = async () => {
+    if (!selectedRoleDef || selectedRoleDef.builtin) return;
+    setDeletingRole(true);
+    try {
+      const dropCodes = apiCodesForUiRole(selectedRoleDef.key);
+      const apiRoles = unwrapList(await identityAdminApi.listRoles());
+      const nestRole = findIdentityRoleForUi(apiRoles, selectedRoleDef.key);
+      if (nestRole && !dropCodes.some((code) => code.toUpperCase() === nestRole.code.toUpperCase())) {
+        dropCodes.push(nestRole.code);
+      }
+      const remainingByUserId = new Map<string, string[]>();
+      let affected: IdentityUser[] = [];
+      if (canManageUsers) {
+        const identityUsers = await loadUsersWithRoles();
+        for (const item of identityUsers) {
+          const remaining = stripApiRoleCodes(item.roleCodes, dropCodes);
+          remainingByUserId.set(item.id, remaining);
+          if (remaining.length === 0 && (item.roleCodes ?? []).length > 0) {
+            affected.push(item);
+          }
+        }
+      } else {
+        affected = users
+          .filter((item) => item.role === selectedRoleDef.key)
+          .map((item) => ({
+            id: item.id,
+            email: item.email,
+            displayName: item.name,
+            status: item.status,
+            roleCodes: uiRoleToApiCodes(item.role),
+          }));
+      }
+      setDeleteRoleRemaining(remainingByUserId);
+      setDeleteRoleSkipSelf(Boolean(apiUser?.id && affected.some((item) => item.id === apiUser.id)));
+      setDeleteRoleUsers(affected.filter((item) => item.id !== apiUser?.id));
+      setDeleteRoleOpen(true);
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("user.roleDeleteFailed")));
+    } finally {
+      setDeletingRole(false);
+    }
+  };
+
+  const confirmDeleteRole = async () => {
+    if (!selectedRoleDef) return;
+    setDeletingRole(true);
+    try {
+      let parkedCount = 0;
+      if (canManageUsers && deleteRoleRemaining.size) {
+        const identityUsers = await loadUsersWithRoles();
+        const result = await applyLostRoles({
+          users: identityUsers,
+          remainingByUserId: deleteRoleRemaining,
+          skipUserId: apiUser?.id,
+        });
+        for (const parked of result.parked) {
+          updateUser(parked.id, { status: "inactive" });
+        }
+        parkedCount = result.parked.length;
+        if (result.failed.length) {
+          message.warning(t("user.reassignPartialFail", { count: String(result.failed.length) }));
+        }
+      } else if (!canManageUsers && deleteRoleUsers.length) {
+        message.warning(t("user.reassignNeedUserManage"));
+        return;
+      }
+      const res = await deleteRole(selectedRoleDef.key);
+      if (!res.ok) {
+        message.warning(res.reason);
+        return;
+      }
+      message.success(
+        parkedCount
+          ? t("user.roleDeletedParked", { count: String(parkedCount) })
+          : t("user.roleDeleted"),
+      );
+      setDeleteRoleOpen(false);
+      setPermRole("staff");
+      await refresh("users");
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("user.roleDeleteFailed")));
+    } finally {
+      setDeletingRole(false);
+    }
+  };
 
   const savePermsError = (err: unknown) => {
     if (err instanceof ConfigNotPersistedError) return t("user.savePermsNotPersisted");
@@ -404,7 +502,7 @@ export default function UsersPage() {
             type="warning"
             showIcon
             style={{ marginBottom: 12 }}
-            message={t("user.matrixNeedsConfigManage")}
+            title={t("user.matrixNeedsConfigManage")}
           />
         ) : null}
 
@@ -419,30 +517,9 @@ export default function UsersPage() {
             onChange={(key) => openRolePerms(key)}
           />
           {selectedRoleDef && !selectedRoleDef.builtin ? (
-            <Popconfirm
-              title={t("user.deleteRoleTitle", { label: selectedRoleDef.label })}
-              description={t("user.deleteRoleBody")}
-              okText={t("common.delete")}
-              cancelText={t("common.cancel")}
-              okButtonProps={{ danger: true }}
-              onConfirm={async () => {
-                try {
-                  const res = await deleteRole(selectedRoleDef.key);
-                  if (!res.ok) {
-                    message.warning(res.reason);
-                    return;
-                  }
-                  message.success(t("user.roleDeleted"));
-                  setPermRole("staff");
-                } catch (err) {
-                  message.error(savePermsError(err));
-                }
-              }}
-            >
-              <Button danger size="small">
-                {t("user.deleteRole")}
-              </Button>
-            </Popconfirm>
+            <Button danger size="small" loading={deletingRole} onClick={() => void openDeleteRole()}>
+              {t("user.deleteRole")}
+            </Button>
           ) : null}
         </Space>
 
@@ -510,6 +587,17 @@ export default function UsersPage() {
         open={groupsOpen}
         onClose={() => setGroupsOpen(false)}
         initialUiRole={permRole}
+      />
+      <ReassignPendingConfirmModal
+        open={deleteRoleOpen}
+        title={t("user.deleteRoleTitle", { label: selectedRoleDef?.label || "" })}
+        hint={t("user.deleteRoleBody")}
+        attachedRoles={[]}
+        users={deleteRoleUsers}
+        skippedSelf={deleteRoleSkipSelf}
+        confirmLoading={deletingRole}
+        onCancel={() => setDeleteRoleOpen(false)}
+        onConfirm={() => void confirmDeleteRole()}
       />
     </>
   );

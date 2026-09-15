@@ -55,7 +55,7 @@ NEXT_PUBLIC_API_URL=https://apidyn.otcayxe.com/api/v1
 
 ## Live resources
 
-> **FE start here:** [FRONTEND_HANDOFF_AUTH.md](./FRONTEND_HANDOFF_AUTH.md) · RBAC: [FRONTEND_HANDOFF_RBAC.md](./FRONTEND_HANDOFF_RBAC.md) · audit: [../RBAC_FE_AUDIT.md](../RBAC_FE_AUDIT.md)
+> **FE start here:** [FRONTEND_HANDOFF_AUTH.md](./FRONTEND_HANDOFF_AUTH.md) · RBAC: [FRONTEND_HANDOFF_RBAC.md](./FRONTEND_HANDOFF_RBAC.md) · Documents viewer: [FRONTEND_HANDOFF_DOCUMENTS.md](./FRONTEND_HANDOFF_DOCUMENTS.md) · audit: [../RBAC_FE_AUDIT.md](../RBAC_FE_AUDIT.md)
 
 | Resource | Doc | Status |
 |----------|-----|--------|
@@ -70,7 +70,7 @@ NEXT_PUBLIC_API_URL=https://apidyn.otcayxe.com/api/v1
 | Contracts | [contracts.md](./contracts.md) | **Live** |
 | Workflows | [workflows.md](./workflows.md) | **Live** |
 | Tasks | [tasks.md](./tasks.md) | **Live** |
-| Documents | [documents.md](./documents.md) | **Live** |
+| Documents | [documents.md](./documents.md) · [FRONTEND_HANDOFF_DOCUMENTS.md](./FRONTEND_HANDOFF_DOCUMENTS.md) | **Live** |
 | Orders | [orders.md](./orders.md) | **Live** |
 | Payments | [payments.md](./payments.md) | **Live** |
 | VAT invoices | [vat.md](./vat.md) | **Live** |

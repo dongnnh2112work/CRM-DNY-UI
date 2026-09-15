@@ -158,7 +158,7 @@ export function PermissionGroupEditor({
       destroyOnHidden
     >
       {!canManage ? (
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t("user.groupNeedPermManage")} />
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.groupNeedPermManage")} />
       ) : null}
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <div>

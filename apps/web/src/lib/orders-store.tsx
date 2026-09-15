@@ -46,6 +46,7 @@ type OrdersContextValue = {
   setOrderStage: (id: string, stage: OrderStage) => void;
   deleteOrder: (id: string) => void;
   replaceOrders: (items: Order[]) => void;
+  upsertOrder: (order: Order) => void;
   getById: (id: string) => Order | undefined;
   isContractTaken: (contractNumber: number, excludeOrderId?: string) => boolean;
 };
@@ -68,6 +69,17 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const replaceOrders = useCallback((items: Order[]) => {
     setOrders(items.map(normalizeOrder));
+  }, []);
+
+  const upsertOrder = useCallback((order: Order) => {
+    const next = normalizeOrder(order);
+    setOrders((prev) => {
+      const index = prev.findIndex((row) => row.id === next.id);
+      if (index < 0) return [next, ...prev];
+      const copy = [...prev];
+      copy[index] = { ...prev[index], ...next };
+      return copy;
+    });
   }, []);
 
   const addOrder = useCallback(
@@ -161,10 +173,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setOrderStage,
       deleteOrder,
       replaceOrders,
+      upsertOrder,
       getById,
       isContractTaken,
     }),
-    [orders, ready, addOrder, updateOrder, setOrderStage, deleteOrder, replaceOrders, getById, isContractTaken],
+    [orders, ready, addOrder, updateOrder, setOrderStage, deleteOrder, replaceOrders, upsertOrder, getById, isContractTaken],
   );
 
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;
