@@ -104,6 +104,8 @@ Seed contract id (QA): `44444444-4444-4444-8444-444444444401`
 
 FE mở `downloadUrl` (tab mới / `<a download>`). TTL mặc định 1h (backend `STORAGE_SIGNED_URL_TTL`).
 
+**Module UI dùng chung (xem / tải trên mọi trang):** [`FRONTEND_HANDOFF_DOCUMENTS.md`](./FRONTEND_HANDOFF_DOCUMENTS.md) — `useDocumentViewer`, `DocumentFileLink`, `DocumentFileActions`. Không copy modal từ `orders/`.
+
 ---
 
 ## MIME mặc định cho phép

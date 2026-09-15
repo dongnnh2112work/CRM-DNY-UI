@@ -1,7 +1,7 @@
 import { isAwaitingAccess } from "@/lib/access-gate";
 import { reportApiError } from "@/lib/dev-debug";
 import { classifyApiError, isBlockedAccountError, isPendingMeError } from "@/lib/http/error-kind";
-import { ApiError, parseApiError } from "@/lib/http/errors";
+import { ApiError, parseApiError, parseApiErrorText } from "@/lib/http/errors";
 import { isOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
 import { readCachedAuthUser } from "@/lib/hydrate-cache";
 import {
@@ -137,6 +137,83 @@ export async function apiRequest<T>(path: string, init: RequestOptions = {}): Pr
   const text = await res.text();
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
+}
+
+/** Multipart upload with browser→API percent. `fetch` cannot report xhr.upload progress. */
+export async function apiUpload<T>(
+  path: string,
+  form: FormData,
+  onProgress?: (percent: number) => void,
+  init: { skipRefresh?: boolean; skipErrorEmit?: boolean } = {},
+): Promise<T> {
+  const url = `${getApiBaseUrl()}${requestPath(path)}`;
+  const stored = readStoredSession();
+
+  const send = () =>
+    new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      if (stored?.accessToken) {
+        xhr.setRequestHeader("Authorization", `Bearer ${stored.accessToken}`);
+      }
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      };
+      xhr.onload = () => {
+        const text = xhr.responseText ?? "";
+        if (xhr.status === 401) {
+          const err = parseApiErrorText(xhr.status, text, xhr.statusText);
+          reject(err);
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const err = parseApiErrorText(xhr.status, text, xhr.statusText);
+          if (!init.skipErrorEmit) emitApiError(path, err);
+          reject(err);
+          return;
+        }
+        onProgress?.(100);
+        if (xhr.status === 204 || !text) {
+          resolve(undefined as T);
+          return;
+        }
+        try {
+          resolve(JSON.parse(text) as T);
+        } catch {
+          reject(new ApiError(xhr.status, [text.slice(0, 240) || "Invalid JSON"]));
+        }
+      };
+      xhr.onerror = () => {
+        const err = new ApiError(0, ["network"]);
+        if (!init.skipErrorEmit) {
+          reportApiError({
+            statusCode: 0,
+            path: requestPath(path).split("?")[0],
+            messages: ["network"],
+            kind: "network",
+          });
+        }
+        reject(err);
+      };
+      xhr.send(form);
+    });
+
+  try {
+    return await send();
+  } catch (err) {
+    if (err instanceof ApiError && err.isUnauthorized) {
+      if (!init.skipRefresh) {
+        const ok = await refreshAccessToken();
+        if (ok) {
+          return apiUpload<T>(path, form, onProgress, { ...init, skipRefresh: true });
+        }
+      }
+      if (!init.skipErrorEmit) emitApiError(path, err);
+      if (!keepPendingSessionOnFailure(path)) logoutLocal();
+    }
+    throw err;
+  }
 }
 
 export { ApiError };

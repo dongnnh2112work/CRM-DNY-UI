@@ -63,6 +63,13 @@ export type UpdateOrderBody = {
   reviewerUserId?: string | null;
 };
 
+function unwrapOrder(raw: ApiOrder | { data: ApiOrder } | null | undefined): ApiOrder {
+  if (raw && typeof raw === "object" && "data" in raw && raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)) {
+    return raw.data;
+  }
+  return raw as ApiOrder;
+}
+
 export const ordersApi = {
   list(query: { page?: number; pageSize?: number } = {}) {
     const params = new URLSearchParams();
@@ -72,7 +79,7 @@ export const ordersApi = {
   },
 
   get(id: string) {
-    return apiRequest<ApiOrder>(`/orders/${id}`);
+    return apiRequest<ApiOrder | { data: ApiOrder }>(`/orders/${id}`).then(unwrapOrder);
   },
 
   create(body: CreateOrderBody) {

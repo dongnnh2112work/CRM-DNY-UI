@@ -28,14 +28,22 @@ type NestErrorBody = {
   timestamp?: string;
 };
 
-export async function parseApiError(res: Response): Promise<ApiError> {
-  let body: NestErrorBody | null = null;
+export function parseApiErrorText(status: number, text: string, fallbackStatusText?: string): ApiError {
+  if (!text) return new ApiError(status, [fallbackStatusText || `HTTP ${status}`]);
   try {
-    body = (await res.json()) as NestErrorBody;
+    const body = JSON.parse(text) as NestErrorBody;
+    const raw = body.error ?? body.message ?? fallbackStatusText ?? `HTTP ${status}`;
+    const messages = Array.isArray(raw) ? raw.map(String) : [String(raw || `HTTP ${status}`)];
+    return new ApiError(body.statusCode ?? status, messages, body.timestamp);
+  } catch {
+    return new ApiError(status, [text.slice(0, 240) || fallbackStatusText || `HTTP ${status}`]);
+  }
+}
+
+export async function parseApiError(res: Response): Promise<ApiError> {
+  try {
+    return parseApiErrorText(res.status, await res.text(), res.statusText);
   } catch {
     return new ApiError(res.status, [res.statusText || `HTTP ${res.status}`]);
   }
-  const raw = body.error ?? body.message ?? res.statusText;
-  const messages = Array.isArray(raw) ? raw.map(String) : [String(raw || `HTTP ${res.status}`)];
-  return new ApiError(body.statusCode ?? res.status, messages, body.timestamp);
 }

@@ -112,6 +112,16 @@ User phải **refresh `/auth/me`** sau khi gán role. Không xây RBAC thứ hai
 **UI nhóm quyền (đã làm):** `/users` → **Nhóm quyền** gọi `GET /permission-groups` + `PUT /roles/:id/permission-groups`.  
 `GET /roles/:id` nên trả `permissionGroups` hoặc `permissionGroupCodes` để FE không ghi đè mù.
 
+**Xóa nhóm / xóa role (FE đã làm, BE còn thiếu DELETE):**
+
+Swagger hiện **không** có `DELETE /permission-groups/:id` hay `DELETE /roles/:id`. FE không invent endpoint đó.
+
+Khi admin bấm Xóa nhóm: `PUT /roles/:id/permission-groups` (gỡ code nhóm) + `PUT /permission-groups/:id/permissions` `{ permissionCodes: [] }`. User nào còn lại `roleCodes: []` → `PUT /users/:id/roles` `{ roleCodes: [] }` + `PATCH /users/:id` `{ status: "PENDING_APPROVAL" }` để hiện ở `/users/pending`.
+
+Khi admin xóa vai trò tùy chỉnh: cùng flow park user; bản ghi role trên Nest có thể còn vì thiếu DELETE.
+
+**BE cần:** `DELETE /permission-groups/:id` và `DELETE /roles/:id` (cấm xóa role hệ thống). Cho đến khi có, nhóm/role trống vẫn nằm trên GET list.
+
 ---
 
 ## 6. Đề nghị thanh toán — chỉ người được chọn trên đơn

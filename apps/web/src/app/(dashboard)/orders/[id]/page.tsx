@@ -21,7 +21,8 @@ import {
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useApiHydrate } from "@/components/api-hydrator";
 import { OrderDocuments } from "@/components/orders/order-documents";
 import { OrderExpensesPanel } from "@/components/orders/order-expenses-panel";
 import { LicenseUpload } from "@/components/orders/license-upload";
@@ -32,7 +33,6 @@ import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { useCustomers } from "@/lib/customers-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
-import { ds } from "@/lib/design-tokens";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import {
@@ -45,12 +45,20 @@ import {
 } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
+import { ApiError } from "@/lib/http/errors";
 import { unwrapList } from "@/lib/http/paging";
+import { reloadOrderFinance } from "@/lib/load-api-data";
+import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
-import { mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
+import { mapApiOrderToUi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { contractsApi } from "@/modules/contracts/api";
-import { documentsApi } from "@/modules/documents/api";
-import { isLicenseDocument, mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
+import { customersApi } from "@/modules/customers/api";
+import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
+import { documentsApi, type ApiDocument } from "@/modules/documents/api";
+import {
+  isLicenseDocument,
+  mapApiDocumentToAttachment,
+} from "@/modules/documents/map-to-ui";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useServices } from "@/lib/services-store";
@@ -61,21 +69,44 @@ import { useUsers } from "@/lib/users-store";
 import { orderHasContractNumber } from "@/lib/vat-helpers";
 import { useT } from "@/lib/use-t";
 
+type ScreenBoot =
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "missing" }
+  | { status: "error"; message: string };
+
+function attachmentsFromDocs(docs: ApiDocument[], userName: Map<string, string>) {
+  const mapDoc = (d: ApiDocument) => {
+    try {
+      return mapApiDocumentToAttachment(d, userName.get(d.uploadedByUserId));
+    } catch {
+      return null;
+    }
+  };
+  return {
+    work: docs.filter((d) => !isLicenseDocument(d)).map(mapDoc).filter((row) => row != null),
+    licenses: docs.filter((d) => isLicenseDocument(d)).map(mapDoc).filter((row) => row != null),
+  };
+}
+
 export default function OrderDetailPage() {
   const t = useT();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const { getById, ready, updateOrder, deleteOrder, orders, isContractTaken } = useOrders();
+  const { ready: hydrateReady } = useApiHydrate();
+  const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
   const { can } = useSession();
   const activeUsers = users.filter((u) => u.status === "active");
   const { stageOptions } = useOrderStatusConfig();
-  const { getByOrderId } = usePayments();
+  const { getByOrderId, upsertPayment } = usePayments();
+  const { mergeExpensesForOrder } = useExpenses();
   const { customers } = useCustomers();
   const { services } = useServices();
-  const order = getById(id);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [boot, setBoot] = useState<ScreenBoot>({ status: "loading" });
   const payment = order ? getByOrderId(order.id) : undefined;
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,6 +117,9 @@ export default function OrderDetailPage() {
     () => nextContractNumber(orders.filter((o) => o.id !== id)),
     [orders, id],
   );
+
+  const catalogsRef = useRef({ users, customers, services });
+  catalogsRef.current = { users, customers, services };
 
   useEffect(() => {
     if (!order || !editOpen) return;
@@ -106,34 +140,87 @@ export default function OrderDetailPage() {
   }, [order, editOpen, form]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !hydrateReady) return;
     let cancelled = false;
-    const userName = new Map(users.map((u) => [u.id, u.name]));
-    documentsApi
-      .list({ orderId: id, pageSize: 100 })
-      .then((data) => {
-        const docs = unwrapList(data);
+    setBoot({ status: "loading" });
+    setOrder(null);
+
+    const load = async () => {
+      try {
+        const [apiOrder, docsResult] = await Promise.all([
+          ordersApi.get(id),
+          documentsApi.list({ orderId: id, pageSize: 100 }),
+        ]);
         if (cancelled) return;
-        updateOrder(id, {
-          attachments: docs
-            .filter((d) => !isLicenseDocument(d))
-            .map((d) => mapApiDocumentToAttachment(d, userName.get(d.uploadedByUserId))),
-          licenseAttachments: docs
-            .filter((d) => isLicenseDocument(d))
-            .map((d) => mapApiDocumentToAttachment(d, userName.get(d.uploadedByUserId))),
+        if (!apiOrder?.id) {
+          setBoot({ status: "missing" });
+          return;
+        }
+
+        const { users: catalogUsers, customers: catalogCustomers, services: catalogServices } =
+          catalogsRef.current;
+        const userName = new Map(catalogUsers.map((u) => [u.id, u.name]));
+        const customerName = new Map(catalogCustomers.map((c) => [c.id, c.name]));
+        const serviceName = new Map(catalogServices.map((s) => [s.id, s.name]));
+
+        let mapped = mapApiOrderToUi(apiOrder, {
+          customerName: customerName.get(apiOrder.customerId),
+          serviceName: serviceName.get(apiOrder.serviceId),
+          assignedUserName: userName.get(apiOrder.assignedUserId),
+          submitterName: userName.get(apiOrder.submitterUserId),
+          reviewerName: apiOrder.reviewerUserId ? userName.get(apiOrder.reviewerUserId) : undefined,
         });
-      })
-      .catch(() => undefined);
+
+        if (mapped.customerName === mapped.customerId) {
+          try {
+            const customer = mapApiCustomerToUi(await customersApi.get(mapped.customerId));
+            mapped = { ...mapped, customerName: customer.name };
+          } catch {
+            /* keep id until catalog arrives */
+          }
+        }
+
+        const docs = unwrapList(docsResult).filter((d) => d?.id);
+        const { work, licenses } = attachmentsFromDocs(docs, userName);
+        mapped = {
+          ...mapped,
+          attachments: work,
+          licenseAttachments: licenses,
+        };
+
+        if (cancelled) return;
+        setOrder(mapped);
+        upsertOrder(mapped);
+        await reloadOrderFinance({
+          order: mapped,
+          users: catalogUsers,
+          upsertPayment,
+          mergeExpensesForOrder,
+        });
+        if (!cancelled) setBoot({ status: "ready" });
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && (err.statusCode === 404 || err.statusCode === 403)) {
+          setBoot({ status: "missing" });
+          return;
+        }
+        setBoot({ status: "error", message: apiErrorMessage(err, t("common.notFoundOrder")) });
+      }
+    };
+
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [id, updateOrder, users]);
+  }, [id, hydrateReady, upsertOrder, upsertPayment, mergeExpensesForOrder, t]);
 
-  if (!ready) return <PageLoading />;
-  if (!order) {
+  if (!hydrateReady || boot.status === "loading" || (boot.status === "ready" && !order)) {
+    return <PageLoading />;
+  }
+  if (boot.status === "missing" || boot.status === "error" || !order) {
     return (
       <EmptyState
-        description={t("common.notFoundOrder")}
+        description={boot.status === "error" ? boot.message : t("common.notFoundOrder")}
         action={{ label: t("common.back"), href: "/orders" }}
       />
     );
@@ -147,14 +234,16 @@ export default function OrderDetailPage() {
   );
 
   const persist = (next: Order) => {
-    updateOrder(order.id, next);
+    setOrder(next);
+    upsertOrder(next);
   };
 
   const applyStage = async (newStage: OrderStage) => {
     if (newStage === order.stage) return;
     try {
       await ordersApi.changeStage(order.id, newStage);
-      updateOrder(order.id, {
+      persist({
+        ...order,
         stage: newStage,
         approvalStatus: "none",
         pendingTransition: undefined,
@@ -389,7 +478,8 @@ export default function OrderDetailPage() {
                 });
               }
 
-              updateOrder(order.id, {
+              persist({
+                ...order,
                 customerId: customer.id,
                 customerName: customer.name,
                 serviceId: service.id,

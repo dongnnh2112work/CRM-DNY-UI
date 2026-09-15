@@ -4,6 +4,13 @@ import type { ApiDocument } from "@/modules/documents/api";
 
 const LICENSE_PREFIX = "license";
 
+export function formatFileBytes(bytes: number | null | undefined) {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function encodeLicenseFileType(issuedAt?: string, expiresAt?: string) {
   return `${LICENSE_PREFIX}|${issuedAt ?? ""}|${expiresAt ?? ""}`;
 }
@@ -27,19 +34,43 @@ export function parseLicenseFileType(fileType: string | null | undefined): {
 
 export function isLicenseDocument(doc: Pick<ApiDocument, "fileType" | "fileName">) {
   if (parseLicenseFileType(doc.fileType).isLicense) return true;
-  return doc.fileName.toLowerCase().includes("license");
+  return (doc.fileName ?? "").toLowerCase().includes("license");
 }
 
 export function mapApiDocumentToAttachment(doc: ApiDocument, uploaderName?: string): OrderAttachment {
   const license = parseLicenseFileType(doc.fileType);
+  const fileName = doc.fileName || "file";
+  const createdAt = typeof doc.createdAt === "string" ? doc.createdAt : "";
   return {
     id: doc.id,
-    name: doc.fileName,
-    type: getAttachmentType(doc.fileName),
-    size: doc.fileSize ?? 0,
-    uploadedBy: uploaderName ?? doc.uploadedByUserId,
-    uploadedAt: doc.createdAt.slice(0, 10),
+    name: fileName,
+    type: getAttachmentType(fileName),
+    size: typeof doc.fileSize === "number" && Number.isFinite(doc.fileSize) ? doc.fileSize : 0,
+    uploadedBy: uploaderName ?? doc.uploadedByUserId ?? "",
+    uploadedAt: createdAt.slice(0, 10) || new Date().toISOString().slice(0, 10),
     issuedAt: license.issuedAt,
     expiresAt: license.expiresAt,
   };
+}
+
+/** Keep optimistic rows the list API has not returned yet; never restore a locally deleted id. */
+export function mergeAttachments(fromApi: OrderAttachment[], local: OrderAttachment[]): OrderAttachment[] {
+  const localById = new Map(local.map((row) => [row.id, row]));
+  const seen = new Set<string>();
+  const next: OrderAttachment[] = [];
+  for (const row of fromApi) {
+    if (!row.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    if (localById.get(row.id)?.deleted) {
+      next.push({ ...row, deleted: true });
+    } else {
+      next.push(row);
+    }
+  }
+  for (const row of local) {
+    if (!row.id || seen.has(row.id) || row.deleted) continue;
+    seen.add(row.id);
+    next.push(row);
+  }
+  return next;
 }

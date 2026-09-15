@@ -4,17 +4,20 @@ import { PlusOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Checkbox, Empty, Modal, Select, Space, Spin, Tag, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PermissionGroupEditor } from "@/components/users/permission-group-editor";
+import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
 import { ds } from "@/lib/design-tokens";
 import { fetchAllPages, unwrapList, type PageResult } from "@/lib/http/paging";
 import { apiErrorMessage } from "@/lib/http/message";
 import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
+import { useUsers } from "@/lib/users-store";
 import {
   identityAdminApi,
   type IdentityPermission,
   type IdentityPermissionGroup,
   type IdentityRole,
+  type IdentityUser,
 } from "@/modules/identity-admin/api";
 import {
   findIdentityRoleForUi,
@@ -23,6 +26,14 @@ import {
   roleHasGroupField,
   unwrapIdentityEntity,
 } from "@/modules/identity-admin/map-to-ui";
+import {
+  applyLostRoles,
+  detachGroupFromRoles,
+  hydrateRolePermissionGroups,
+  loadUsersWithRoles,
+  remainingRoleCodesAfterGroupRemoval,
+  rolesUsingGroup,
+} from "@/modules/identity-admin/reassign-pending";
 
 async function loadCatalogRows<T>(
   paged: (page: number, pageSize: number) => Promise<PageResult<T> | T[]>,
@@ -49,10 +60,13 @@ export function RolePermissionGroupsModal({
   const t = useT();
   const { message } = App.useApp();
   const { can, user, refreshMe } = useSession();
+  const { updateUser } = useUsers();
   const canManageRoles = can(PERMISSION.roleManage);
   const canManageGroups = can(PERMISSION.permissionManage);
+  const canManageUsers = can(PERMISSION.userManage);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [roles, setRoles] = useState<IdentityRole[]>([]);
   const [groups, setGroups] = useState<IdentityPermissionGroup[]>([]);
@@ -63,6 +77,12 @@ export function RolePermissionGroupsModal({
   const [draftCodes, setDraftCodes] = useState<string[]>([]);
   const [loadedCodes, setLoadedCodes] = useState<string[]>([]);
   const [groupsKnown, setGroupsKnown] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<IdentityPermissionGroup | null>(null);
+  const [deleteRoles, setDeleteRoles] = useState<IdentityRole[]>([]);
+  const [deleteUsers, setDeleteUsers] = useState<IdentityUser[]>([]);
+  const [deleteRemaining, setDeleteRemaining] = useState<Map<string, string[]>>(new Map());
+  const [deleteHydratedRoles, setDeleteHydratedRoles] = useState<IdentityRole[]>([]);
+  const [deleteSkipSelf, setDeleteSkipSelf] = useState(false);
   const rolesRef = useRef(roles);
   rolesRef.current = roles;
 
@@ -208,6 +228,104 @@ export function RolePermissionGroupsModal({
     }
   };
 
+  const openDeleteGroup = async (group: IdentityPermissionGroup) => {
+    if (!canManageGroups) return;
+    setDeleting(true);
+    try {
+      const hydrated = await hydrateRolePermissionGroups(rolesRef.current);
+      setRoles(hydrated);
+      const attached = rolesUsingGroup(hydrated, group.code);
+      let affected: IdentityUser[] = [];
+      const remainingByUserId = new Map<string, string[]>();
+      let identityUsers: IdentityUser[] = [];
+      if (canManageUsers) {
+        identityUsers = await loadUsersWithRoles();
+        for (const item of identityUsers) {
+          const remaining = remainingRoleCodesAfterGroupRemoval(item, hydrated, group.code);
+          remainingByUserId.set(item.id, remaining);
+          if (remaining.length === 0 && (item.roleCodes ?? []).length > 0) {
+            affected.push(item);
+          }
+        }
+      }
+      const self = identityUsers.find((item) => item.id === user?.id);
+      setDeleteTarget(group);
+      setDeleteRoles(attached);
+      setDeleteUsers(affected.filter((item) => item.id !== user?.id));
+      setDeleteRemaining(remainingByUserId);
+      setDeleteHydratedRoles(hydrated);
+      setDeleteSkipSelf(
+        Boolean(self && (remainingByUserId.get(self.id)?.length ?? 1) === 0 && (self.roleCodes ?? []).length > 0),
+      );
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("user.groupDeleteFailed")));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteGroup = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const hydrated = deleteHydratedRoles.length ? deleteHydratedRoles : await hydrateRolePermissionGroups(rolesRef.current);
+      const nextRoles = await detachGroupFromRoles(hydrated, deleteTarget.code);
+      setRoles(nextRoles);
+      setDraftCodes((prev) => prev.filter((code) => code.toUpperCase() !== deleteTarget.code.toUpperCase()));
+      setLoadedCodes((prev) => prev.filter((code) => code.toUpperCase() !== deleteTarget.code.toUpperCase()));
+      try {
+        await identityAdminApi.setGroupPermissions(deleteTarget.id, []);
+      } catch {
+        // Group stays in catalog until BE adds DELETE /permission-groups/:id.
+      }
+
+      let parkedCount = 0;
+      if (canManageUsers && deleteRemaining.size) {
+        const identityUsers = await loadUsersWithRoles();
+        const result = await applyLostRoles({
+          users: identityUsers,
+          remainingByUserId: deleteRemaining,
+          skipUserId: user?.id,
+        });
+        parkedCount = result.parked.length;
+        for (const parked of result.parked) {
+          updateUser(parked.id, { status: "inactive" });
+        }
+        if (result.failed.length) {
+          message.warning(
+            t("user.reassignPartialFail", {
+              count: String(result.failed.length),
+            }),
+          );
+        }
+      } else if (!canManageUsers && deleteRoles.length) {
+        message.warning(t("user.reassignNeedUserManage"));
+      }
+
+      setGroups((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      const affectsMe = Boolean(
+        user?.roleCodes?.some((code) =>
+          nextRoles.some(
+            (role) =>
+              role.code.toUpperCase() === code.toUpperCase() &&
+              roleGroupCodes(role).every((item) => item.toUpperCase() !== deleteTarget.code.toUpperCase()),
+          ),
+        ),
+      );
+      if (affectsMe) await refreshMe();
+      message.success(
+        parkedCount
+          ? t("user.groupDeletedParked", { name: deleteTarget.name || deleteTarget.code, count: String(parkedCount) })
+          : t("user.groupDeleted", { name: deleteTarget.name || deleteTarget.code }),
+      );
+      setDeleteTarget(null);
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("user.groupDeleteFailed")));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Modal
       title={t("user.roleGroups")}
@@ -226,11 +344,11 @@ export function RolePermissionGroupsModal({
         {t("user.roleGroupsHint")}
       </Typography.Paragraph>
       {!canManageRoles ? (
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t("user.roleGroupsNeedRoleManage")} />
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.roleGroupsNeedRoleManage")} />
       ) : null}
-      {loadError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} message={loadError} /> : null}
+      {loadError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} title={loadError} /> : null}
       {!loading && selected && !groupsKnown ? (
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t("user.roleGroupsUnknown")} />
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.roleGroupsUnknown")} />
       ) : null}
 
       <Select
@@ -262,7 +380,7 @@ export function RolePermissionGroupsModal({
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message={t("user.roleGroupsStillHas", {
+          title={t("user.roleGroupsStillHas", {
             perm: "order.view",
             groups: orderViewFrom.join(", "),
           })}
@@ -327,18 +445,33 @@ export function RolePermissionGroupsModal({
                   ) : null}
                 </Space>
                 {canManageGroups ? (
-                  <Button
-                    size="small"
-                    type="link"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setEditingGroup(group);
-                      setEditorOpen(true);
-                    }}
-                  >
-                    {t("common.edit")}
-                  </Button>
+                  <Space size={0} onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setEditingGroup(group);
+                        setEditorOpen(true);
+                      }}
+                    >
+                      {t("common.edit")}
+                    </Button>
+                    <Button
+                      size="small"
+                      type="link"
+                      danger
+                      loading={deleting && deleteTarget?.id === group.id}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void openDeleteGroup(group);
+                      }}
+                    >
+                      {t("common.delete")}
+                    </Button>
+                  </Space>
                 ) : null}
               </div>
             );
@@ -372,6 +505,17 @@ export function RolePermissionGroupsModal({
             setDraftCodes((prev) => (prev.includes(next.code) ? prev : [...prev, next.code]));
           }
         }}
+      />
+      <ReassignPendingConfirmModal
+        open={Boolean(deleteTarget)}
+        title={t("user.deleteGroupTitle", { name: deleteTarget?.name || deleteTarget?.code || "" })}
+        hint={t("user.deleteGroupBody")}
+        attachedRoles={deleteRoles}
+        users={deleteUsers}
+        skippedSelf={deleteSkipSelf}
+        confirmLoading={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDeleteGroup()}
       />
     </Modal>
   );

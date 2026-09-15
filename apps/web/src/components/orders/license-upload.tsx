@@ -5,7 +5,9 @@ import { App, Button, DatePicker, Form, List, Modal, Space, Typography, Upload }
 import type { UploadProps } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
+import { DocumentFileActions, DocumentFileLink } from "@/components/documents/document-file-actions";
 import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
+import { UploadJobsBar, type UploadJob } from "@/components/orders/upload-jobs-bar";
 import type { OrderAttachment } from "@/lib/types";
 import { ds } from "@/lib/design-tokens";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
@@ -13,7 +15,8 @@ import { apiErrorMessage } from "@/lib/http/message";
 import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
 import { documentsApi } from "@/modules/documents/api";
-import { encodeLicenseFileType, mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
+import { encodeLicenseFileType, formatFileBytes, mapApiDocumentToAttachment } from "@/modules/documents/map-to-ui";
+import { useDocumentViewer } from "@/modules/documents/use-document-viewer";
 import { useT } from "@/lib/use-t";
 
 interface LicenseUploadProps {
@@ -38,6 +41,9 @@ export function LicenseUpload({
   const visible = (files ?? []).filter((a) => !a.deleted);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [dateForm] = Form.useForm();
+  const [job, setJob] = useState<UploadJob | null>(null);
+  const docs = useDocumentViewer();
+  const saving = Boolean(job);
 
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
     if (!canUpload) {
@@ -54,7 +60,7 @@ export function LicenseUpload({
       issuedAt: dayjs(),
       expiresAt: dayjs().add(1, "year"),
     });
-    return false;
+    return Upload.LIST_IGNORE;
   };
 
   const confirmUpload = async () => {
@@ -62,16 +68,53 @@ export function LicenseUpload({
     const values = await dateForm.validateFields();
     const issuedAt = values.issuedAt ? values.issuedAt.format("YYYY-MM-DD") : undefined;
     const expiresAt = values.expiresAt.format("YYYY-MM-DD");
+    const jobId = `lic-${Date.now()}`;
+    setJob({ id: jobId, name: pendingFile.name, percent: 0, phase: "upload" });
     try {
       if (orderId) {
-        const doc = await documentsApi.upload(pendingFile, {
-          orderId,
-          fileType: encodeLicenseFileType(issuedAt, expiresAt),
-        });
-        onChange([
-          ...(files ?? []),
-          { ...mapApiDocumentToAttachment(doc, uploaderName), issuedAt, expiresAt },
-        ]);
+        const doc = await documentsApi.upload(
+          pendingFile,
+          { orderId, fileType: encodeLicenseFileType(issuedAt, expiresAt) },
+          (percent) => {
+            setJob({
+              id: jobId,
+              name: pendingFile.name,
+              percent,
+              phase: percent >= 100 ? "saving" : "upload",
+            });
+          },
+        );
+        if (!doc?.id) throw new Error(t("docs.uploadFailed", { name: pendingFile.name }));
+        let mapped: OrderAttachment;
+        try {
+          mapped = {
+            ...mapApiDocumentToAttachment(doc, uploaderName),
+            issuedAt,
+            expiresAt,
+          };
+        } catch {
+          mapped = {
+            id: doc.id,
+            name: doc.fileName || pendingFile.name,
+            type: getAttachmentType(pendingFile.name),
+            size: typeof doc.fileSize === "number" ? doc.fileSize : pendingFile.size,
+            uploadedBy: uploaderName,
+            uploadedAt: new Date().toISOString().slice(0, 10),
+            issuedAt,
+            expiresAt,
+          };
+        }
+        const current = files ?? [];
+        if (!current.some((row) => row.id === mapped.id && !row.deleted)) {
+          onChange([...current, mapped]);
+        }
+        message.success(
+          t("docs.uploadedOk", {
+            name: doc.fileName || pendingFile.name,
+            size: formatFileBytes(doc.fileSize ?? pendingFile.size),
+            id: doc.id,
+          }),
+        );
       } else {
         const type = getAttachmentType(pendingFile.name);
         const next: OrderAttachment = {
@@ -85,12 +128,14 @@ export function LicenseUpload({
           expiresAt,
         };
         onChange([...(files ?? []), next]);
+        message.success(t("license.saved", { name: pendingFile.name }));
       }
-      message.success(t("license.saved", { name: pendingFile.name }));
       setPendingFile(null);
       dateForm.resetFields();
     } catch (err) {
-      message.error(apiErrorMessage(err, t("license.saved", { name: pendingFile.name })));
+      message.error(apiErrorMessage(err, t("docs.uploadFailed", { name: pendingFile.name })));
+    } finally {
+      setJob(null);
     }
   };
 
@@ -116,9 +161,10 @@ export function LicenseUpload({
       <Upload.Dragger
         accept={ACCEPT_FILE_TYPES}
         beforeUpload={beforeUpload}
+        fileList={[]}
         showUploadList={false}
         multiple={false}
-        disabled={!canUpload}
+        disabled={!canUpload || saving}
         style={compact ? { padding: "12px 8px" } : undefined}
       >
         <p className="ant-upload-drag-icon" style={compact ? { marginBottom: 4 } : undefined}>
@@ -136,17 +182,21 @@ export function LicenseUpload({
         title={t("license.datesTitle")}
         open={Boolean(pendingFile)}
         onCancel={() => {
+          if (saving) return;
           setPendingFile(null);
           dateForm.resetFields();
         }}
         onOk={confirmUpload}
         okText={t("license.save")}
+        confirmLoading={saving}
+        okButtonProps={{ disabled: saving }}
+        cancelButtonProps={{ disabled: saving }}
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
           {t("license.fileLabel", { name: pendingFile?.name ?? "" })}
         </Typography.Paragraph>
-        <Form form={dateForm} layout="vertical">
+        <Form form={dateForm} layout="vertical" disabled={saving}>
           <Form.Item name="issuedAt" label={t("license.issuedAt")}>
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
           </Form.Item>
@@ -158,6 +208,7 @@ export function LicenseUpload({
             <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
           </Form.Item>
         </Form>
+        {job ? <UploadJobsBar jobs={[job]} /> : null}
       </Modal>
 
       {visible.length > 0 && (
@@ -168,20 +219,26 @@ export function LicenseUpload({
           renderItem={(item) => (
             <List.Item
               actions={[
-                <Button
-                  key="del"
-                  type="text"
-                  danger
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  onClick={() => remove(item.id)}
+                <DocumentFileActions
+                  key="file"
+                  file={item}
+                  viewer={docs}
+                  extra={
+                    <Button
+                      type="text"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => void remove(item.id)}
+                    />
+                  }
                 />,
               ]}
             >
               <List.Item.Meta
                 avatar={attachmentTypeIcon(item.type)}
                 title={
-                  <Typography.Text style={{ fontSize: ds.fontSize.caption }}>{item.name}</Typography.Text>
+                  <DocumentFileLink file={item} viewer={docs} style={{ fontSize: ds.fontSize.caption }} />
                 }
                 description={
                   <Space orientation="vertical" size={4} style={{ width: "100%" }}>
@@ -223,6 +280,7 @@ export function LicenseUpload({
           )}
         />
       )}
+      {docs.modal}
     </div>
   );
 }
