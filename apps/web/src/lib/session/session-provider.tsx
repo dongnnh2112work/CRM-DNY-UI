@@ -16,6 +16,7 @@ import { consumeOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
 import { ApiError } from "@/lib/http/errors";
 import { readCachedAuthUser, writeCachedAuthUser } from "@/lib/hydrate-cache";
 import { clearStoredSession, readStoredSession, SESSION_SAVED_EVENT, writeStoredSession } from "@/lib/http/tokens";
+import { DEV_BYPASS_USER, isDevAuthBypass } from "@/lib/session/dev-bypass";
 import { authApi, type AuthUser, type SessionResponse } from "@/modules/auth/api";
 
 type SessionStatus = "loading" | "authenticated" | "anonymous";
@@ -89,6 +90,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [applyProfile]);
 
   const restoreFromStorage = useCallback(async () => {
+    if (isDevAuthBypass()) {
+      applyProfile(DEV_BYPASS_USER);
+      return;
+    }
     const stored = readStoredSession();
     if (!stored) {
       setUser(null);
@@ -168,6 +173,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onLogout = () => {
+      if (isDevAuthBypass()) return;
       setUser(null);
       setStatus("anonymous");
     };
@@ -176,7 +182,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const can = useCallback(
-    (permission: string) => Boolean(user?.permissions.includes(permission)),
+    (permission: string) => isDevAuthBypass() || Boolean(user?.permissions.includes(permission)),
     [user],
   );
 

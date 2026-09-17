@@ -1,3 +1,4 @@
+import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
 import type { AuthUser } from "@/modules/auth/api";
 import type { RolePagePermissions, SystemPageKey } from "@/lib/types";
 
@@ -46,6 +47,7 @@ export const PAGE_VIEW_PERMISSION: Record<SystemPageKey, string | null> = {
 };
 
 export function hasPermission(user: AuthUser | null | undefined, code: string) {
+  if (isDevAuthBypass()) return true;
   return Boolean(user?.permissions?.includes(code));
 }
 
@@ -55,6 +57,7 @@ export function canSeeMenuPage(args: {
   apiUser: AuthUser | null | undefined;
   matrix?: RolePagePermissions | null;
 }): boolean {
+  if (isDevAuthBypass()) return true;
   const cap = PAGE_VIEW_PERMISSION[args.page];
   if (cap && args.apiUser && !hasPermission(args.apiUser, cap)) return false;
   if (args.matrix?.[args.page]?.view === false) return false;

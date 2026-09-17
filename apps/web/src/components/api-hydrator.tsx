@@ -20,6 +20,16 @@ import { usePayments } from "@/lib/payments-store";
 import { primaryScopeForPath, scopesForPath, staleMsFor } from "@/lib/route-data-scopes";
 import { useServices } from "@/lib/services-store";
 import { isAwaitingAccess } from "@/lib/access-gate";
+import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
+import { MOCK_CUSTOMERS } from "@/lib/mock-customers";
+import { MOCK_CTVS } from "@/lib/mock-ctv";
+import { MOCK_ORDER_EXPENSES } from "@/lib/mock-expenses";
+import { MOCK_ORDERS } from "@/lib/mock-orders";
+import { MOCK_PAYMENTS } from "@/lib/mock-payments";
+import { MOCK_SERVICES } from "@/lib/mock-services";
+import { MOCK_USERS } from "@/lib/mock-users";
+import { MOCK_VAT_INVOICES } from "@/lib/mock-vat";
+import { DEV_BYPASS_USER } from "@/lib/session/dev-bypass";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useVat } from "@/lib/vat-store";
@@ -148,7 +158,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
 
   const run = useCallback(
     async (scope: RefreshScope | RefreshScope[], options?: { page?: number; append?: boolean }) => {
-      if (status !== "authenticated" || isAwaitingAccess(user)) return;
+      if (status !== "authenticated" || isAwaitingAccess(user) || isDevAuthBypass()) return;
       setRefreshing(true);
       try {
         await applyRemoteData(applier, user, scope, () => snapshotRef.current, options);
@@ -203,10 +213,12 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
 
   const reloadFinance = useCallback(
     async (orderId: string) => {
+      if (isDevAuthBypass()) return;
       const order = snapshotRef.current.orders.find((o) => o.id === orderId);
       if (!order) return;
       await reloadOrderFinance({
         order,
+        groupOrders: snapshotRef.current.orders,
         users: snapshotRef.current.users,
         upsertPayment,
         mergeExpensesForOrder,
@@ -220,6 +232,32 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     if (status !== "authenticated" || isAwaitingAccess(user)) {
       setReady(false);
       fetchedAtRef.current = {};
+      return;
+    }
+    if (isDevAuthBypass()) {
+      applier.replaceUsers(MOCK_USERS, DEV_BYPASS_USER.id);
+      applier.replaceCustomers(MOCK_CUSTOMERS);
+      applier.replaceServices(MOCK_SERVICES);
+      applier.replaceCtvs(MOCK_CTVS);
+      applier.replaceOrders(MOCK_ORDERS);
+      applier.replacePayments(MOCK_PAYMENTS);
+      applier.replaceExpenses(MOCK_ORDER_EXPENSES);
+      applier.replaceInvoices(MOCK_VAT_INVOICES);
+      const now = Date.now();
+      for (const [scope, loaded] of [
+        ["customers", MOCK_CUSTOMERS.length],
+        ["services", MOCK_SERVICES.length],
+        ["orders", MOCK_ORDERS.length],
+        ["payments", MOCK_PAYMENTS.length],
+        ["expenses", MOCK_ORDER_EXPENSES.length],
+        ["vat", MOCK_VAT_INVOICES.length],
+      ] as const) {
+        setListMeta(scope, { total: loaded, page: 1, pageSize: loaded, loaded });
+        fetchedAtRef.current[scope] = now;
+      }
+      setLastSyncedAt(now);
+      setReady(true);
+      setRefreshing(false);
       return;
     }
     let cancelled = false;

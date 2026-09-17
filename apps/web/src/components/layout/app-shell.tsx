@@ -31,6 +31,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { ds } from "@/lib/design-tokens";
+import { formatDisplayDateTime } from "@/lib/format-date";
 import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
@@ -51,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { message } = App.useApp();
   const { token } = theme.useToken();
-  const { theme: appTheme, setTheme, locale } = useAppConfig();
+  const { theme: appTheme, setTheme } = useAppConfig();
   const t = useT();
   const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
   const { user: apiUser, can, logout: logoutApi } = useSession();
@@ -129,8 +130,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     const items: MenuItems = [
       { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">{t("nav.dashboard")}</Link> },
       { type: "divider" },
-      { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
       { key: "/customers", icon: <TeamOutlined />, label: <Link href="/customers">{t("nav.customers")}</Link> },
+      { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
       { type: "divider" },
       { key: "/payments", icon: <DollarOutlined />, label: <Link href="/payments">{t("nav.payments")}</Link> },
       {
@@ -311,10 +312,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
               {lastSyncedAt
                 ? t("shell.lastSynced", {
-                    time: new Date(lastSyncedAt).toLocaleString(
-                      locale === "zh" ? "zh-CN" : locale === "en" ? "en-US" : "vi-VN",
-                      { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" },
-                    ),
+                    time: formatDisplayDateTime(lastSyncedAt),
                   })
                 : t("shell.lastSyncedNever")}
             </Typography.Text>

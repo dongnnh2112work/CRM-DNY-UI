@@ -1,5 +1,11 @@
 import { num } from "@/lib/http/message";
-import type { Order, PaymentInstallment, PaymentRecord, PaymentStatus } from "@/lib/types";
+import {
+  groupContractTotal,
+  groupOrdersByContract,
+  pickPrimaryOrder,
+  recalcPayment,
+} from "@/lib/order-group";
+import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
 import type { ApiPayment } from "@/modules/payments/api";
 import type { ApiScheduleLine } from "@/modules/orders/api";
 
@@ -17,30 +23,25 @@ export function unwrapSchedule(
   return data.items ?? [];
 }
 
-export function mapPaymentsToRecords(
-  orders: Order[],
-  payments: ApiPayment[],
-  schedules: Map<string, ApiScheduleLine[]> = new Map(),
-): PaymentRecord[] {
-  const byOrder = new Map<string, ApiPayment[]>();
-  for (const p of payments) {
-    const list = byOrder.get(p.orderId) ?? [];
-    list.push(p);
-    byOrder.set(p.orderId, list);
-  }
+function installmentsForOrders(
+  group: Order[],
+  paymentsByOrder: Map<string, ApiPayment[]>,
+  schedules: Map<string, ApiScheduleLine[]>,
+): PaymentInstallment[] {
+  const usedPayment = new Set<string>();
+  const installments: PaymentInstallment[] = [];
+  const createdAt = group[0]?.createdAt ?? "";
 
-  return orders.map((order) => {
-    const rows = (byOrder.get(order.id) ?? []).filter((p) => p.verificationStatus !== "VOIDED");
+  for (const order of group) {
+    const rows = (paymentsByOrder.get(order.id) ?? []).filter((p) => p.verificationStatus !== "VOIDED");
     const lines = [...(schedules.get(order.id) ?? [])].sort(
       (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
     );
-    const usedPayment = new Set<string>();
-    const installments: PaymentInstallment[] = [];
 
     for (const line of lines) {
       const pay = rows.find((p) => p.scheduleLineId && p.scheduleLineId === line.id);
       if (pay) usedPayment.add(pay.id);
-      const due = (line.dueDate ?? pay?.recordedAt ?? order.createdAt).slice(0, 10);
+      const due = (line.dueDate ?? pay?.recordedAt ?? createdAt).slice(0, 10);
       installments.push({
         id: pay?.id ?? line.id ?? `sch-${order.id}-${line.sortOrder ?? installments.length}`,
         amount: num(line.amount ?? pay?.amount),
@@ -53,6 +54,7 @@ export function mapPaymentsToRecords(
 
     for (const p of rows) {
       if (usedPayment.has(p.id)) continue;
+      usedPayment.add(p.id);
       installments.push({
         id: p.id,
         amount: num(p.amount),
@@ -62,24 +64,38 @@ export function mapPaymentsToRecords(
         status: installmentStatus(p),
       });
     }
+  }
 
-    const totalAmount = order.value;
-    const paidAmount = installments.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amount, 0);
-    const remaining = Math.max(0, totalAmount - paidAmount);
-    let status: PaymentStatus = "unpaid";
-    if (paidAmount >= totalAmount && totalAmount > 0) status = "paid";
-    else if (paidAmount > 0) status = "partial";
-    return {
-      id: `pay-${order.id}`,
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      customerId: order.customerId,
-      customerName: order.customerName,
-      totalAmount,
-      paidAmount,
-      remaining,
-      status,
+  return installments;
+}
+
+export function mapPaymentsToRecords(
+  orders: Order[],
+  payments: ApiPayment[],
+  schedules: Map<string, ApiScheduleLine[]> = new Map(),
+): PaymentRecord[] {
+  const byOrder = new Map<string, ApiPayment[]>();
+  for (const p of payments) {
+    const list = byOrder.get(p.orderId) ?? [];
+    list.push(p);
+    byOrder.set(p.orderId, list);
+  }
+
+  return groupOrdersByContract(orders).map((group) => {
+    const primary = pickPrimaryOrder(group);
+    const installments = installmentsForOrders(group, byOrder, schedules);
+    return recalcPayment({
+      id: `pay-${primary.id}`,
+      orderId: primary.id,
+      orderNumber: primary.orderNumber,
+      customerId: primary.customerId,
+      customerName: primary.customerName,
+      totalAmount: groupContractTotal(group),
+      paidAmount: 0,
+      remaining: 0,
+      status: "unpaid",
       installments,
-    };
+      groupedOrderIds: group.map((o) => o.id),
+    });
   });
 }

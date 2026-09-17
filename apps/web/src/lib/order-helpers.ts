@@ -1,5 +1,6 @@
-import type { Order, OrderAttachment } from "@/lib/types";
 import { tt } from "@/lib/i18n";
+import { sameOrderGroup } from "@/lib/order-group";
+import type { Order, OrderAttachment } from "@/lib/types";
 
 export const DEFAULT_LICENSE_WARN_MONTHS = 2;
 export const MAX_LICENSE_WARN_MONTHS = 24;
@@ -19,16 +20,18 @@ export function licenseWarnMonthsForOrder(
   return licenseWarnMonthsOf(services.find((s) => s.id === order.serviceId));
 }
 
-/** DNY + YY + MM + seq (vd DNY260856). */
+/** DNY + YY + MM + seq (vd DNY260856). Bỏ hậu tố -1, -2 của đơn con cùng HĐ. */
 export function nextDossierNumber(orders: Order[], from = new Date()): string {
   const yy = String(from.getFullYear()).slice(-2);
   const mm = String(from.getMonth() + 1).padStart(2, "0");
   const prefix = `DNY${yy}${mm}`;
   let max = 0;
   for (const o of orders) {
-    if (!o.orderNumber.startsWith(prefix)) continue;
-    const seq = Number(o.orderNumber.slice(prefix.length));
-    if (Number.isFinite(seq) && seq > max) max = seq;
+    const base = String(o.orderNumber ?? "").replace(/-[1-9]\d*$/, "");
+    if (!base.startsWith(prefix)) continue;
+    const seqPart = base.slice(prefix.length);
+    const seq = Number(seqPart);
+    if (/^\d+$/.test(seqPart) && Number.isFinite(seq) && seq > max) max = seq;
   }
   return `${prefix}${String(max + 1).padStart(2, "0")}`;
 }
@@ -58,9 +61,18 @@ export function isContractNumberTaken(
   contractNumber: number,
   excludeOrderId?: string,
 ): boolean {
+  const excludeIds = new Set<string>();
+  if (excludeOrderId) {
+    const current = orders.find((o) => o.id === excludeOrderId);
+    for (const o of orders) {
+      if (o.id === excludeOrderId || (current && sameOrderGroup(current, o))) {
+        excludeIds.add(o.id);
+      }
+    }
+  }
   return orders.some(
     (o) =>
-      o.id !== excludeOrderId &&
+      !excludeIds.has(o.id) &&
       typeof o.contractNumber === "number" &&
       o.contractNumber === contractNumber,
   );

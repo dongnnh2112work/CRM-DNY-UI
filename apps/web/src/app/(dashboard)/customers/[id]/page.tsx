@@ -35,6 +35,7 @@ import {
 } from "@/lib/customer-helpers";
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import { useCustomers } from "@/lib/customers-store";
+import { formatDisplayDate } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
@@ -321,7 +322,7 @@ export default function CustomerDetailPage() {
                     : "—"}
           </Descriptions.Item>
           <Descriptions.Item label={t("field.createdAt")} span={2}>
-            {customer.createdAt}
+            {formatDisplayDate(customer.createdAt)}
           </Descriptions.Item>
           <Descriptions.Item label={t("customer.usedServices")} span={2}>
             <UsedServiceTags services={usedServices} max={8} />

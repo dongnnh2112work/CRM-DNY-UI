@@ -344,7 +344,11 @@ export type AppNotificationType =
   | "license_expiring"
   | "vat_deadline_approaching"
   | "expense_pending"
-  | "expense_reviewed";
+  | "expense_reviewed"
+  | "user_pending"
+  | "user_approved"
+  | "email_sent"
+  | "email_failed";
 
 export interface AppNotification {
   id: string;
@@ -385,6 +389,8 @@ export interface PaymentRecord {
   remaining: number;
   status: PaymentStatus;
   installments: PaymentInstallment[];
+  /** Đơn cùng HĐ — thanh toán chung; id đầu là đơn gốc. */
+  groupedOrderIds?: string[];
 }
 
 /* ── VAT Invoice ────────────────────────────────────────────────── */

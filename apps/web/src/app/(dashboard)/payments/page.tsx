@@ -114,7 +114,15 @@ export default function PaymentsPage() {
         title: t("payment.orderNo"),
         dataIndex: "orderNumber",
         sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
-        render: (v, r) => <Link href={`/payments/${r.id}`}>{v}</Link>,
+        render: (v, r) => {
+          const n = r.groupedOrderIds?.length ?? 1;
+          return (
+            <Link href={`/payments/${r.id}`}>
+              {v}
+              {n > 1 ? ` · ${t("payment.groupServices", { count: n })}` : ""}
+            </Link>
+          );
+        },
       },
       {
         title: t("common.customer"),

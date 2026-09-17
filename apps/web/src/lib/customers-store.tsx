@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadJson, saveJson } from "@/lib/demo-storage";
-import { mergeSeedFieldDefs } from "@/lib/field-defs";
+import { mergeSeedFieldDefs, pinFieldAfter } from "@/lib/field-defs";
 import { CUSTOMER_FIELD_DEFS } from "@/lib/mock-customers";
 import type { Customer, CustomerStatus, FieldDefinition } from "@/lib/types";
 
@@ -52,9 +52,11 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const storedFields = loadJson<FieldDefinition[]>(FIELDS_KEY);
-    if (storedFields && Array.isArray(storedFields)) {
-      setFieldDefs(mergeSeedFieldDefs(storedFields, CUSTOMER_FIELD_DEFS));
-    }
+    const merged =
+      storedFields && Array.isArray(storedFields)
+        ? mergeSeedFieldDefs(storedFields, CUSTOMER_FIELD_DEFS)
+        : CUSTOMER_FIELD_DEFS;
+    setFieldDefs(pinFieldAfter(merged, "createdAt", "name", CUSTOMER_FIELD_DEFS));
     setReady(true);
   }, []);
 
@@ -110,7 +112,7 @@ export function CustomersProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const saveFieldDefs = useCallback((defs: FieldDefinition[]) => {
-    setFieldDefs(defs);
+    setFieldDefs(pinFieldAfter(defs, "createdAt", "name", CUSTOMER_FIELD_DEFS));
   }, []);
 
   const getById = useCallback((id: string) => customers.find((c) => c.id === id), [customers]);

@@ -1,3 +1,4 @@
+import { dateSearchHaystack } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { t } from "@/lib/i18n";
 
@@ -35,5 +36,5 @@ function valueMatches(value: unknown, q: string): boolean {
     return Object.values(value as Record<string, unknown>).some((item) => valueMatches(item, q));
   }
 
-  return String(value).toLowerCase().includes(q);
+  return dateSearchHaystack(String(value)).some((part) => part.toLowerCase().includes(q));
 }

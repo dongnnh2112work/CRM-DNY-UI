@@ -4,6 +4,7 @@ import { App, Button, Modal, Popconfirm, Select, Space, Tag, Typography } from "
 import { useCallback, useEffect, useState } from "react";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { formatDisplayDate } from "@/lib/format-date";
 import { apiErrorMessage } from "@/lib/http/message";
 import { unwrapList } from "@/lib/http/paging";
 import { useSession } from "@/lib/session/session-provider";
@@ -17,10 +18,7 @@ import {
 } from "@/modules/identity-admin/api";
 
 function formatWhen(iso?: string) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+  return formatDisplayDate(iso);
 }
 
 const ROLE_LABEL: Record<ApprovalRoleCode, MessageKey> = {

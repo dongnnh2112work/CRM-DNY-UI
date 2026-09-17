@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { loadJson, saveJson } from "@/lib/demo-storage";
+import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
 import { translateRoleLabel, tt } from "@/lib/i18n";
 import { PAGE_PERMISSIONS_CONFIG_KEY, parseConfigValue, persistAndVerifyConfig } from "@/modules/config/api";
 import { MOCK_USERS } from "@/lib/mock-users";
@@ -10,6 +11,7 @@ import {
   BUILT_IN_ROLES,
   DEFAULT_ROLE_PAGE_PERMISSIONS,
   emptyPagePermissions,
+  fullPagePermissions,
   normalizePagePermissions,
   SYSTEM_PAGES,
   slugifyRoleKey,
@@ -82,6 +84,12 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   rolePermissionsRef.current = rolePermissions;
 
   useEffect(() => {
+    if (isDevAuthBypass()) {
+      setUsers(MOCK_USERS);
+      setCurrentUserId(DEFAULT_SESSION_ID);
+      setReady(true);
+      return;
+    }
     const storedUsers = loadJson<AppUser[]>(USERS_KEY);
     const storedPerms = loadJson<Record<string, RolePagePermissions>>(ROLE_PERMS_KEY);
     const storedRoles = loadJson<RoleDefinition[]>(ROLES_KEY);
@@ -105,7 +113,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || isDevAuthBypass()) return;
     saveJson(USERS_KEY, users);
   }, [users, ready]);
 
@@ -146,6 +154,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
   const getEffectivePermissions = useCallback(
     (user: AppUser): RolePagePermissions => {
+      if (isDevAuthBypass()) return fullPagePermissions();
       if (user.useCustomPermissions && user.customPermissions) {
         return normalizePagePermissions(user.customPermissions);
       }

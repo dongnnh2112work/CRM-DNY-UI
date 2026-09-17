@@ -24,6 +24,7 @@ import {
   licenseExpiryTagColor,
   licenseWarnMonthsForOrder,
 } from "@/lib/order-helpers";
+import { siblingOrders, allocatePaymentShare } from "@/lib/order-group";
 import {
   buildOrderCashflow,
   cashflowForMonth,
@@ -91,10 +92,16 @@ export default function OrdersPage() {
       list.push(e);
       expensesByOrder.set(e.orderId, list);
     }
-    const paymentByOrder = new Map(payments.map((p) => [p.orderId, p]));
     const map = new Map<string, OrderCashflow>();
     for (const o of orders) {
-      map.set(o.id, buildOrderCashflow(paymentByOrder.get(o.id), expensesByOrder.get(o.id) ?? []));
+      const siblings = siblingOrders(orders, o);
+      const groupPay = payments.find(
+        (p) => p.orderId === o.id || p.groupedOrderIds?.includes(o.id),
+      );
+      map.set(
+        o.id,
+        buildOrderCashflow(allocatePaymentShare(groupPay, o, siblings), expensesByOrder.get(o.id) ?? []),
+      );
     }
     return map;
   }, [orders, payments, expenses]);
@@ -260,7 +267,17 @@ export default function OrdersPage() {
       title: t("common.dossier"),
       dataIndex: "orderNumber",
       sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
-      render: (v, r) => <Link href={`/orders/${r.id}`}>{v}</Link>,
+      render: (v, r) => {
+        const n = siblingOrders(orders, r).length;
+        return (
+          <>
+            <Link href={`/orders/${r.id}`}>{v}</Link>
+            {n > 1 ? (
+              <Tag style={{ marginLeft: 6 }}>{t("order.groupTag", { count: n })}</Tag>
+            ) : null}
+          </>
+        );
+      },
     },
     {
       title: t("common.customer"),
@@ -371,7 +388,7 @@ export default function OrdersPage() {
       sorter: (a, b) => compareText(a.assignedUserName, b.assignedUserName),
     },
   ],
-    [t, stageOptions, requestStageChange, cashflowByOrder, cashflowMonth, services],
+    [t, stageOptions, requestStageChange, cashflowByOrder, cashflowMonth, services, orders],
   );
 
   return (
@@ -436,7 +453,7 @@ export default function OrdersPage() {
         filtered.length === 0 ? (
           <EmptyState description={listEmptyDescription} action={listEmptyAction} />
         ) : (
-          <KanbanBoard orders={filtered} onMove={handleMove} />
+          <KanbanBoard orders={filtered} groupOrders={orders} onMove={handleMove} />
         )
       ) : (
         <DataTable<Order>

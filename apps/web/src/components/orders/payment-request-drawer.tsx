@@ -17,10 +17,10 @@ import { useT } from "@/lib/use-t";
 
 type FormValues = {
   project?: string;
-  payeeName: string;
-  bankAccount: string;
-  bankName: string;
-  title: string;
+  payeeName?: string;
+  bankAccount?: string;
+  bankName?: string;
+  title?: string;
   amount: number;
   note?: string;
 };
@@ -100,7 +100,7 @@ export function PaymentRequestDrawer({
           }
           let orderId: string | undefined;
           let orderNumber: string | undefined;
-          let projectName: string;
+          let projectName = "";
 
           if (lockedOrder) {
             orderId = lockedOrder.id;
@@ -108,16 +108,14 @@ export function PaymentRequestDrawer({
             projectName = orderProjectLabel(lockedOrder);
           } else {
             const typed = (values.project ?? "").trim();
-            if (!typed) {
-              message.error(t("expense.needProject"));
-              return;
-            }
-            const matched = orders.find(
-              (o) =>
-                o.id === typed ||
-                o.orderNumber === typed ||
-                orderProjectLabel(o).toLowerCase() === typed.toLowerCase(),
-            );
+            const matched = typed
+              ? orders.find(
+                  (o) =>
+                    o.id === typed ||
+                    o.orderNumber === typed ||
+                    orderProjectLabel(o).toLowerCase() === typed.toLowerCase(),
+                )
+              : undefined;
             if (matched) {
               orderId = matched.id;
               orderNumber = matched.orderNumber;
@@ -127,25 +125,46 @@ export function PaymentRequestDrawer({
             }
           }
 
-          if (!orderId) {
-            message.error(t("common.requiredMissing"));
-            return;
-          }
+          const title =
+            values.title?.trim() || projectName || t("expense.fallbackProject");
+          const payeeName = values.payeeName?.trim() ?? "";
+          const bankAccount = values.bankAccount?.trim() ?? "";
+          const bankName = values.bankName?.trim() ?? "";
+          const description = [bankName, bankAccount].filter(Boolean).join(" · ") || undefined;
+
           try {
-            const createdApi = await expensesApi.create({
-              orderId,
-              title: values.title.trim(),
-              amount: Number(values.amount),
-              note: values.note?.trim() || undefined,
-              payeeName: values.payeeName,
-              description: [values.bankName, values.bankAccount].filter(Boolean).join(" · ") || undefined,
-            });
-            const created = mapApiExpenseToUi(createdApi, orderNumber);
-            replaceExpenses([created, ...expenses]);
-            addNotifications(
-              [currentUser.id],
-              expensePendingDraft(created, currentUser.name),
-            );
+            if (orderId) {
+              const createdApi = await expensesApi.create({
+                orderId,
+                title,
+                amount: Number(values.amount),
+                note: values.note?.trim() || undefined,
+                payeeName: payeeName || undefined,
+                description,
+              });
+              const created = {
+                ...mapApiExpenseToUi(createdApi, orderNumber),
+                projectName: projectName || orderNumber || createdApi.title,
+                payeeName,
+                bankAccount,
+                bankName,
+              };
+              replaceExpenses([created, ...expenses]);
+              addNotifications([currentUser.id], expensePendingDraft(created, currentUser.name));
+            } else {
+              const created = addExpense({
+                projectName: projectName || t("expense.fallbackProject"),
+                amount: Number(values.amount),
+                title,
+                note: values.note?.trim() || undefined,
+                requestedById: currentUser.id,
+                requestedByName: currentUser.name,
+                payeeName,
+                bankAccount,
+                bankName,
+              });
+              addNotifications([currentUser.id], expensePendingDraft(created, currentUser.name));
+            }
             message.success(t("expense.sent"));
             close();
           } catch (err) {
@@ -161,12 +180,7 @@ export function PaymentRequestDrawer({
             <Input value={orderProjectLabel(lockedOrder)} disabled />
           </Form.Item>
         ) : (
-          <Form.Item
-            name="project"
-            label={t("common.project")}
-            rules={[{ required: true, message: t("expense.selectProject") }]}
-            extra={t("expense.projectExtra")}
-          >
+          <Form.Item name="project" label={t("common.project")} extra={t("expense.projectExtra")}>
             <AutoComplete
               options={projectOptions}
               placeholder={t("expense.projectPlaceholder")}
@@ -178,32 +192,16 @@ export function PaymentRequestDrawer({
             />
           </Form.Item>
         )}
-        <Form.Item
-          name="payeeName"
-          label={t("common.payee")}
-          rules={[{ required: true, message: t("expense.enterPayee") }]}
-        >
+        <Form.Item name="payeeName" label={t("common.payee")}>
           <Input placeholder={t("expense.payeePlaceholder")} />
         </Form.Item>
-        <Form.Item
-          name="bankAccount"
-          label={t("expense.accountNo")}
-          rules={[{ required: true, message: t("expense.enterAccount") }]}
-        >
+        <Form.Item name="bankAccount" label={t("expense.accountNo")}>
           <Input placeholder={t("expense.accountPlaceholder")} />
         </Form.Item>
-        <Form.Item
-          name="bankName"
-          label={t("common.bank")}
-          rules={[{ required: true, message: t("expense.enterBank") }]}
-        >
+        <Form.Item name="bankName" label={t("common.bank")}>
           <Input placeholder={t("expense.bankPlaceholder")} />
         </Form.Item>
-        <Form.Item
-          name="title"
-          label={t("common.content")}
-          rules={[{ required: true, message: t("common.enterContent") }]}
-        >
+        <Form.Item name="title" label={t("common.content")}>
           <Input placeholder={t("expense.contentPlaceholder")} />
         </Form.Item>
         <Form.Item

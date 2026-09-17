@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { RemoteListStatus } from "@/components/shared/remote-list-status";
 import { enhanceColumnsWithFilters } from "@/components/shared/table-column-filters";
 import { getRecordDate, isInDateRange, type DateRangeValue } from "@/lib/date-range";
+import { rangePickerFormat, withDisplayDates } from "@/lib/format-date";
 import { matchesTableQuery } from "@/lib/table-search";
 import { tableIndexColumn, tableColumnKey, type TableColumn } from "@/lib/table-index-column";
 import { useT } from "@/lib/use-t";
@@ -166,7 +167,10 @@ export function DataTable<T extends object>({
   }, [dataSource, dateFilterField, dateRange, datePicker, search?.value, enableLocalSearch, localQuery]);
 
   const filteredColumns = useMemo(
-    () => enhanceColumnsWithFilters(visibleColumns as TableColumnsType<T>, rangedData, t),
+    () =>
+      withDisplayDates(
+        enhanceColumnsWithFilters(visibleColumns as TableColumnsType<T>, rangedData, t),
+      ),
     [visibleColumns, rangedData, t],
   );
 
@@ -267,6 +271,7 @@ export function DataTable<T extends object>({
           {dateFilterField ? (
             <DatePicker.RangePicker
               picker={datePicker}
+              format={rangePickerFormat(datePicker)}
               allowEmpty={[true, true]}
               value={dateRange}
               onChange={(next) => {

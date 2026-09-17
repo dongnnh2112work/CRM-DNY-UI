@@ -1,6 +1,8 @@
 "use client";
 
+import { PlusOutlined } from "@ant-design/icons";
 import {
+  Alert,
   App,
   Button,
   Checkbox,
@@ -23,6 +25,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApiHydrate } from "@/components/api-hydrator";
+import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
 import { OrderDocuments } from "@/components/orders/order-documents";
 import { OrderExpensesPanel } from "@/components/orders/order-expenses-panel";
 import { LicenseUpload } from "@/components/orders/license-upload";
@@ -32,6 +35,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { useCustomers } from "@/lib/customers-store";
+import { DISPLAY_DATE_FORMAT, formatDisplayDate, toStorageDate } from "@/lib/format-date";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { taskAssignedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
@@ -43,6 +47,7 @@ import {
   licenseWarnMonthsForOrder,
   nextContractNumber,
 } from "@/lib/order-helpers";
+import { groupContractTotal, nextSiblingDossierNumber, pickPrimaryOrder, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ApiError } from "@/lib/http/errors";
@@ -50,7 +55,7 @@ import { unwrapList } from "@/lib/http/paging";
 import { reloadOrderFinance } from "@/lib/load-api-data";
 import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
-import { mapApiOrderToUi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
+import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { contractsApi } from "@/modules/contracts/api";
 import { customersApi } from "@/modules/customers/api";
 import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
@@ -95,7 +100,7 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { ready: hydrateReady } = useApiHydrate();
-  const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
+  const { upsertOrder, deleteOrder, orders, isContractTaken, getById } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
   const { can } = useSession();
@@ -109,8 +114,11 @@ export default function OrderDetailPage() {
   const [boot, setBoot] = useState<ScreenBoot>({ status: "loading" });
   const payment = order ? getByOrderId(order.id) : undefined;
   const [editOpen, setEditOpen] = useState(false);
+  const [addServiceOpen, setAddServiceOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [addingService, setAddingService] = useState(false);
   const [form] = Form.useForm();
+  const [addServiceForm] = Form.useForm();
   const needsVatEdit = Form.useWatch("needsVat", form) as boolean | undefined;
 
   const suggestedHd = useMemo(
@@ -120,6 +128,8 @@ export default function OrderDetailPage() {
 
   const catalogsRef = useRef({ users, customers, services });
   catalogsRef.current = { users, customers, services };
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
 
   useEffect(() => {
     if (!order || !editOpen) return;
@@ -146,6 +156,14 @@ export default function OrderDetailPage() {
 
     const load = async () => {
       try {
+        const local = ordersRef.current.find((o) => o.id === id) ?? getById(id);
+        if (isDevAuthBypass() && local) {
+          if (cancelled) return;
+          setOrder(local);
+          setBoot({ status: "ready" });
+          return;
+        }
+
         const [apiOrder, docsResult] = await Promise.all([
           ordersApi.get(id),
           documentsApi.list({ orderId: id, pageSize: 100 }),
@@ -192,6 +210,7 @@ export default function OrderDetailPage() {
         upsertOrder(mapped);
         await reloadOrderFinance({
           order: mapped,
+          groupOrders: orders,
           users: catalogUsers,
           upsertPayment,
           mergeExpensesForOrder,
@@ -211,7 +230,7 @@ export default function OrderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, hydrateReady, upsertOrder, upsertPayment, mergeExpensesForOrder, t]);
+  }, [id, hydrateReady, upsertOrder, upsertPayment, mergeExpensesForOrder, getById, t]);
 
   if (!hydrateReady || boot.status === "loading" || (boot.status === "ready" && !order)) {
     return <PageLoading />;
@@ -231,10 +250,99 @@ export default function OrderDetailPage() {
     order,
     licenseWarnMonthsForOrder(order, services),
   );
+  const siblings = siblingOrders(orders, order);
+  const primary = pickPrimaryOrder(siblings);
+  const groupTotal = groupContractTotal(siblings);
+  const activeServices = services.filter((s) => s.status === "active");
+  const canAddService = can(PERMISSION.orderCreate) && order.stage !== "cancelled";
 
   const persist = (next: Order) => {
     setOrder(next);
     upsertOrder(next);
+  };
+
+  const openAddService = () => {
+    addServiceForm.resetFields();
+    addServiceForm.setFieldsValue({
+      assignedUserId: order.assignedUserId,
+      submitterId: order.submitterId,
+      commissionPercent: order.commissionPercent,
+    });
+    setAddServiceOpen(true);
+  };
+
+  const addServiceToContract = async (values: {
+    serviceId?: string;
+    value?: number;
+    deadline?: unknown;
+    assignedUserId?: string;
+    submitterId?: string;
+    commissionPercent?: number | string;
+  }) => {
+    const service = services.find((s) => s.id === values.serviceId);
+    const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
+    const submitter = activeUsers.find((u) => u.id === values.submitterId);
+    const value = Number(values.value);
+    if (!service || !assigned || !submitter || !Number.isFinite(value)) {
+      message.error(t("common.requiredMissing"));
+      return;
+    }
+
+    setAddingService(true);
+    try {
+      let contractId = order.contractId;
+      if (!contractId) {
+        const contract = await contractsApi.create({
+          contractNumber:
+            order.contractNumber != null ? String(order.contractNumber) : `DH-${Date.now()}`,
+          customerId: order.customerId,
+          title: `${order.customerName} · ${[...siblings.map((s) => s.serviceName), service.name].join(", ")}`,
+        });
+        contractId = contract.id;
+        persist({ ...order, contractId });
+      }
+
+      const orderNumber = nextSiblingDossierNumber(siblings);
+      const vatRate = order.needsVat ? 10 : 0;
+      const apiOrder = await ordersApi.create(
+        mapUiOrderToCreateApi({
+          orderNumber,
+          contractId,
+          customerId: order.customerId,
+          serviceId: service.id,
+          value,
+          assignedUserId: assigned.id,
+          submitterUserId: submitter.id,
+          vatRate,
+          stage: "new",
+        }),
+      );
+      const created = {
+        ...mapApiOrderToUi(apiOrder, {
+          customerName: order.customerName,
+          serviceName: service.name,
+          assignedUserName: assigned.name,
+          submitterName: submitter.name,
+          contractNumber: order.contractNumber,
+        }),
+        contractId,
+        commissionPercent:
+          values.commissionPercent != null && values.commissionPercent !== ""
+            ? Number(values.commissionPercent)
+            : order.commissionPercent,
+        zaloGroupUrl: order.zaloGroupUrl,
+        deadline: toStorageDate(values.deadline),
+        needsVat: order.needsVat,
+      };
+      upsertOrder(created);
+      addNotifications([assigned.id], taskAssignedDraft(created), currentUser?.id);
+      message.success(t("order.addedService", { number: created.orderNumber, service: service.name }));
+      setAddServiceOpen(false);
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("order.createFailed")));
+    } finally {
+      setAddingService(false);
+    }
   };
 
   const applyStage = async (newStage: OrderStage) => {
@@ -270,6 +378,11 @@ export default function OrderDetailPage() {
         <Space wrap>
           {can(PERMISSION.orderUpdate) ? (
             <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
+          ) : null}
+          {canAddService ? (
+            <Button icon={<PlusOutlined />} onClick={openAddService}>
+              {t("order.addServiceToContract")}
+            </Button>
           ) : null}
           <Button
             type="primary"
@@ -344,6 +457,49 @@ export default function OrderDetailPage() {
             <Tag color="green">{t("order.licenseCountTag", { count: licenseFileCount })}</Tag>
           )}
         </Space>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t("order.contractServices")}
+          description={
+            <Space orientation="vertical" size={4}>
+              {siblings.length > 1 ? (
+                <span>
+                  {t("order.sharedPaymentHint", {
+                    amount: formatVndDisplay(payment?.totalAmount ?? groupTotal),
+                    count: siblings.length,
+                    number: primary.orderNumber,
+                  })}
+                </span>
+              ) : (
+                <Typography.Text type="secondary">{t("order.addServiceToContractHint")}</Typography.Text>
+              )}
+              <Space wrap size={4}>
+                <Typography.Text type="secondary">{t("order.sameContract")}:</Typography.Text>
+                {siblings.map((s) =>
+                  s.id === order.id ? (
+                    <Tag key={s.id}>
+                      {s.orderNumber} · {s.serviceName}
+                    </Tag>
+                  ) : (
+                    <Link key={s.id} href={`/orders/${s.id}`}>
+                      {s.orderNumber} · {s.serviceName}
+                    </Link>
+                  ),
+                )}
+                {canAddService ? (
+                  <Button type="link" size="small" icon={<PlusOutlined />} onClick={openAddService}>
+                    {t("order.addServiceLine")}
+                  </Button>
+                ) : null}
+              </Space>
+              {siblings.length > 1 && payment ? (
+                <Link href={`/payments/${payment.id}`}>{t("order.payment")}</Link>
+              ) : null}
+            </Space>
+          }
+        />
 
         <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small" style={{ marginBottom: 16 }}>
           <Descriptions.Item label={t("common.customer")}>
@@ -367,10 +523,14 @@ export default function OrderDetailPage() {
           <Descriptions.Item label={t("common.contractNo")}>
             {order.contractNumber != null ? order.contractNumber : "—"}
           </Descriptions.Item>
-          <Descriptions.Item label={t("common.deadline")}>{order.deadline ?? "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("common.deadline")}>
+            {formatDisplayDate(order.deadline)}
+          </Descriptions.Item>
           <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
           <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
-          <Descriptions.Item label={t("common.createdAt")}>{order.createdAt}</Descriptions.Item>
+          <Descriptions.Item label={t("common.createdAt")}>
+            {formatDisplayDate(order.createdAt)}
+          </Descriptions.Item>
           {order.notes && (
             <Descriptions.Item label={t("common.note")} span={2}>
               {order.notes}
@@ -490,7 +650,7 @@ export default function OrderDetailPage() {
                 notes: values.notes,
                 needsVat: Boolean(values.needsVat),
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
-                deadline: values.deadline ? values.deadline.format("YYYY-MM-DD") : undefined,
+                deadline: toStorageDate(values.deadline),
                 zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
                 vatIssueDeadline: undefined,
               });
@@ -553,7 +713,7 @@ export default function OrderDetailPage() {
             <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="deadline" label={t("order.deadlineLabel")}>
-            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+            <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
           </Form.Item>
           <Form.Item
             name="zaloGroupUrl"
@@ -606,6 +766,64 @@ export default function OrderDetailPage() {
             </Button>
             <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
               {t("common.save")}
+            </Button>
+          </Space>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("order.addServiceTitle", { number: order.orderNumber })}
+        open={addServiceOpen}
+        onCancel={() => setAddServiceOpen(false)}
+        footer={null}
+        width={480}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary">{t("order.addServiceToContractHint")}</Typography.Paragraph>
+        <Form form={addServiceForm} layout="vertical" onFinish={(values) => void addServiceToContract(values)}>
+          <Form.Item
+            name="serviceId"
+            label={t("common.service")}
+            rules={[{ required: true, message: t("order.selectService") }]}
+          >
+            <Select
+              options={activeServices.map((s) => ({ value: s.id, label: s.name }))}
+              onChange={(id) => {
+                const svc = services.find((s) => s.id === id);
+                if (!svc) return;
+                addServiceForm.setFieldValue("deadline", dayjs(deadlineFromService(svc.processingDays)));
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="value"
+            label={t("order.listPriceVnd")}
+            rules={[{ required: true, message: t("order.enterListPrice") }]}
+          >
+            <InputNumber {...vndInputProps} />
+          </Form.Item>
+          <Form.Item name="deadline" label={t("order.deadlineLabel")}>
+            <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
+          </Form.Item>
+          <Form.Item
+            name="commissionPercent"
+            label={t("order.commissionPercent")}
+            extra={t("order.commissionPercentExtra")}
+          >
+            <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
+            <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
+          </Form.Item>
+          <Form.Item name="submitterId" label={t("common.submitter")} rules={[{ required: true }]}>
+            <Select options={activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))} />
+          </Form.Item>
+          <Space>
+            <Button onClick={() => setAddServiceOpen(false)} disabled={addingService}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="primary" htmlType="submit" loading={addingService} disabled={addingService}>
+              {t("order.addServiceLine")}
             </Button>
           </Space>
         </Form>

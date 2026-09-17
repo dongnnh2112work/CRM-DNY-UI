@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { ds } from "@/lib/design-tokens";
 import { useNotifications } from "@/lib/notifications-store";
+import { formatDisplayDateTime } from "@/lib/format-date";
 import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 
@@ -68,7 +69,7 @@ export default function NotificationsPage() {
                   <>
                     <div>{item.body}</div>
                     <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                      {new Date(item.createdAt).toLocaleString("vi-VN")}
+                      {formatDisplayDateTime(item.createdAt)}
                     </Typography.Text>
                   </>
                 }

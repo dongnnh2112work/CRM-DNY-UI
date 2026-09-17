@@ -29,18 +29,12 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ProfileAvatarUpload } from "@/components/users/profile-avatar-upload";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
+import { formatDisplayDate } from "@/lib/format-date";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 import { authApi } from "@/modules/auth/api";
 import { identityAdminApi } from "@/modules/identity-admin/api";
-
-function formatDate(iso?: string) {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
-}
 
 function authMethodLabel(method: "google" | "email", t: ReturnType<typeof useT>) {
   return method === "google" ? "Google" : t("profile.authEmailPassword");
@@ -157,7 +151,7 @@ export default function ProfilePage() {
                   </span>
                   <span>
                     <CalendarOutlined style={{ marginRight: 6 }} />
-                    {t("profile.joined")} {formatDate(currentUser.createdAt)}
+                    {t("profile.joined")} {formatDisplayDate(currentUser.createdAt)}
                   </span>
                 </Space>
               </div>
@@ -199,7 +193,7 @@ export default function ProfilePage() {
                     {authMethodLabel(currentUser.authMethod, t)}
                   </Descriptions.Item>
                   <Descriptions.Item label={t("common.createdAt")}>
-                    {formatDate(currentUser.createdAt)}
+                    {formatDisplayDate(currentUser.createdAt)}
                   </Descriptions.Item>
                   <Descriptions.Item label="ID">
                     <Typography.Text code style={{ fontSize: ds.fontSize.caption }}>
@@ -295,7 +289,7 @@ export default function ProfilePage() {
                             {currentUser.useCustomPermissions ? t("profile.on") : t("common.no")}
                           </Descriptions.Item>
                           <Descriptions.Item label={t("profile.accountCreated")}>
-                            {formatDate(currentUser.createdAt)}
+                            {formatDisplayDate(currentUser.createdAt)}
                           </Descriptions.Item>
                         </Descriptions>
                       </div>

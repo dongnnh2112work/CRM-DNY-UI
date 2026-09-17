@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { siblingOrders } from "@/lib/order-group";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import type { Order, OrderStage } from "@/lib/types";
 import Link from "next/link";
@@ -13,10 +14,12 @@ import { useT } from "@/lib/use-t";
 
 interface KanbanBoardProps {
   orders: Order[];
+  /** Full catalog for counting sibling services on the same contract. */
+  groupOrders?: Order[];
   onMove: (orderId: string, newStage: OrderStage) => boolean | void | Promise<boolean | void>;
 }
 
-export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
+export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
   const t = useT();
   const { token } = theme.useToken();
   const { stageOptions } = useOrderStatusConfig();
@@ -61,6 +64,7 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
                       {stageOrders.map((order, idx) => {
                         const fileCount = order.attachments.filter((a) => !a.deleted).length;
+                        const groupSize = siblingOrders(groupOrders ?? orders, order).length;
                         return (
                           <Draggable key={order.id} draggableId={order.id} index={idx}>
                             {(dragProvided) => (
@@ -87,6 +91,9 @@ export function KanbanBoard({ orders, onMove }: KanbanBoardProps) {
                                       <Typography.Text strong style={{ fontSize: ds.fontSize.caption }}>
                                         {order.orderNumber}
                                       </Typography.Text>
+                                      {groupSize > 1 ? (
+                                        <Tag style={{ marginInlineEnd: 0 }}>{t("order.groupTag", { count: groupSize })}</Tag>
+                                      ) : null}
                                     </div>
                                     <div
                                       style={{

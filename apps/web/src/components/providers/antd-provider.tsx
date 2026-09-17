@@ -12,6 +12,7 @@ import "dayjs/locale/zh-cn";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { DevDebugListener } from "@/components/dev-debug-listener";
 import { ds, fontStack } from "@/lib/design-tokens";
+import { DISPLAY_DATE_FORMAT, DISPLAY_MONTH_FORMAT } from "@/lib/format-date";
 import { setI18nLocale, type AppLocale } from "@/lib/i18n";
 
 export type { AppLocale };
@@ -33,8 +34,42 @@ const AppConfigContext = createContext<AppConfig>({
 
 export const useAppConfig = () => useContext(AppConfigContext);
 
-const LOCALE_MAP = { vi: viVN, en: enUS, zh: zhCN };
+const LOCALE_MAP = {
+  vi: withSystemDateFormat(viVN),
+  en: withSystemDateFormat(enUS),
+  zh: withSystemDateFormat(zhCN),
+};
 const DAYJS_LOCALE = { vi: "vi", en: "en", zh: "zh-cn" } as const;
+
+function withSystemDateFormat<T extends typeof viVN>(locale: T): T {
+  const picker = locale.DatePicker;
+  const calendar = locale.Calendar;
+  return {
+    ...locale,
+    DatePicker: picker
+      ? {
+          ...picker,
+          lang: {
+            ...picker.lang,
+            dateFormat: DISPLAY_DATE_FORMAT,
+            dateTimeFormat: `${DISPLAY_DATE_FORMAT} HH:mm:ss`,
+            monthFormat: DISPLAY_MONTH_FORMAT,
+          },
+        }
+      : picker,
+    Calendar: calendar
+      ? {
+          ...calendar,
+          lang: {
+            ...calendar.lang,
+            dateFormat: DISPLAY_DATE_FORMAT,
+            dateTimeFormat: `${DISPLAY_DATE_FORMAT} HH:mm:ss`,
+            monthFormat: DISPLAY_MONTH_FORMAT,
+          },
+        }
+      : calendar,
+  };
+}
 
 function applyDocumentLocale(locale: AppLocale) {
   setI18nLocale(locale);

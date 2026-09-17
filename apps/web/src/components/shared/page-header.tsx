@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import type { DateRangeValue } from "@/lib/date-range";
+import { rangePickerFormat } from "@/lib/format-date";
 import { useT } from "@/lib/use-t";
 
 export function PageHeader({
@@ -58,6 +59,7 @@ export function PageHeader({
         {onDateRangeChange ? (
           <DatePicker.RangePicker
             picker={datePicker}
+            format={rangePickerFormat(datePicker)}
             allowEmpty={[true, true]}
             value={dateRange}
             onChange={(next) => onDateRangeChange(next)}

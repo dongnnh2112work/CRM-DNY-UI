@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
+import { DISPLAY_DATETIME_FORMAT } from "@/lib/format-date";
 import { useCustomers } from "@/lib/customers-store";
 import { isHtmlFile } from "@/lib/email-preview";
 import { useEmails } from "@/lib/emails-store";
@@ -198,7 +199,7 @@ function ComposeEmailPageContent() {
             value: value ? dayjs(value) : undefined,
           })}
         >
-          <DatePicker showTime style={{ width: "100%" }} />
+          <DatePicker showTime format={DISPLAY_DATETIME_FORMAT} style={{ width: "100%" }} />
         </Form.Item>
         <Space>
           <Button

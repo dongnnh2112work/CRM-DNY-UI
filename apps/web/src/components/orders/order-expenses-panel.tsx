@@ -13,6 +13,8 @@ import { formatVndDisplay } from "@/lib/format-vnd";
 import { expenseReviewedDraft } from "@/lib/notification-targets";
 import { useNotifications } from "@/lib/notifications-store";
 import { buildOrderCashflow, formatYearMonth } from "@/lib/order-cashflow";
+import { allocatePaymentShare, siblingOrders } from "@/lib/order-group";
+import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import type { Order, OrderExpense } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
@@ -26,11 +28,14 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
   const { currentUser } = useUsers();
   const { can } = useSession();
   const { getByOrderId } = usePayments();
+  const { orders } = useOrders();
   const { getByOrderId: getExpenses, reviewExpense } = useExpenses();
   const { addNotifications } = useNotifications();
   const [addOpen, setAddOpen] = useState(false);
 
-  const payment = getByOrderId(order.id);
+  const siblings = siblingOrders(orders, order);
+  const groupPay = getByOrderId(order.id);
+  const payment = allocatePaymentShare(groupPay, order, siblings);
   const rows = getExpenses(order.id);
   const flow = useMemo(() => buildOrderCashflow(payment, rows), [payment, rows]);
   const canApproveApi = can(PERMISSION.expenseApprove);

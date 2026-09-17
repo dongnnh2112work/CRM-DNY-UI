@@ -23,6 +23,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
 import { translateSeedFieldLabel, translateStatusLabel } from "@/lib/i18n";
 import { tableColumnKey } from "@/lib/table-index-column";
+import { formatDisplayDate } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { useT } from "@/lib/use-t";
 import type { StatusModule } from "@/lib/status-config";
@@ -234,6 +235,9 @@ export function DynamicTable<T extends object>({
           }
           if (def.type === "number" && typeof value === "number") {
             return isMoneyField(def) ? formatVndDisplay(value) : value.toLocaleString("vi-VN");
+          }
+          if (def.type === "date") {
+            return formatDisplayDate(value == null ? undefined : String(value));
           }
           if (Array.isArray(value)) {
             const joined = value.length ? value.map(String).join(", ") : "";

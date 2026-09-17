@@ -33,6 +33,7 @@ import {
 } from "@/lib/types";
 import { getStatusMeta } from "@/lib/status-config";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
+import { formatDisplayDate } from "@/lib/format-date";
 import { matchesTableQuery } from "@/lib/table-search";
 import { ApiError } from "@/lib/http/errors";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -57,13 +58,6 @@ import { applyLostRoles, loadUsersWithRoles } from "@/modules/identity-admin/rea
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
-}
-
-function formatDob(iso?: string) {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
 }
 
 export default function UsersPage() {
@@ -110,7 +104,7 @@ export default function UsersPage() {
       u.email,
       u.phone,
       u.dateOfBirth,
-      formatDob(u.dateOfBirth),
+      formatDisplayDate(u.dateOfBirth),
       u.address,
       u.role,
       getRoleLabel(u.role),
@@ -283,7 +277,7 @@ export default function UsersPage() {
       title: t("user.dob"),
       dataIndex: "dateOfBirth",
       sorter: (a, b) => compareText(a.dateOfBirth ?? "", b.dateOfBirth ?? ""),
-      render: (v?: string) => formatDob(v),
+      render: (v?: string) => formatDisplayDate(v),
     },
     {
       title: t("common.address"),

@@ -10,60 +10,53 @@ import {
   type ReactNode,
 } from "react";
 import { useOrders } from "@/lib/orders-store";
-import type { Order, PaymentInstallment, PaymentRecord, PaymentStatus } from "@/lib/types";
+import {
+  groupContractTotal,
+  groupOrdersByContract,
+  pickPrimaryOrder,
+  recalcPayment,
+} from "@/lib/order-group";
+import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
 
-function orderTotal(order: Order): number {
-  return order.value;
-}
-
-function computeStatus(paidAmount: number, totalAmount: number, installments: PaymentInstallment[]): PaymentStatus {
-  if (totalAmount <= 0) return "unpaid";
-  if (paidAmount <= 0) {
-    const hasOverdue = installments.some((i) => i.status === "overdue");
-    return hasOverdue ? "overdue" : "unpaid";
-  }
-  if (paidAmount >= totalAmount) return "paid";
-  const hasOverdue = installments.some((i) => i.status === "overdue" || (i.status === "pending" && i.dueDate < new Date().toISOString().slice(0, 10)));
-  return hasOverdue ? "overdue" : "partial";
-}
-
-function recalc(record: PaymentRecord): PaymentRecord {
-  const paidAmount = record.installments
-    .filter((i) => i.status === "paid")
-    .reduce((sum, i) => sum + i.amount, 0);
-  const remaining = Math.max(0, record.totalAmount - paidAmount);
-  return {
-    ...record,
-    paidAmount,
-    remaining,
-    status: computeStatus(paidAmount, record.totalAmount, record.installments),
-  };
-}
-
-function paymentFromOrder(order: Order, existing?: PaymentRecord): PaymentRecord {
-  const totalAmount = orderTotal(order);
+function paymentFromGroup(group: Order[], existing?: PaymentRecord): PaymentRecord {
+  const primary = pickPrimaryOrder(group);
+  const totalAmount = groupContractTotal(group);
+  const ids = group.map((o) => o.id);
   const base: PaymentRecord = existing
     ? {
         ...existing,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        customerId: order.customerId,
-        customerName: order.customerName,
+        orderId: primary.id,
+        orderNumber: primary.orderNumber,
+        customerId: primary.customerId,
+        customerName: primary.customerName,
         totalAmount,
+        groupedOrderIds: ids,
+        installments: existing.installments,
       }
     : {
-        id: `pay-${order.id}`,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        customerId: order.customerId,
-        customerName: order.customerName,
+        id: `pay-${primary.id}`,
+        orderId: primary.id,
+        orderNumber: primary.orderNumber,
+        customerId: primary.customerId,
+        customerName: primary.customerName,
         totalAmount,
         paidAmount: 0,
         remaining: totalAmount,
         status: "unpaid",
         installments: [],
+        groupedOrderIds: ids,
       };
-  return recalc(base);
+  return recalcPayment(base);
+}
+
+function findExistingForGroup(group: Order[], prev: PaymentRecord[]): PaymentRecord | undefined {
+  const ids = new Set(group.map((o) => o.id));
+  return prev.find(
+    (p) =>
+      ids.has(p.orderId) ||
+      p.groupedOrderIds?.some((id) => ids.has(id)) ||
+      ids.has(String(p.id ?? "").replace(/^pay-/, "")),
+  );
 }
 
 type PaymentsContextValue = {
@@ -93,10 +86,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated || !ordersReady) return;
-    setPayments((prev) => {
-      const byOrder = new Map(prev.map((p) => [p.orderId, p]));
-      return orders.map((order) => paymentFromOrder(order, byOrder.get(order.id)));
-    });
+    setPayments((prev) =>
+      groupOrdersByContract(orders).map((group) => paymentFromGroup(group, findExistingForGroup(group, prev))),
+    );
   }, [orders, ordersReady, hydrated]);
 
   const replacePayments = useCallback((items: PaymentRecord[]) => {
@@ -105,7 +97,13 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
   const upsertPayment = useCallback((record: PaymentRecord) => {
     setPayments((prev) => {
-      const next = prev.filter((p) => p.orderId !== record.orderId && p.id !== record.id);
+      const ids = new Set([record.orderId, ...(record.groupedOrderIds ?? [])]);
+      const next = prev.filter(
+        (p) =>
+          p.id !== record.id &&
+          !ids.has(p.orderId) &&
+          !p.groupedOrderIds?.some((id) => ids.has(id)),
+      );
       return [...next, record];
     });
   }, []);
@@ -113,7 +111,10 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   const getById = useCallback((id: string) => payments.find((p) => p.id === id), [payments]);
 
   const getByOrderId = useCallback(
-    (orderId: string) => payments.find((p) => p.orderId === orderId),
+    (orderId: string) =>
+      payments.find(
+        (p) => p.orderId === orderId || p.groupedOrderIds?.includes(orderId) || p.id === `pay-${orderId}`,
+      ),
     [payments],
   );
 
@@ -134,7 +135,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             note: input.note,
             status: input.status ?? (input.paidDate ? "paid" : "pending"),
           };
-          return recalc({ ...p, installments: [...p.installments, installment] });
+          return recalcPayment({ ...p, installments: [...p.installments, installment] });
         }),
       );
     },
@@ -147,11 +148,11 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       prev.map((p) => {
         if (p.id !== paymentId) return p;
         const installments = p.installments.map((i) =>
-          i.id === installmentId
+          installmentId === i.id
             ? { ...i, status: "paid" as const, paidDate: today, method: method ?? i.method ?? "Bank transfer" }
             : i,
         );
-        return recalc({ ...p, installments });
+        return recalcPayment({ ...p, installments });
       }),
     );
   }, []);

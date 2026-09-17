@@ -8,6 +8,10 @@ const TYPES = new Set<AppNotificationType>([
   "vat_deadline_approaching",
   "expense_pending",
   "expense_reviewed",
+  "user_pending",
+  "user_approved",
+  "email_sent",
+  "email_failed",
 ]);
 
 function mapType(type: string): AppNotificationType {
@@ -18,6 +22,10 @@ function hrefOf(n: ApiNotification): string | undefined {
   if (n.sourceType === "order" && n.sourceId) return `/orders/${n.sourceId}`;
   if (n.sourceType === "expense") return "/expense-approvals";
   if (n.sourceType === "payment" && n.sourceId) return `/payments/${n.sourceId}`;
+  if (n.sourceType === "user") {
+    return n.type === "user_approved" ? "/dashboard" : "/users/pending";
+  }
+  if (n.sourceType === "email") return "/emails";
   return undefined;
 }
 

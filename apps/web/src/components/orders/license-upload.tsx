@@ -10,6 +10,7 @@ import { attachmentTypeIcon } from "@/components/orders/attachment-type-icon";
 import { UploadJobsBar, type UploadJob } from "@/components/orders/upload-jobs-bar";
 import type { OrderAttachment } from "@/lib/types";
 import { ds } from "@/lib/design-tokens";
+import { DISPLAY_DATE_FORMAT, formatDisplayDate } from "@/lib/format-date";
 import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
 import { apiErrorMessage } from "@/lib/http/message";
 import { PERMISSION } from "@/lib/rbac";
@@ -198,14 +199,14 @@ export function LicenseUpload({
         </Typography.Paragraph>
         <Form form={dateForm} layout="vertical" disabled={saving}>
           <Form.Item name="issuedAt" label={t("license.issuedAt")}>
-            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+            <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
           </Form.Item>
           <Form.Item
             name="expiresAt"
             label={t("license.expiresAt")}
             rules={[{ required: true, message: t("license.selectExpiry") }]}
           >
-            <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+            <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
           </Form.Item>
         </Form>
         {job ? <UploadJobsBar jobs={[job]} /> : null}
@@ -243,13 +244,13 @@ export function LicenseUpload({
                 description={
                   <Space orientation="vertical" size={4} style={{ width: "100%" }}>
                     <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                      {item.uploadedBy} · {item.uploadedAt}
+                      {item.uploadedBy} · {formatDisplayDate(item.uploadedAt)}
                     </Typography.Text>
                     <Space wrap>
                       <DatePicker
                         size="small"
                         placeholder={t("license.issuedAt")}
-                        format="DD/MM/YYYY"
+                        format={DISPLAY_DATE_FORMAT}
                         value={item.issuedAt ? dayjs(item.issuedAt) : null}
                         onChange={(d) =>
                           updateDates(
@@ -262,7 +263,7 @@ export function LicenseUpload({
                       <DatePicker
                         size="small"
                         placeholder={t("license.expiresShort")}
-                        format="DD/MM/YYYY"
+                        format={DISPLAY_DATE_FORMAT}
                         value={item.expiresAt ? dayjs(item.expiresAt) : null}
                         onChange={(d) => {
                           if (!d) {

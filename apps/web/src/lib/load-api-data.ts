@@ -1,4 +1,5 @@
 import { CATALOG_PAGE_SIZE, LIST_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
+import { siblingOrders } from "@/lib/order-group";
 import type { AppUser, Customer, Ctv, Order, OrderExpense, PaymentRecord, Service, VatInvoice } from "@/lib/types";
 import type { AuthUser } from "@/modules/auth/api";
 import { collaboratorsApi } from "@/modules/collaborators/api";
@@ -396,18 +397,38 @@ export async function applyRemoteData(
 
 export async function reloadOrderFinance(args: {
   order: Order;
+  groupOrders?: Order[];
   users: AppUser[];
   upsertPayment: (record: PaymentRecord) => void;
   mergeExpensesForOrder: (orderId: string, items: OrderExpense[]) => void;
 }): Promise<void> {
   const { order, users, upsertPayment, mergeExpensesForOrder } = args;
+  const group = siblingOrders(args.groupOrders?.length ? args.groupOrders : [order], order);
   const userName = new Map(users.map((u) => [u.id, u.name]));
-  const [payments, schedule, expenses] = await Promise.all([
-    settled(fetchPage((page, pageSize) => paymentsApi.list({ page, pageSize, orderId: order.id }), 1, CATALOG_PAGE_SIZE).then((r) => r.items), []),
-    settled(ordersApi.listSchedule(order.id).then(unwrapSchedule), []),
-    settled(fetchPage((page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id }), 1, CATALOG_PAGE_SIZE).then((r) => r.items), []),
+  const [paymentLists, scheduleEntries, expenses] = await Promise.all([
+    Promise.all(
+      group.map((o) =>
+        settled(
+          fetchPage((page, pageSize) => paymentsApi.list({ page, pageSize, orderId: o.id }), 1, CATALOG_PAGE_SIZE).then(
+            (r) => r.items,
+          ),
+          [],
+        ),
+      ),
+    ),
+    Promise.all(
+      group.map(async (o) => [o.id, await settled(ordersApi.listSchedule(o.id).then(unwrapSchedule), [])] as const),
+    ),
+    settled(
+      fetchPage((page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id }), 1, CATALOG_PAGE_SIZE).then(
+        (r) => r.items,
+      ),
+      [],
+    ),
   ]);
-  const [record] = mapPaymentsToRecords([order], payments, new Map([[order.id, schedule]]));
+  const payments = paymentLists.flat();
+  const schedules = new Map(scheduleEntries);
+  const [record] = mapPaymentsToRecords(group, payments, schedules);
   if (record) upsertPayment(record);
   mergeExpensesForOrder(
     order.id,

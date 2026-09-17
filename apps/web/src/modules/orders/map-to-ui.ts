@@ -33,7 +33,7 @@ export function mapApiOrderToUi(
   const vatRate = num(o.vatRate);
   return {
     id: o.id,
-    orderNumber: o.orderNumber,
+    orderNumber: o.orderNumber || o.id,
     contractId: o.contractId,
     customerId: o.customerId,
     customerName: names.customerName ?? o.customerId,

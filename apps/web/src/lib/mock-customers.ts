@@ -2,16 +2,16 @@ import type { Customer, FieldDefinition } from "./types";
 
 export const CUSTOMER_FIELD_DEFS: FieldDefinition[] = [
   { key: "name", label: "Tên", type: "text", required: true, order: 1, visible: true },
-  { key: "phone", label: "SĐT", type: "text", required: true, order: 2, visible: true },
-  { key: "email", label: "Email", type: "text", required: false, order: 3, visible: true },
-  { key: "company", label: "Công ty", type: "text", required: false, order: 4, visible: true },
-  { key: "taxCode", label: "Mã số thuế", type: "text", required: false, order: 5, visible: true },
-  { key: "address", label: "Địa chỉ", type: "text", required: false, order: 6, visible: false },
-  { key: "owner", label: "Phụ trách", type: "select", options: ["Le Staff A", "Vo Staff B", "Tran Admin"], required: true, order: 7, visible: true },
-  { key: "status", label: "Trạng thái", type: "select", options: ["active", "lead", "archived"], required: true, order: 8, visible: true },
-  { key: "usedServiceIds", label: "Dịch vụ đã dùng", type: "select", required: false, order: 9, visible: true },
-  { key: "channel", label: "Kênh", type: "select", options: ["direct", "website", "referral", "ctv"], required: false, order: 10, visible: true },
-  { key: "createdAt", label: "Ngày tạo", type: "date", required: false, order: 11, visible: false },
+  { key: "createdAt", label: "Ngày tạo", type: "date", required: false, order: 2, visible: true },
+  { key: "phone", label: "SĐT", type: "text", required: true, order: 3, visible: true },
+  { key: "email", label: "Email", type: "text", required: false, order: 4, visible: true },
+  { key: "company", label: "Công ty", type: "text", required: false, order: 5, visible: true },
+  { key: "taxCode", label: "Mã số thuế", type: "text", required: false, order: 6, visible: true },
+  { key: "address", label: "Địa chỉ", type: "text", required: false, order: 7, visible: false },
+  { key: "owner", label: "Phụ trách", type: "select", options: ["Le Staff A", "Vo Staff B", "Tran Admin"], required: true, order: 8, visible: true },
+  { key: "status", label: "Trạng thái", type: "select", options: ["active", "lead", "archived"], required: true, order: 9, visible: true },
+  { key: "usedServiceIds", label: "Dịch vụ đã dùng", type: "select", required: false, order: 10, visible: true },
+  { key: "channel", label: "Kênh", type: "select", options: ["direct", "website", "referral", "ctv"], required: false, order: 11, visible: true },
   { key: "industry", label: "Ngành", type: "select", options: ["Tech", "F&B", "Manufacturing", "Trading", "Other"], required: false, order: 12, visible: false },
 ];
 

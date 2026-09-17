@@ -1,3 +1,4 @@
+import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
 import {
   buildOrderCashflow,
   cashflowForMonth,
@@ -5,6 +6,7 @@ import {
   yearMonthOf,
   type OrderCashflow,
 } from "@/lib/order-cashflow";
+import { allocatePaymentShare, siblingOrders } from "@/lib/order-group";
 import type { Order, OrderExpense, PaymentRecord, RolePagePermissions } from "@/lib/types";
 
 /** `commission.view` (hoặc matrix payroll.edit) = cả công ty. User đã login = lương của mình. */
@@ -16,6 +18,7 @@ export function getPayrollScope(
   apiPermissions?: string[] | null,
 ): PayrollScope {
   if (!user) return "none";
+  if (isDevAuthBypass()) return "all";
   if (apiPermissions?.includes("commission.view") || perms?.payroll?.edit) return "all";
   return "self";
 }
@@ -79,7 +82,6 @@ export function buildPayroll(
   expenses: OrderExpense[],
   month: string,
 ): StaffPayroll[] {
-  const payByOrder = new Map(payments.map((p) => [p.orderId, p]));
   const expByOrder = new Map<string, OrderExpense[]>();
   for (const e of expenses) {
     if (!e.orderId) continue;
@@ -92,7 +94,14 @@ export function buildPayroll(
 
   for (const order of orders) {
     if (order.stage === "cancelled") continue;
-    const flow = buildOrderCashflow(payByOrder.get(order.id), expByOrder.get(order.id) ?? []);
+    const siblings = siblingOrders(orders, order);
+    const groupPay = payments.find(
+      (p) => p.orderId === order.id || p.groupedOrderIds?.includes(order.id),
+    );
+    const flow = buildOrderCashflow(
+      allocatePaymentShare(groupPay, order, siblings),
+      expByOrder.get(order.id) ?? [],
+    );
     const row = cashflowForMonth(flow, month);
     if (row.thu === 0 && row.chi === 0) continue;
 

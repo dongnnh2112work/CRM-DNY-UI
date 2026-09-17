@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useReloadOrderFinance } from "@/components/api-hydrator";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DISPLAY_DATE_FORMAT } from "@/lib/format-date";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -42,7 +43,7 @@ export default function PaymentDetailPage() {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { getById, getByOrderId, ready, addInstallment, markInstallmentPaid } = usePayments();
-  const { getById: getOrder } = useOrders();
+  const { getById: getOrder, orders } = useOrders();
   const reloadFinance = useReloadOrderFinance();
   const [addOpen, setAddOpen] = useState(false);
   const [form] = Form.useForm();
@@ -152,7 +153,20 @@ export default function PaymentDetailPage() {
           <Descriptions.Item label={t("common.customer")}>
             <Link href={`/customers/${payment.customerId}`}>{payment.customerName}</Link>
           </Descriptions.Item>
-          {order ? (
+          {(payment.groupedOrderIds?.length ?? 1) > 1 ? (
+            <Descriptions.Item label={t("order.sameContract")} span={2}>
+              <Space wrap size={4}>
+                {(payment.groupedOrderIds ?? [payment.orderId]).map((oid) => {
+                  const sibling = orders.find((o) => o.id === oid);
+                  return (
+                    <Link key={oid} href={`/orders/${oid}`}>
+                      {sibling ? `${sibling.orderNumber} · ${sibling.serviceName}` : oid}
+                    </Link>
+                  );
+                })}
+              </Space>
+            </Descriptions.Item>
+          ) : order ? (
             <>
               <Descriptions.Item label={t("common.service")}>{order.serviceName}</Descriptions.Item>
               <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
@@ -237,7 +251,7 @@ export default function PaymentDetailPage() {
               value: value ? dayjs(value) : undefined,
             })}
           >
-            <DatePicker style={{ width: "100%" }} />
+            <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
           </Form.Item>
           <Form.Item name="method" label={t("payment.methodLabel")}>
             <Select

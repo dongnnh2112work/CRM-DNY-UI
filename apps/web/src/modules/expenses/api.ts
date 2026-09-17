@@ -32,7 +32,7 @@ export const expensesApi = {
   },
 
   create(body: {
-    orderId: string;
+    orderId?: string;
     title: string;
     amount: number;
     currency?: string;
