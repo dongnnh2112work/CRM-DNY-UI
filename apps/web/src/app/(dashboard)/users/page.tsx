@@ -22,7 +22,6 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { PermissionMatrix } from "@/components/users/permission-matrix";
-import { RolePermissionGroupsModal } from "@/components/users/role-permission-groups-modal";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
 import {
@@ -96,7 +95,6 @@ export default function UsersPage() {
   }, []);
   const [saving, setSaving] = useState(false);
   const [savingPerms, setSavingPerms] = useState(false);
-  const [groupsOpen, setGroupsOpen] = useState(false);
   const [deleteRoleOpen, setDeleteRoleOpen] = useState(false);
   const [deleteRoleUsers, setDeleteRoleUsers] = useState<IdentityUser[]>([]);
   const [deleteRoleRemaining, setDeleteRoleRemaining] = useState<Map<string, string[]>>(new Map());
@@ -337,8 +335,10 @@ export default function UsersPage() {
         onDateRangeChange={setDateRange}
         primaryAction={{ label: t("user.newCta"), onClick: openCreate }}
       >
-        {can(PERMISSION.roleManage) ? (
-          <Button onClick={() => setGroupsOpen(true)}>{t("user.roleGroups")}</Button>
+        {can(PERMISSION.roleManage) || can(PERMISSION.permissionManage) ? (
+          <Link href="/users/permissions">
+            <Button>{t("nav.permissions")}</Button>
+          </Link>
         ) : null}
         {can("user.manage") ? (
           <Link href="/users/pending">
@@ -487,15 +487,10 @@ export default function UsersPage() {
         <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
           {t("user.rolePermsHint")}
         </Typography.Paragraph>
-        {can(PERMISSION.roleManage) ? (
-          <Button
-            style={{ marginBottom: 12 }}
-            onClick={() => {
-              setGroupsOpen(true);
-            }}
-          >
-            {t("user.openRoleGroups")}
-          </Button>
+        {can(PERMISSION.roleManage) || can(PERMISSION.permissionManage) ? (
+          <Link href={permRole ? `/users/permissions?role=${encodeURIComponent(permRole)}` : "/users/permissions"}>
+            <Button style={{ marginBottom: 12 }}>{t("user.openRoleGroups")}</Button>
+          </Link>
         ) : null}
         {!canManageConfig ? (
           <Alert
@@ -583,11 +578,6 @@ export default function UsersPage() {
         ) : null}
       </Modal>
 
-      <RolePermissionGroupsModal
-        open={groupsOpen}
-        onClose={() => setGroupsOpen(false)}
-        initialUiRole={permRole}
-      />
       <ReassignPendingConfirmModal
         open={deleteRoleOpen}
         title={t("user.deleteRoleTitle", { label: selectedRoleDef?.label || "" })}

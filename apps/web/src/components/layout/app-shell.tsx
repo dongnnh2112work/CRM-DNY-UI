@@ -16,6 +16,7 @@ import {
   MoonOutlined,
   ProjectOutlined,
   ReloadOutlined,
+  SafetyOutlined,
   SettingOutlined,
   SunOutlined,
   TeamOutlined,
@@ -37,7 +38,7 @@ import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import { getPayrollScope } from "@/lib/payroll";
-import { canSeeMenuPage } from "@/lib/rbac";
+import { canSeeMenuPage, PERMISSION } from "@/lib/rbac";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 
@@ -60,6 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     useNotifications();
   const { addEmails } = useEmails();
   const [collapsed, setCollapsed] = useState(false);
+  const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const scannedRef = useRef(false);
   const isDark = appTheme === "dark";
 
@@ -140,9 +142,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">{t("nav.services")}</Link> },
       { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">{t("nav.emails")}</Link> },
       { type: "divider" as const },
-      ...(can("user.manage")
+    ];
+    const usersVisible = can(PERMISSION.userManage) && canSeeMenuPage({ page: "users", apiUser, matrix: pageMatrix });
+    const userChildren = [
+      ...(usersVisible
         ? [
-            { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.users")}</Link> },
+            { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.userList")}</Link> },
             {
               key: "/users/pending",
               icon: <ClockCircleOutlined />,
@@ -150,8 +155,25 @@ export function AppShell({ children }: { children: ReactNode }) {
             },
           ]
         : []),
-      { key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> },
+      ...(can(PERMISSION.roleManage) || can(PERMISSION.permissionManage)
+        ? [
+            {
+              key: "/users/permissions",
+              icon: <SafetyOutlined />,
+              label: <Link href="/users/permissions">{t("nav.permissions")}</Link>,
+            },
+          ]
+        : []),
     ];
+    if (userChildren.length) {
+      items.push({
+        key: "users-group",
+        icon: <UserOutlined />,
+        label: t("nav.users"),
+        children: userChildren,
+      } as (typeof items)[number]);
+    }
+    items.push({ key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> });
     const pageByPath: Record<string, Parameters<typeof canSeeMenuPage>[0]["page"]> = {
       "/orders": "orders",
       "/customers": "customers",
@@ -175,13 +197,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [t, payrollScope, apiUser, can, pageMatrix]);
 
   const selectedKey = useMemo(() => {
-    const keys = menuItems.filter((i) => "key" in i).map((i) => (i as { key: string }).key);
+    const keys: string[] = [];
+    const walk = (rows: typeof menuItems) => {
+      for (const item of rows) {
+        if ("key" in item && typeof item.key === "string") keys.push(item.key);
+        if ("children" in item && Array.isArray(item.children)) walk(item.children as typeof menuItems);
+      }
+    };
+    walk(menuItems);
     return (
       keys
         .filter((k) => pathname === k || pathname.startsWith(k + "/"))
         .sort((a, b) => b.length - a.length)[0] ?? "/dashboard"
     );
   }, [pathname, menuItems]);
+
+  useEffect(() => {
+    if (pathname.startsWith("/users")) {
+      setOpenKeys((prev) => (prev.includes("users-group") ? prev : [...prev, "users-group"]));
+    }
+  }, [pathname]);
 
   const searchTarget = useMemo(() => getHeaderSearchTarget(pathname), [pathname]);
 
@@ -231,6 +266,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           mode="inline"
           theme={isDark ? "dark" : "light"}
           selectedKeys={[selectedKey]}
+          openKeys={collapsed ? undefined : openKeys}
+          onOpenChange={setOpenKeys}
           items={menuItems}
           style={{
             background: "transparent",

@@ -1,0 +1,95 @@
+import { hasMessageKey, type MessageKey, type MessageVars } from "@/lib/i18n";
+
+export const PERMISSION_RESOURCE_ORDER = [
+  "customer",
+  "lead",
+  "contact",
+  "order",
+  "payment",
+  "expense",
+  "vat",
+  "commission",
+  "service",
+  "contract",
+  "document",
+  "task",
+  "workflow_template",
+  "collaborator",
+  "contract_request",
+  "collaborator_customer",
+  "user",
+  "role",
+  "permission",
+  "notification",
+  "config",
+] as const;
+
+export function splitPermissionCode(code: string): { resource: string; action: string } {
+  const trimmed = code.trim();
+  const i = trimmed.indexOf(".");
+  if (i <= 0) return { resource: trimmed, action: "" };
+  return { resource: trimmed.slice(0, i), action: trimmed.slice(i + 1) };
+}
+
+export function permissionTitleKey(code: string): MessageKey | null {
+  const key = `cap.${code.trim()}`;
+  return hasMessageKey(key) ? key : null;
+}
+
+export function permissionResourceTitleKey(resource: string): MessageKey {
+  const key = `cap.res.${resource}`;
+  return hasMessageKey(key) ? key : "cap.res.other";
+}
+
+type Translate = (key: MessageKey, vars?: MessageVars) => string;
+
+export function permissionTitle(code: string, translate: Translate): string {
+  const full = permissionTitleKey(code);
+  if (full) return translate(full);
+  const { resource, action } = splitPermissionCode(code);
+  const resKey = `cap.res.${resource}`;
+  const actKey = `cap.act.${action}`;
+  if (hasMessageKey(resKey) && hasMessageKey(actKey)) {
+    return translate("cap.composed", { action: translate(actKey), resource: translate(resKey) });
+  }
+  if (hasMessageKey(resKey)) return `${translate(resKey)} (${code})`;
+  return code;
+}
+
+export function permissionMatchesQuery(code: string, query: string, translate: Translate): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const title = permissionTitle(code, translate).toLowerCase();
+  const { resource, action } = splitPermissionCode(code);
+  const resourceTitle = translate(permissionResourceTitleKey(resource)).toLowerCase();
+  return (
+    code.toLowerCase().includes(q) ||
+    title.includes(q) ||
+    resource.toLowerCase().includes(q) ||
+    action.toLowerCase().includes(q) ||
+    resourceTitle.includes(q)
+  );
+}
+
+export function groupPermissionCodes<T extends { code: string }>(items: T[]): { resource: string; items: T[] }[] {
+  const buckets = new Map<string, T[]>();
+  for (const item of items) {
+    const { resource } = splitPermissionCode(item.code);
+    const key = resource || "other";
+    const list = buckets.get(key) ?? [];
+    list.push(item);
+    buckets.set(key, list);
+  }
+  const rank = new Map(PERMISSION_RESOURCE_ORDER.map((name, i) => [name, i]));
+  return [...buckets.entries()]
+    .sort((a, b) => {
+      const ra = rank.get(a[0] as (typeof PERMISSION_RESOURCE_ORDER)[number]) ?? 1000;
+      const rb = rank.get(b[0] as (typeof PERMISSION_RESOURCE_ORDER)[number]) ?? 1000;
+      if (ra !== rb) return ra - rb;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([resource, grouped]) => ({
+      resource,
+      items: grouped.sort((a, b) => a.code.localeCompare(b.code)),
+    }));
+}

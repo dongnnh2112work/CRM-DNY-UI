@@ -12,7 +12,9 @@ import {
   type IdentityPermission,
   type IdentityPermissionGroup,
 } from "@/modules/identity-admin/api";
+import { groupPermissionCodes, permissionMatchesQuery, permissionResourceTitleKey } from "@/lib/permission-catalog";
 import { permissionCodesOf, unwrapIdentityEntity } from "@/modules/identity-admin/map-to-ui";
+import { PermissionLabel } from "@/components/users/permission-label";
 
 function slugifyGroupCode(label: string) {
   const base = label
@@ -93,13 +95,12 @@ export function PermissionGroupEditor({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return permissions;
-    return permissions.filter(
-      (item) =>
-        item.code.toLowerCase().includes(q) ||
-        (item.description ?? "").toLowerCase().includes(q),
-    );
-  }, [permissions, query]);
+    return permissions.filter((item) => {
+      if (permissionMatchesQuery(item.code, query, t)) return true;
+      return Boolean(q && (item.description ?? "").toLowerCase().includes(q));
+    });
+  }, [permissions, query, t]);
+  const grouped = useMemo(() => groupPermissionCodes(filtered), [filtered]);
 
   const onSave = async () => {
     const label = name.trim();
@@ -148,7 +149,7 @@ export function PermissionGroupEditor({
       title={isCreate ? t("user.createGroup") : t("user.editGroup")}
       open={open}
       onCancel={onClose}
-      width={640}
+      width={720}
       centered
       okText={t("common.save")}
       cancelText={t("common.cancel")}
@@ -211,28 +212,34 @@ export function PermissionGroupEditor({
             <Checkbox.Group
               style={{
                 width: "100%",
-                maxHeight: 320,
+                maxHeight: 360,
                 overflow: "auto",
                 display: "flex",
                 flexDirection: "column",
-                gap: 6,
+                gap: 10,
               }}
               value={picked}
               disabled={!canManage}
               onChange={(next) => setPicked(next.map(String))}
             >
-              {filtered.map((item) => (
-                <Checkbox key={item.code} value={item.code} style={{ marginInlineStart: 0 }}>
-                  <Space size={6}>
-                    <Typography.Text>{item.code}</Typography.Text>
-                    {item.description ? (
-                      <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
-                        {item.description}
-                      </Typography.Text>
-                    ) : null}
-                  </Space>
-                </Checkbox>
-              ))}
+              {grouped.length === 0 ? (
+                <Empty description={t("common.noResults")} />
+              ) : (
+                grouped.map((bucket) => (
+                  <div key={bucket.resource}>
+                    <Typography.Text strong style={{ fontSize: ds.fontSize.bodySm }}>
+                      {t(permissionResourceTitleKey(bucket.resource))}
+                    </Typography.Text>
+                    <Space direction="vertical" size={6} style={{ width: "100%", marginTop: 6 }}>
+                      {bucket.items.map((item) => (
+                        <Checkbox key={item.code} value={item.code} style={{ marginInlineStart: 0, alignItems: "flex-start" }}>
+                          <PermissionLabel code={item.code} />
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  </div>
+                ))
+              )}
             </Checkbox.Group>
           )}
         </div>
