@@ -4,9 +4,8 @@
   "name": "DNY CRM Dashboard",
   "baseUrl": "https://apidyn.otcayxe.com/api/v1",
   "importNotes": [
-    "Widgeto (ex API Widgets): Import file này, hoặc tạo từng widget → URL + header Authorization: Bearer <token>.",
-    "API Widget key (app cũ, chỉ URL public, không gửi Bearer): v1::w12::dark::json::<url> — CRM sẽ 401 nếu không gắn token.",
-    "Access token hết hạn ~1 giờ. Lấy mới: POST /auth/login { email, password } rồi thay auth.token.",
+    "KHÔNG import file này vào Widgeto — app chỉ nhận file do chính Widgeto export. Xem WIDGETO_SETUP.txt: add lẻ từng URL.",
+    "Widgeto không login hộ rồi gắn Bearer cho GET sau. POST /auth/login lấy accessToken (~1h), dán header Authorization trên từng widget, hoặc dùng webhook n8n/Make.",
     "Dashboard web không có GET /dashboard. KPI gộp từ các GET bên dưới."
   ],
   "auth": {

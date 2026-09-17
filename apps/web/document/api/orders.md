@@ -66,6 +66,8 @@ interface Order {
 | stage | no | `new` |
 | notes | no | — |
 
+**Không gửi `reviewerUserId` trên POST** — `CreateOrderDto` forbid field này (`property reviewerUserId should not exist`). Sau khi có `id`, gán người duyệt chi bằng `PATCH /orders/:id` `{ reviewerUserId }`.
+
 ---
 
 ## Commands

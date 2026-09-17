@@ -37,7 +37,7 @@ export function PaymentRequestDrawer({
   open: boolean;
   onClose: () => void;
   /** Khi tạo từ hồ sơ — không chọn dự án */
-  lockedOrder?: Pick<Order, "id" | "orderNumber" | "customerName" | "reviewerId">;
+  lockedOrder?: Pick<Order, "id" | "orderNumber" | "customerName">;
 }) {
   const t = useT();
   const { message, modal } = App.useApp();
@@ -101,13 +101,11 @@ export function PaymentRequestDrawer({
           let orderId: string | undefined;
           let orderNumber: string | undefined;
           let projectName: string;
-          let reviewerId: string | undefined;
 
           if (lockedOrder) {
             orderId = lockedOrder.id;
             orderNumber = lockedOrder.orderNumber;
             projectName = orderProjectLabel(lockedOrder);
-            reviewerId = lockedOrder.reviewerId;
           } else {
             const typed = (values.project ?? "").trim();
             if (!typed) {
@@ -124,7 +122,6 @@ export function PaymentRequestDrawer({
               orderId = matched.id;
               orderNumber = matched.orderNumber;
               projectName = orderProjectLabel(matched);
-              reviewerId = matched.reviewerId;
             } else {
               projectName = typed;
             }
@@ -146,7 +143,7 @@ export function PaymentRequestDrawer({
             const created = mapApiExpenseToUi(createdApi, orderNumber);
             replaceExpenses([created, ...expenses]);
             addNotifications(
-              [currentUser.id, reviewerId],
+              [currentUser.id],
               expensePendingDraft(created, currentUser.name),
             );
             message.success(t("expense.sent"));
