@@ -25,7 +25,7 @@ import {
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
 import { PageLoading } from "@/components/shared/page-loading";
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Spin, Typography, theme } from "antd";
+import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Spin, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -43,6 +43,8 @@ import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 
 const { Header, Sider, Content } = Layout;
+
+type MenuItems = NonNullable<MenuProps["items"]>;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -110,7 +112,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   ]);
 
   const menuItems = useMemo(() => {
-    const payrollItem =
+    const payrollItem: MenuItems =
       payrollScope === "none"
         ? []
         : [
@@ -124,12 +126,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               ),
             },
           ];
-    const items = [
+    const items: MenuItems = [
       { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">{t("nav.dashboard")}</Link> },
-      { type: "divider" as const },
+      { type: "divider" },
       { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
       { key: "/customers", icon: <TeamOutlined />, label: <Link href="/customers">{t("nav.customers")}</Link> },
-      { type: "divider" as const },
+      { type: "divider" },
       { key: "/payments", icon: <DollarOutlined />, label: <Link href="/payments">{t("nav.payments")}</Link> },
       {
         key: "/expense-approvals",
@@ -138,13 +140,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       },
       ...payrollItem,
       { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">{t("nav.vat")}</Link> },
-      { type: "divider" as const },
+      { type: "divider" },
       { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">{t("nav.services")}</Link> },
       { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">{t("nav.emails")}</Link> },
-      { type: "divider" as const },
+      { type: "divider" },
     ];
     const usersVisible = can(PERMISSION.userManage) && canSeeMenuPage({ page: "users", apiUser, matrix: pageMatrix });
-    const userChildren = [
+    const userChildren: MenuItems = [
       ...(usersVisible
         ? [
             { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.userList")}</Link> },
@@ -171,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         icon: <UserOutlined />,
         label: t("nav.users"),
         children: userChildren,
-      } as (typeof items)[number]);
+      });
     }
     items.push({ key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> });
     const pageByPath: Record<string, Parameters<typeof canSeeMenuPage>[0]["page"]> = {
@@ -189,6 +191,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/dashboard": "dashboard",
     };
     return items.filter((i) => {
+      if (!i) return false;
       if (!("key" in i) || typeof i.key !== "string") return true;
       const page = pageByPath[i.key];
       if (!page) return true;
@@ -198,10 +201,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
-    const walk = (rows: typeof menuItems) => {
+    const walk = (rows: MenuItems) => {
       for (const item of rows) {
+        if (!item) continue;
         if ("key" in item && typeof item.key === "string") keys.push(item.key);
-        if ("children" in item && Array.isArray(item.children)) walk(item.children as typeof menuItems);
+        if ("children" in item && Array.isArray(item.children)) walk(item.children as MenuItems);
       }
     };
     walk(menuItems);
