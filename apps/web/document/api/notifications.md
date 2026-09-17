@@ -1,7 +1,8 @@
 # Notifications API — FE contract
 
 > **Status: LIVE** · Module: `communication` · Swagger tag: `notifications`  
-> Base: `/api/v1/notifications`
+> Base: `/api/v1/notifications`  
+> **BE emit 6 loại thông báo:** [`FRONTEND_HANDOFF_NOTIFICATIONS.md`](./FRONTEND_HANDOFF_NOTIFICATIONS.md)
 
 ## Permissions
 

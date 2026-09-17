@@ -78,7 +78,7 @@ NEXT_PUBLIC_API_URL=https://apidyn.otcayxe.com/api/v1
 | Commissions | [commissions.md](./commissions.md) | **Live** |
 | Collaborators | [collaborators.md](./collaborators.md) | **Live** |
 | Contract requests | [contract-requests.md](./contract-requests.md) | **Live** |
-| Notifications | [notifications.md](./notifications.md) | **Live** |
+| Notifications | [notifications.md](./notifications.md) · emit: [FRONTEND_HANDOFF_NOTIFICATIONS.md](./FRONTEND_HANDOFF_NOTIFICATIONS.md) | **Live** (list/read; BE cần emit) |
 | Reminders | [reminders.md](./reminders.md) | **Live** |
 | App config | [config.md](./config.md) | **Live** |
 
