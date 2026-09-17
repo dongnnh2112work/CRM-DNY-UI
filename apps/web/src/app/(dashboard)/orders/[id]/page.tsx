@@ -130,7 +130,6 @@ export default function OrderDetailPage() {
       commissionPercent: order.commissionPercent,
       assignedUserId: order.assignedUserId,
       submitterId: order.submitterId,
-      reviewerId: order.reviewerId,
       deadline: order.deadline ? dayjs(order.deadline) : null,
       zaloGroupUrl: order.zaloGroupUrl,
       needsVat: order.needsVat,
@@ -371,7 +370,6 @@ export default function OrderDetailPage() {
           <Descriptions.Item label={t("common.deadline")}>{order.deadline ?? "—"}</Descriptions.Item>
           <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
           <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
-          <Descriptions.Item label={t("common.reviewer")}>{order.reviewerName ?? "—"}</Descriptions.Item>
           <Descriptions.Item label={t("common.createdAt")}>{order.createdAt}</Descriptions.Item>
           {order.notes && (
             <Descriptions.Item label={t("common.note")} span={2}>
@@ -437,9 +435,6 @@ export default function OrderDetailPage() {
               const service = services.find((s) => s.id === values.serviceId);
               const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
               const submitter = activeUsers.find((u) => u.id === values.submitterId);
-              const reviewer = values.reviewerId
-                ? activeUsers.find((u) => u.id === values.reviewerId)
-                : undefined;
               if (!customer || !service || !assigned || !submitter) {
                 message.error(t("common.requiredMissing"));
                 return;
@@ -465,7 +460,6 @@ export default function OrderDetailPage() {
                   value,
                   vatRate,
                   notes: values.notes,
-                  reviewerUserId: reviewer?.id ?? null,
                 }),
               );
               if (assigned.id !== order.assignedUserId) {
@@ -493,8 +487,6 @@ export default function OrderDetailPage() {
                 assignedUserName: assigned.name,
                 submitterId: submitter.id,
                 submitterName: submitter.name,
-                reviewerId: reviewer?.id,
-                reviewerName: reviewer?.name,
                 notes: values.notes,
                 needsVat: Boolean(values.needsVat),
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
@@ -556,9 +548,6 @@ export default function OrderDetailPage() {
           </Form.Item>
           <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
             <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
-          </Form.Item>
-          <Form.Item name="reviewerId" label={t("order.reviewerOptional")} extra={t("order.reviewerExtra")}>
-            <Select allowClear options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="submitterId" label={t("common.submitter")} rules={[{ required: true }]}>
             <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />

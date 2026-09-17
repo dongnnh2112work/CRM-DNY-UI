@@ -1,0 +1,57 @@
+Widgeto — cách add (CRM DNY)
+
+1) File .json trong repo KHÔNG import được
+   Widgeto chỉ import file do CHÍNH APP export (Share / iCloud).
+   File dny-dashboard.widgeto*.json chỉ là danh sách URL để copy.
+
+2) Phải add lẻ từng widget trong app
+   Tạo widget → dán 1 URL → chọn table/text/pie → (nếu app có Headers)
+   thêm:  Authorization = Bearer <accessToken>
+          Accept         = application/json
+
+   URL KPI (HTTPS, pageSize giống web dashboard):
+
+   Đơn        GET https://apidyn.otcayxe.com/api/v1/orders?page=1&pageSize=50
+              hiện total, items[].orderNumber / stage / value
+
+   Khách      GET https://apidyn.otcayxe.com/api/v1/customers?page=1&pageSize=50
+              hiện total
+
+   Thanh toán GET https://apidyn.otcayxe.com/api/v1/payments?page=1&pageSize=50
+              hiện items[].amount / verificationStatus / orderId
+
+   Giai đoạn  GET https://apidyn.otcayxe.com/api/v1/config/crm.orderStages
+
+   Không dán http://localhost — iOS chặn HTTP. Phải là https://apidyn.otcayxe.com
+
+3) Widgeto KHÔNG tự login rồi gắn token cho GET sau
+   Mỗi widget = 1 request. App không làm chuỗi:
+     POST /auth/login → lấy accessToken → GET /orders
+   Cũng không refresh token hộ.
+
+   Nest: POST /auth/login { email, password }
+         → accessToken (Bearer) hết hạn ~1 giờ
+         POST /auth/refresh { refreshToken } để lấy token mới
+
+   Cách làm trên Widgeto:
+   A. (Khuyến nghị nếu app có Headers)
+      Login trên Postman/Safari/curl, copy accessToken,
+      dán Bearer vào TỪNG widget. Hết hạn thì làm lại.
+
+   B. Widget chỉ để LẤY token (không phải KPI):
+      Method POST
+      URL    https://apidyn.otcayxe.com/api/v1/auth/login
+      Header Content-Type: application/json
+      Body   {"email":"EMAIL","password":"PASSWORD"}
+      Map    accessToken
+      Rồi copy token đó sang widget GET. Vẫn thủ công.
+
+   C. Một URL duy nhất (n8n / Make / webhook của bạn):
+      Workflow: login Nest → GET orders + customers + payments
+      → trả JSON W12:
+      [ {"key":"Don","value":"12"}, {"key":"Khach","value":"8"} ]
+      Widgeto chỉ dán URL webhook (public HTTPS).
+      CRM Nest không có GET /dashboard — không invent endpoint đó.
+
+4) Key kiểu app cũ (API Widget), không gửi Bearer — CRM sẽ 401:
+   v1::w12::dark::json::https://apidyn.otcayxe.com/api/v1/orders?page=1&pageSize=50

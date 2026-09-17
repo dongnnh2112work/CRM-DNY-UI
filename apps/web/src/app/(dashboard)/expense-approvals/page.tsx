@@ -16,7 +16,6 @@ import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
 import { PERMISSION, expenseReviewBlock } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
 import { useNotifications } from "@/lib/notifications-store";
-import { useOrders } from "@/lib/orders-store";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
@@ -37,7 +36,6 @@ export default function ExpenseApprovalsPage() {
   const { can } = useSession();
   const { expenses, reviewExpense } = useExpenses();
   const { addNotifications } = useNotifications();
-  const { getById: getOrder } = useOrders();
   const expensesRemote = useRemoteList("expenses");
   const [statusFilter, setStatusFilter] = useState<OrderExpenseStatus | "all">("pending");
   const [query, setQuery] = useState("");
@@ -144,22 +142,11 @@ export default function ExpenseApprovalsPage() {
             );
           }
           if (!currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
-          const order = r.orderId ? getOrder(r.orderId) : undefined;
           const block = expenseReviewBlock({
             hasExpenseApprovePermission: canApproveApi,
-            currentUserId: currentUser.id,
-            reviewerId: order?.reviewerId,
           });
           if (block !== "ok") {
-            return (
-              <Tag>
-                {block === "no_permission"
-                  ? t("expense.needApprovePerm")
-                  : block === "no_reviewer"
-                    ? t("expense.noReviewerOnOrder")
-                    : t("expense.onlyReviewer")}
-              </Tag>
-            );
+            return <Tag>{t("expense.needApprovePerm")}</Tag>;
           }
           return (
             <Space>
@@ -175,7 +162,7 @@ export default function ExpenseApprovalsPage() {
                       name: currentUser.name,
                     });
                     addNotifications(
-                      [r.requestedById, r.orderId ? getOrder(r.orderId)?.reviewerId : undefined],
+                      [r.requestedById],
                       expenseReviewedDraft(r, "approved", currentUser.name),
                       currentUser.id,
                     );
@@ -202,7 +189,7 @@ export default function ExpenseApprovalsPage() {
                       name: currentUser.name,
                     });
                     addNotifications(
-                      [r.requestedById, r.orderId ? getOrder(r.orderId)?.reviewerId : undefined],
+                      [r.requestedById],
                       expenseReviewedDraft(r, "rejected", currentUser.name),
                       currentUser.id,
                     );
@@ -221,7 +208,7 @@ export default function ExpenseApprovalsPage() {
         },
       },
     ],
-    [t, canApproveApi, currentUser, reviewExpense, addNotifications, getOrder, message],
+    [t, canApproveApi, currentUser, reviewExpense, addNotifications, message],
   );
 
   if (!currentUser || !canView) {

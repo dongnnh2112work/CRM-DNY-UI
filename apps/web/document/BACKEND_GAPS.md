@@ -124,13 +124,11 @@ Khi admin xóa vai trò tùy chỉnh: cùng flow park user; bản ghi role trên
 
 ---
 
-## 6. Đề nghị thanh toán — chỉ người được chọn trên đơn
+## 6. Đề nghị thanh toán — `expense.approve`
 
-UI: `order.reviewerUserId` phải = user hiện tại **và** có quyền trang. Nếu chưa chọn reviewer → không duyệt.
+UI: ai có `expense.approve` thì duyệt/từ chối được. Không chọn “người duyệt chi” trên đơn.
 
-**BE cần:** `POST /expenses/:id/approve|reject` từ chối nếu `currentUser.id !== order.reviewerUserId`. `expense.approve` không đủ để duyệt hộ người khác.
-
-Không thêm field reviewer trên expense nếu đơn đã có `reviewerUserId`.
+**BE:** `POST /expenses/:id/approve|reject` chỉ cần `expense.approve` (+ scope đơn nếu có). **Không** chặn theo `order.reviewerUserId`.
 
 ---
 
@@ -171,7 +169,7 @@ UI **không** dùng `/imports/batches` (pipeline đó là **leads**). UI `POST /
 1. Google user: pending + không role; admin `PUT roles` + `ACTIVE`.
 2. Customer `status` string trên GET/POST/PATCH.
 3. `change-stage` persist đúng string.
-4. Expense approve chỉ `order.reviewerUserId`.
+4. Expense approve: `expense.approve` (không gắn reviewer trên đơn).
 5. `PATCH /config/:key` nhận 3 key mục 2 (đã upsert thì chỉ seed `config.manage`).
 6. Service PATCH/archive giữ ARCHIVED.
 7. Map role/permission (mục 5A hoặc 5B) — một lần, không song song hai hệ.

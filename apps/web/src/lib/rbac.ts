@@ -61,16 +61,14 @@ export function canSeeMenuPage(args: {
   return true;
 }
 
-export type ExpenseReviewBlock = "ok" | "no_permission" | "no_reviewer" | "not_reviewer";
+export type ExpenseReviewBlock = "ok" | "no_permission";
 
 export function expenseReviewBlock(args: {
   hasExpenseApprovePermission: boolean;
   currentUserId?: string;
   reviewerId?: string;
 }): ExpenseReviewBlock {
-  if (!args.hasExpenseApprovePermission || !args.currentUserId) return "no_permission";
-  if (!args.reviewerId) return "no_reviewer";
-  if (args.reviewerId !== args.currentUserId) return "not_reviewer";
+  if (!args.hasExpenseApprovePermission) return "no_permission";
   return "ok";
 }
 

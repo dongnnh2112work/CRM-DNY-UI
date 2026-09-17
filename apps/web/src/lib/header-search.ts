@@ -22,6 +22,9 @@ export function getHeaderSearchTarget(pathname: string): HeaderSearchTarget {
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
     return { placeholderKey: "shell.searchCustomers", listPath: "/customers" };
   }
+  if (pathname.startsWith("/users/permissions")) {
+    return { placeholderKey: "shell.search", listPath: null };
+  }
   const hit = MODULES.filter(
     (m) => pathname === m.prefix || pathname.startsWith(`${m.prefix}/`),
   ).sort((a, b) => b.prefix.length - a.prefix.length)[0];

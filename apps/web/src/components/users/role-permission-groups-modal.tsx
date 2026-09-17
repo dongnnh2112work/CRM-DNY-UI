@@ -1,10 +1,12 @@
 "use client";
 
 import { PlusOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Checkbox, Empty, Modal, Select, Space, Spin, Tag, Typography } from "antd";
+import { Alert, App, Button, Checkbox, Empty, Select, Space, Spin, Tag, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PageHeader } from "@/components/shared/page-header";
 import { PermissionGroupEditor } from "@/components/users/permission-group-editor";
 import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
+import { permissionTitle } from "@/lib/permission-catalog";
 import { ds } from "@/lib/design-tokens";
 import { fetchAllPages, unwrapList, type PageResult } from "@/lib/http/paging";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -48,13 +50,9 @@ async function loadCatalogRows<T>(
   return unwrapList(await fallback());
 }
 
-export function RolePermissionGroupsModal({
-  open,
-  onClose,
+export function RolePermissionGroupsAdmin({
   initialUiRole,
 }: {
-  open: boolean;
-  onClose: () => void;
   initialUiRole?: string | null;
 }) {
   const t = useT();
@@ -159,11 +157,11 @@ export function RolePermissionGroupsModal({
   }, [initialUiRole, t]);
 
   useEffect(() => {
-    if (open) void loadCatalog();
-  }, [open, loadCatalog]);
+    void loadCatalog();
+  }, [loadCatalog]);
 
   useEffect(() => {
-    if (!open || !roleId) return;
+    if (!roleId) return;
     let cancelled = false;
     const cached = rolesRef.current.find((r) => r.id === roleId);
     const fromList = roleGroupCodes(cached);
@@ -195,7 +193,7 @@ export function RolePermissionGroupsModal({
     return () => {
       cancelled = true;
     };
-  }, [open, roleId]);
+  }, [roleId]);
 
   const dirty = useMemo(() => {
     const a = [...draftCodes].sort();
@@ -326,164 +324,181 @@ export function RolePermissionGroupsModal({
     }
   };
 
+  const allowed = canManageRoles || canManageGroups;
+
   return (
-    <Modal
-      title={t("user.roleGroups")}
-      open={open}
-      onCancel={onClose}
-      width={720}
-      centered
-      okText={t("user.saveRoleGroups")}
-      cancelText={t("common.cancel")}
-      confirmLoading={saving}
-      okButtonProps={{ disabled: !canManageRoles || !selected || loading }}
-      onOk={onSave}
-      destroyOnHidden
-    >
-      <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm, marginTop: 0 }}>
-        {t("user.roleGroupsHint")}
-      </Typography.Paragraph>
-      {!canManageRoles ? (
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.roleGroupsNeedRoleManage")} />
-      ) : null}
-      {loadError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} title={loadError} /> : null}
-      {!loading && selected && !groupsKnown ? (
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.roleGroupsUnknown")} />
-      ) : null}
+    <>
+      <PageHeader
+        breadcrumbs={[{ title: t("nav.users"), href: "/users" }, { title: t("nav.permissions") }]}
+      >
+        {canManageGroups ? (
+          <Button
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingGroup(null);
+              setEditorOpen(true);
+            }}
+          >
+            {t("user.createGroup")}
+          </Button>
+        ) : null}
+        {allowed ? (
+          <Button
+            type="primary"
+            loading={saving}
+            disabled={!canManageRoles || !selected || loading}
+            onClick={() => void onSave()}
+          >
+            {t("user.saveRoleGroups")}
+          </Button>
+        ) : null}
+      </PageHeader>
+      <div style={{ padding: 16, maxWidth: 880 }}>
+        {!allowed ? (
+          <Typography.Text type="secondary">{t("user.roleGroupsNeedRoleManage")}</Typography.Text>
+        ) : (
+          <>
+            <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm, marginTop: 0 }}>
+              {t("user.roleGroupsHint")}
+            </Typography.Paragraph>
+            {!canManageRoles ? (
+              <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.roleGroupsNeedRoleManage")} />
+            ) : null}
+            {loadError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} title={loadError} /> : null}
+            {!loading && selected && !groupsKnown ? (
+              <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.roleGroupsUnknown")} />
+            ) : null}
 
-      <Select
-        style={{ width: "100%", marginBottom: 16 }}
-        placeholder={t("user.selectRole")}
-        value={roleId ?? undefined}
-        options={roles.map((r) => ({
-          value: r.id,
-          label: `${r.name || r.code} (${r.code})`,
-        }))}
-        onChange={(id) => setRoleId(id)}
-        disabled={loading}
-      />
-      {canManageGroups ? (
-        <Button
-          icon={<PlusOutlined />}
-          style={{ marginBottom: 12 }}
-          onClick={() => {
-            setEditingGroup(null);
-            setEditorOpen(true);
-          }}
-        >
-          {t("user.createGroup")}
-        </Button>
-      ) : null}
+            <Select
+              style={{ width: "100%", marginBottom: 16 }}
+              placeholder={t("user.selectRole")}
+              value={roleId ?? undefined}
+              options={roles.map((r) => ({
+                value: r.id,
+                label: `${r.name || r.code} (${r.code})`,
+              }))}
+              onChange={(id) => setRoleId(id)}
+              disabled={loading}
+            />
 
-      {!loading && orderViewFrom.length > 0 ? (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          title={t("user.roleGroupsStillHas", {
-            perm: "order.view",
-            groups: orderViewFrom.join(", "),
-          })}
-        />
-      ) : null}
-      {!loading && effectivePerms.length > 0 ? (
-        <div style={{ marginBottom: 12 }}>
-          <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
-            {t("user.roleGroupsEffective")}
-          </Typography.Text>
-          <div style={{ marginTop: 6 }}>
-            <Space wrap size={[4, 4]}>
-              {effectivePerms.map(([perm, from]) => (
-                <Tag key={perm} color={perm === "order.view" ? "blue" : undefined} title={from.join(", ")}>
-                  {perm}
-                </Tag>
-              ))}
-            </Space>
-          </div>
-        </div>
-      ) : null}
-
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 24 }}>
-          <Spin />
-        </div>
-      ) : groups.length === 0 ? (
-        <Empty description={t("user.roleGroupsEmpty")} />
-      ) : (
-        <Checkbox.Group
-          style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}
-          value={draftCodes}
-          disabled={!canManageRoles}
-          onChange={(next) => setDraftCodes(next.map(String))}
-        >
-          {groups.map((group) => {
-            const codes = permissionCodesOf(group);
-            return (
-              <div
-                key={group.id}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  padding: "8px 12px",
-                  border: "1px solid var(--ant-color-border, #f0f0f0)",
-                  borderRadius: 8,
-                }}
-              >
-                <Checkbox value={group.code} style={{ marginInlineStart: 0, marginTop: 2 }} />
-                <Space direction="vertical" size={4} style={{ flex: 1 }}>
-                  <Space wrap size={6}>
-                    <Typography.Text strong>{group.name || group.code}</Typography.Text>
-                    <Tag>{group.code}</Tag>
+            {!loading && orderViewFrom.length > 0 ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+                title={t("user.roleGroupsStillHas", {
+                  perm: permissionTitle("order.view", t),
+                  groups: orderViewFrom.join(", "),
+                })}
+              />
+            ) : null}
+            {!loading && effectivePerms.length > 0 ? (
+              <div style={{ marginBottom: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
+                  {t("user.roleGroupsEffective")}
+                </Typography.Text>
+                <div style={{ marginTop: 6 }}>
+                  <Space wrap size={[4, 4]}>
+                    {effectivePerms.map(([perm, from]) => (
+                      <Tag
+                        key={perm}
+                        color={perm === "order.view" ? "blue" : undefined}
+                        title={`${perm} · ${from.join(", ")}`}
+                      >
+                        {permissionTitle(perm, t)}
+                      </Tag>
+                    ))}
                   </Space>
-                  {codes.length ? (
-                    <Space wrap size={[4, 4]}>
-                      {codes.map((perm) => (
-                        <Tag key={perm}>{perm}</Tag>
-                      ))}
-                    </Space>
-                  ) : null}
-                </Space>
-                {canManageGroups ? (
-                  <Space size={0} onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      size="small"
-                      type="link"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setEditingGroup(group);
-                        setEditorOpen(true);
-                      }}
-                    >
-                      {t("common.edit")}
-                    </Button>
-                    <Button
-                      size="small"
-                      type="link"
-                      danger
-                      loading={deleting && deleteTarget?.id === group.id}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void openDeleteGroup(group);
-                      }}
-                    >
-                      {t("common.delete")}
-                    </Button>
-                  </Space>
-                ) : null}
+                </div>
               </div>
-            );
-          })}
-        </Checkbox.Group>
-      )}
+            ) : null}
 
-      {dirty ? (
-        <Typography.Paragraph type="secondary" style={{ margin: "12px 0 0", fontSize: ds.fontSize.bodySm }}>
-          {t("user.roleGroupsReplaceHint")}
-        </Typography.Paragraph>
-      ) : null}
+            {loading ? (
+              <div style={{ textAlign: "center", padding: 24 }}>
+                <Spin />
+              </div>
+            ) : groups.length === 0 ? (
+              <Empty description={t("user.roleGroupsEmpty")} />
+            ) : (
+              <Checkbox.Group
+                style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}
+                value={draftCodes}
+                disabled={!canManageRoles}
+                onChange={(next) => setDraftCodes(next.map(String))}
+              >
+                {groups.map((group) => {
+                  const codes = permissionCodesOf(group);
+                  return (
+                    <div
+                      key={group.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 8,
+                        padding: "8px 12px",
+                        border: "1px solid var(--ant-color-border, #f0f0f0)",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Checkbox value={group.code} style={{ marginInlineStart: 0, marginTop: 2 }} />
+                      <Space direction="vertical" size={4} style={{ flex: 1 }}>
+                        <Space wrap size={6}>
+                          <Typography.Text strong>{group.name || group.code}</Typography.Text>
+                          <Tag>{group.code}</Tag>
+                        </Space>
+                        {codes.length ? (
+                          <Space wrap size={[4, 4]}>
+                            {codes.map((perm) => (
+                              <Tag key={perm} title={perm}>
+                                {permissionTitle(perm, t)}
+                              </Tag>
+                            ))}
+                          </Space>
+                        ) : null}
+                      </Space>
+                      {canManageGroups ? (
+                        <Space size={0} onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            size="small"
+                            type="link"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setEditingGroup(group);
+                              setEditorOpen(true);
+                            }}
+                          >
+                            {t("common.edit")}
+                          </Button>
+                          <Button
+                            size="small"
+                            type="link"
+                            danger
+                            loading={deleting && deleteTarget?.id === group.id}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void openDeleteGroup(group);
+                            }}
+                          >
+                            {t("common.delete")}
+                          </Button>
+                        </Space>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </Checkbox.Group>
+            )}
+
+            {dirty ? (
+              <Typography.Paragraph type="secondary" style={{ margin: "12px 0 0", fontSize: ds.fontSize.bodySm }}>
+                {t("user.roleGroupsReplaceHint")}
+              </Typography.Paragraph>
+            ) : null}
+          </>
+        )}
+      </div>
 
       <PermissionGroupEditor
         open={editorOpen}
@@ -517,6 +532,6 @@ export function RolePermissionGroupsModal({
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDeleteGroup()}
       />
-    </Modal>
+    </>
   );
 }

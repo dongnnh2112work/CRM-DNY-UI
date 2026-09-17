@@ -34,13 +34,9 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
   const rows = getExpenses(order.id);
   const flow = useMemo(() => buildOrderCashflow(payment, rows), [payment, rows]);
   const canApproveApi = can(PERMISSION.expenseApprove);
-  const reviewBlock = currentUser
-    ? expenseReviewBlock({
-        hasExpenseApprovePermission: canApproveApi,
-        currentUserId: currentUser.id,
-        reviewerId: order.reviewerId,
-      })
-    : "no_permission";
+  const reviewBlock = expenseReviewBlock({
+    hasExpenseApprovePermission: canApproveApi,
+  });
   const canReview = reviewBlock === "ok";
 
   const monthColumns = useMemo(
@@ -117,15 +113,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
             return r.reviewedByName ?? "—";
           }
           if (!canReview || !currentUser) {
-            return (
-              <Tag>
-                {reviewBlock === "no_permission"
-                  ? t("expense.needApprovePerm")
-                  : reviewBlock === "no_reviewer"
-                    ? t("expense.noReviewerOnOrder")
-                    : t("expense.onlyReviewer")}
-              </Tag>
-            );
+            return <Tag>{t("expense.needApprovePerm")}</Tag>;
           }
           return (
             <Space>
@@ -141,7 +129,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
                       name: currentUser.name,
                     });
                     addNotifications(
-                      [r.requestedById, order.reviewerId],
+                      [r.requestedById],
                       expenseReviewedDraft(r, "approved", currentUser.name),
                       currentUser.id,
                     );
@@ -168,7 +156,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
                       name: currentUser.name,
                     });
                     addNotifications(
-                      [r.requestedById, order.reviewerId],
+                      [r.requestedById],
                       expenseReviewedDraft(r, "rejected", currentUser.name),
                       currentUser.id,
                     );
@@ -187,7 +175,7 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
         },
       },
     ],
-    [t, canReview, currentUser, addNotifications, message, order.reviewerId, reviewExpense, reviewBlock],
+    [t, canReview, currentUser, addNotifications, message, reviewExpense, reviewBlock],
   );
 
   return (

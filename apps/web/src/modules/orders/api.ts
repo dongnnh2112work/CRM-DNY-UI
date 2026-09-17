@@ -42,7 +42,6 @@ export type CreateOrderBody = {
   totalGross: number;
   assignedUserId: string;
   submitterUserId?: string;
-  reviewerUserId?: string | null;
   collaboratorId?: string;
   vatRate?: number;
   currency?: string;
