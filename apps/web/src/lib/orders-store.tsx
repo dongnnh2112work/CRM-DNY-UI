@@ -77,11 +77,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       const index = prev.findIndex((row) => row.id === next.id);
       if (index < 0) return [next, ...prev];
       const copy = [...prev];
-      const merged: Order = { ...prev[index] };
+      const merged = { ...prev[index] };
       (Object.keys(next) as Array<keyof Order>).forEach((key) => {
         const value = next[key];
         if (value !== undefined) {
-          (merged as Record<string, unknown>)[key as string] = value;
+          (merged as unknown as Record<string, unknown>)[key as string] = value;
         }
       });
       copy[index] = merged;

@@ -112,5 +112,5 @@ export function withDisplayDates<T extends object>(columns: TableColumnsType<T>)
         return formatIfDateLike(rendered);
       },
     };
-  });
+  }) as TableColumnsType<T>;
 }
