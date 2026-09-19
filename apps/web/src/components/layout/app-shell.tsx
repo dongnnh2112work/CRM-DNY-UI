@@ -240,11 +240,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
       <Sider
+        className="crm-sider"
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        width={240}
-        breakpoint="lg"
+        width={280}
         theme={isDark ? "dark" : "light"}
         style={{
           background: token.colorBgContainer,
