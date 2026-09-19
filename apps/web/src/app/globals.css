@@ -95,3 +95,30 @@ a {
   overflow: hidden;
   min-height: calc(100vh - 112px);
 }
+
+.crm-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.crm-sider .ant-menu {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.crm-sider:not(.ant-layout-sider-collapsed) .ant-menu-item,
+.crm-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title {
+  height: 40px !important;
+  line-height: 40px !important;
+  white-space: nowrap;
+}
+
+.crm-sider:not(.ant-layout-sider-collapsed) .ant-menu-title-content,
+.crm-sider:not(.ant-layout-sider-collapsed) .ant-menu-title-content a {
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+}
