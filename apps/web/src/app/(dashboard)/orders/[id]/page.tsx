@@ -1,30 +1,11 @@
 "use client";
 
 import { PlusOutlined } from "@ant-design/icons";
-import {
-  Alert,
-  App,
-  Button,
-  Checkbox,
-  DatePicker,
-  Descriptions,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Tabs,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Alert, App, Button, Checkbox, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Popconfirm, Select, Skeleton, Space, Tabs, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useApiHydrate } from "@/components/api-hydrator";
 import { OrderDocuments } from "@/components/orders/order-documents";
 import { OrderExpensesPanel } from "@/components/orders/order-expenses-panel";
 import { LicenseUpload } from "@/components/orders/license-upload";
@@ -61,6 +42,7 @@ import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
 import { documentsApi, type ApiDocument } from "@/modules/documents/api";
 import {
   isLicenseDocument,
+  isVatDocument,
   mapApiDocumentToAttachment,
 } from "@/modules/documents/map-to-ui";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
@@ -107,7 +89,10 @@ function attachmentsFromDocs(docs: ApiDocument[], userName: Map<string, string>)
     }
   };
   return {
-    work: docs.filter((d) => !isLicenseDocument(d)).map(mapDoc).filter((row) => row != null),
+    work: docs
+      .filter((d) => !isLicenseDocument(d) && !isVatDocument(d))
+      .map(mapDoc)
+      .filter((row) => row != null),
     licenses: docs.filter((d) => isLicenseDocument(d)).map(mapDoc).filter((row) => row != null),
   };
 }
@@ -117,11 +102,10 @@ export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const { ready: hydrateReady } = useApiHydrate();
+  const { status: sessionStatus, can } = useSession();
   const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
-  const { can } = useSession();
   const activeUsers = users.filter((u) => u.status === "active");
   const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId, upsertPayment } = usePayments();
@@ -130,6 +114,7 @@ export default function OrderDetailPage() {
   const { services } = useServices();
   const [order, setOrder] = useState<Order | null>(null);
   const [boot, setBoot] = useState<ScreenBoot>({ status: "loading" });
+  const [financeReady, setFinanceReady] = useState(false);
   const payment = order ? getByOrderId(order.id) : undefined;
   const [editOpen, setEditOpen] = useState(false);
   const [addServiceOpen, setAddServiceOpen] = useState(false);
@@ -167,8 +152,9 @@ export default function OrderDetailPage() {
   }, [order, editOpen, form]);
 
   useEffect(() => {
-    if (!id || !hydrateReady) return;
+    if (!id || sessionStatus !== "authenticated") return;
     let cancelled = false;
+    setFinanceReady(false);
 
     const cached = ordersRef.current.find((o) => o.id === id);
     if (cached) {
@@ -224,14 +210,17 @@ export default function OrderDetailPage() {
         upsertOrder(mapped);
         setBoot({ status: "ready" });
 
-        // Finance in background — do not block PageLoading.
-        void reloadOrderFinance({
-          order: mapped,
-          groupOrders: ordersRef.current,
-          users: catalogUsers,
-          upsertPayment,
-          mergeExpensesForOrder,
-        });
+        try {
+          await reloadOrderFinance({
+            order: mapped,
+            groupOrders: ordersRef.current,
+            users: catalogUsers,
+            upsertPayment,
+            mergeExpensesForOrder,
+          });
+        } finally {
+          if (!cancelled) setFinanceReady(true);
+        }
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && (err.statusCode === 404 || err.statusCode === 403)) {
@@ -246,9 +235,9 @@ export default function OrderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, hydrateReady, upsertOrder, upsertPayment, mergeExpensesForOrder, t]);
+  }, [id, sessionStatus, upsertOrder, upsertPayment, mergeExpensesForOrder, t]);
 
-  if (!hydrateReady || boot.status === "loading" || (boot.status === "ready" && !order)) {
+  if (sessionStatus === "loading" || boot.status === "loading" || (boot.status === "ready" && !order)) {
     return <PageLoading />;
   }
   if (boot.status === "missing" || boot.status === "error" || !order) {
@@ -408,7 +397,11 @@ export default function OrderDetailPage() {
             }}
           >
             {t("order.payment")}
-            {payment ? t("order.remainingAmount", { amount: formatVndDisplay(payment.remaining) }) : ""}
+            {financeReady && payment
+              ? t("order.remainingAmount", { amount: formatVndDisplay(payment.remaining) })
+              : financeReady
+                ? ""
+                : " …"}
           </Button>
           <Tooltip title={!orderHasContractNumber(order) ? t("order.vatNeedsContract") : undefined}>
             <span>
@@ -482,11 +475,15 @@ export default function OrderDetailPage() {
             <Space orientation="vertical" size={4}>
               {siblings.length > 1 ? (
                 <span>
-                  {t("order.sharedPaymentHint", {
-                    amount: formatVndDisplay(payment?.totalAmount ?? groupTotal),
-                    count: siblings.length,
-                    number: primary.orderNumber,
-                  })}
+                  {financeReady ? (
+                    t("order.sharedPaymentHint", {
+                      amount: formatVndDisplay(payment?.totalAmount ?? groupTotal),
+                      count: siblings.length,
+                      number: primary.orderNumber,
+                    })
+                  ) : (
+                    <Skeleton.Input active size="small" style={{ width: 280, verticalAlign: "middle" }} />
+                  )}
                 </span>
               ) : (
                 <Typography.Text type="secondary">{t("order.addServiceToContractHint")}</Typography.Text>
@@ -559,7 +556,7 @@ export default function OrderDetailPage() {
             {
               key: "expenses",
               label: t("order.expensesTab"),
-              children: <OrderExpensesPanel order={order} />,
+              children: <OrderExpensesPanel order={order} financeReady={financeReady} />,
             },
             {
               key: "documents",

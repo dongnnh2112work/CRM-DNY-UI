@@ -17,12 +17,29 @@ import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
-import { primaryScopeForPath, scopesForPath, staleMsFor } from "@/lib/route-data-scopes";
+import {
+  deferredScopesForPath,
+  primaryScopeForPath,
+  scopesForPath,
+  staleMsFor,
+} from "@/lib/route-data-scopes";
 import { useServices } from "@/lib/services-store";
 import { isAwaitingAccess } from "@/lib/access-gate";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useVat } from "@/lib/vat-store";
+
+/** Share in-flight hydrate so React Strict Mode does not double-hit the API. */
+const hydrateInflight = new Map<string, Promise<void>>();
+
+function hydrateKey(
+  userId: string | undefined,
+  scope: RefreshScope | RefreshScope[],
+  options?: { page?: number; append?: boolean },
+) {
+  const scopes = Array.isArray(scope) ? scope : [scope];
+  return `${userId ?? ""}:${scopes.slice().sort().join(",")}:p${options?.page ?? 1}:a${options?.append ? 1 : 0}`;
+}
 
 type ApiRefreshContextValue = {
   refresh: (scope?: RefreshScope | RefreshScope[]) => Promise<void>;
@@ -103,6 +120,17 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const pageRef = useRef<Partial<Record<RefreshScope, number>>>({});
   const listMetaRef = useRef(listMeta);
   listMetaRef.current = listMeta;
+  const refreshingDepthRef = useRef(0);
+
+  const beginRefreshing = useCallback(() => {
+    refreshingDepthRef.current += 1;
+    setRefreshing(true);
+  }, []);
+
+  const endRefreshing = useCallback(() => {
+    refreshingDepthRef.current = Math.max(0, refreshingDepthRef.current - 1);
+    if (refreshingDepthRef.current === 0) setRefreshing(false);
+  }, []);
 
   const setListMeta = useCallback((scope: RefreshScope, meta: ListSliceMeta) => {
     setListMetaState((prev) => ({ ...prev, [scope]: meta }));
@@ -149,26 +177,42 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const run = useCallback(
     async (scope: RefreshScope | RefreshScope[], options?: { page?: number; append?: boolean }) => {
       if (status !== "authenticated" || isAwaitingAccess(user)) return;
-      setRefreshing(true);
+      const key = hydrateKey(user?.id, scope, options);
+      const existing = hydrateInflight.get(key);
+      beginRefreshing();
       try {
-        await applyRemoteData(applier, user, scope, () => snapshotRef.current, options);
-        const now = Date.now();
-        setLastSyncedAt(now);
-        const scopes = Array.isArray(scope) ? scope : [scope];
-        for (const s of scopes) {
-          if (s === "all" || s === "core" || s === "deferred") continue;
-          fetchedAtRef.current[s] = now;
+        if (existing) {
+          await existing;
+          return;
         }
-        if (scopes.includes("core")) {
-          fetchedAtRef.current.users = now;
-          fetchedAtRef.current.services = now;
-          fetchedAtRef.current.notifications = now;
-        }
+
+        const pending = (async () => {
+          await applyRemoteData(applier, user, scope, () => snapshotRef.current, options);
+          const now = Date.now();
+          setLastSyncedAt(now);
+          const scopes = Array.isArray(scope) ? scope : [scope];
+          for (const s of scopes) {
+            if (s === "all" || s === "core" || s === "deferred") continue;
+            fetchedAtRef.current[s] = now;
+          }
+          if (scopes.includes("core")) {
+            fetchedAtRef.current.users = now;
+            fetchedAtRef.current.services = now;
+            fetchedAtRef.current.notifications = now;
+          }
+          if (scopes.includes("contracts")) {
+            fetchedAtRef.current.contracts = now;
+          }
+        })().finally(() => {
+          hydrateInflight.delete(key);
+        });
+        hydrateInflight.set(key, pending);
+        await pending;
       } finally {
-        setRefreshing(false);
+        endRefreshing();
       }
     },
-    [applier, status, user],
+    [applier, status, user, beginRefreshing, endRefreshing],
   );
 
   const refresh = useCallback(
@@ -181,7 +225,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   );
 
   const refreshCurrent = useCallback(async () => {
-    const scopes = scopesForPath(pathname);
+    const scopes = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)];
     if (scopes.length === 0) {
       await refresh("core");
       return;
@@ -240,12 +284,12 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (status !== "authenticated" || !ready) return;
-    const scopes = scopesForPath(pathname);
     const now = Date.now();
-    const due = scopes.filter((s) => {
+    const due = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)].filter((s) => {
       const at = fetchedAtRef.current[s];
       return at == null || now - at > staleMsFor(s);
     });
+    // One refresh batch — avoid parallel due + deferred streams.
     if (due.length) void refresh(due);
   }, [pathname, status, ready, refresh]);
 
@@ -253,7 +297,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     if (status !== "authenticated" || !ready) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      const scopes = scopesForPath(pathname);
+      const scopes = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)];
       const now = Date.now();
       const due = (scopes.length ? scopes : (["notifications"] as RefreshScope[])).filter((s) => {
         const at = fetchedAtRef.current[s];

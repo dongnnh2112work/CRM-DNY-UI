@@ -43,7 +43,10 @@ import { useApiHydrate } from "@/components/api-hydrator";
 
 /** Compact tick labels for chart axes only (not list/table display). */
 function formatVndAxisTick(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000_000) {
+    const m = value / 1_000_000;
+    return `${Number.isInteger(m) ? m.toFixed(0) : m.toFixed(1)}M`;
+  }
   if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
   return String(value);
 }
@@ -191,10 +194,15 @@ export default function DashboardPage() {
               <div style={{ width: "100%", height: 280 }}>
                 {statsReady ? (
                   <ResponsiveContainer>
-                    <BarChart data={revenueData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <BarChart data={revenueData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" tickLine={false} />
-                      <YAxis tickFormatter={formatVndAxisTick} tickLine={false} width={48} />
+                      <YAxis
+                        tickFormatter={formatVndAxisTick}
+                        tickLine={false}
+                        width={56}
+                        tick={{ fontSize: 12 }}
+                      />
                       <Tooltip
                         cursor={false}
                         formatter={(value) => [formatVndDisplay(Number(value)), t("dash.revenue")]}

@@ -3,6 +3,7 @@ import type { OrderAttachment } from "@/lib/types";
 import type { ApiDocument } from "@/modules/documents/api";
 
 const LICENSE_PREFIX = "license";
+const VAT_PREFIX = "vat";
 
 export function formatFileBytes(bytes: number | null | undefined) {
   if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "—";
@@ -35,6 +36,31 @@ export function parseLicenseFileType(fileType: string | null | undefined): {
 export function isLicenseDocument(doc: Pick<ApiDocument, "fileType" | "fileName">) {
   if (parseLicenseFileType(doc.fileType).isLicense) return true;
   return (doc.fileName ?? "").toLowerCase().includes("license");
+}
+
+export function encodeVatFileType(invoiceId: string) {
+  return `${VAT_PREFIX}|${invoiceId}`;
+}
+
+export function parseVatFileType(fileType: string | null | undefined): {
+  isVat: boolean;
+  invoiceId?: string;
+} {
+  if (!fileType) return { isVat: false };
+  if (fileType === VAT_PREFIX) return { isVat: true };
+  if (fileType.startsWith(`${VAT_PREFIX}|`)) {
+    return { isVat: true, invoiceId: fileType.slice(VAT_PREFIX.length + 1) || undefined };
+  }
+  return { isVat: false };
+}
+
+export function isVatDocument(doc: Pick<ApiDocument, "fileType">) {
+  return parseVatFileType(doc.fileType).isVat;
+}
+
+export function isVatDocumentForInvoice(doc: Pick<ApiDocument, "fileType">, invoiceId: string) {
+  const parsed = parseVatFileType(doc.fileType);
+  return parsed.isVat && parsed.invoiceId === invoiceId;
 }
 
 export function mapApiDocumentToAttachment(doc: ApiDocument, uploaderName?: string): OrderAttachment {

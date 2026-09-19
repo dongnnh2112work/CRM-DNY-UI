@@ -2,6 +2,7 @@
 
 import { CalendarOutlined, CheckCircleOutlined, FileTextOutlined } from "@ant-design/icons";
 import { App, Button, Col, Popconfirm, Row, type TableColumnsType } from "antd";
+import Link from "next/link";
 import { useCallback, useMemo, useState, type Key } from "react";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
@@ -157,7 +158,9 @@ export default function VatPage() {
         dataIndex: "contractNumber",
         align: "center",
         sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
-        render: (v?: number) => (v != null ? v : "—"),
+        render: (v: number | undefined, r) => (
+          <Link href={`/vat/${r.id}`}>{v != null ? v : r.invoiceNumber}</Link>
+        ),
       },
       {
         title: t("common.customer"),

@@ -4,6 +4,10 @@ export {
   encodeLicenseFileType,
   parseLicenseFileType,
   isLicenseDocument,
+  encodeVatFileType,
+  parseVatFileType,
+  isVatDocument,
+  isVatDocumentForInvoice,
   mapApiDocumentToAttachment,
   mergeAttachments,
 } from "@/modules/documents/map-to-ui";

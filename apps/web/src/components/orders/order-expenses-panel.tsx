@@ -1,6 +1,6 @@
 "use client";
 
-import { App, Button, Popconfirm, Space, Tag, Typography } from "antd";
+import { App, Button, Popconfirm, Skeleton, Space, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
 import { PaymentRequestDrawer } from "@/components/orders/payment-request-drawer";
 import { DataTable } from "@/components/shared/data-table";
@@ -22,7 +22,13 @@ import { apiErrorMessage } from "@/lib/http/message";
 import { expensesApi } from "@/modules/expenses/api";
 import { useT } from "@/lib/use-t";
 
-export function OrderExpensesPanel({ order }: { order: Order }) {
+export function OrderExpensesPanel({
+  order,
+  financeReady = true,
+}: {
+  order: Order;
+  financeReady?: boolean;
+}) {
   const t = useT();
   const { message } = App.useApp();
   const { currentUser } = useUsers();
@@ -193,19 +199,25 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
           <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
             {t("order.totalThu")}
           </Typography.Text>
-          <div style={{ fontWeight: 600, color: ds.accentGreen }}>{formatVndDisplay(flow.thu)}</div>
+          <div style={{ fontWeight: 600, color: ds.accentGreen, minHeight: 24 }}>
+            {financeReady ? formatVndDisplay(flow.thu) : <Skeleton.Input active size="small" style={{ width: 96 }} />}
+          </div>
         </div>
         <div>
           <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
             {t("order.totalChiApproved")}
           </Typography.Text>
-          <div style={{ fontWeight: 600, color: ds.danger }}>{formatVndDisplay(flow.chi)}</div>
+          <div style={{ fontWeight: 600, color: ds.danger, minHeight: 24 }}>
+            {financeReady ? formatVndDisplay(flow.chi) : <Skeleton.Input active size="small" style={{ width: 96 }} />}
+          </div>
         </div>
         <div>
           <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
             {t("order.diff")}
           </Typography.Text>
-          <div style={{ fontWeight: 600 }}>{formatVndDisplay(flow.net)}</div>
+          <div style={{ fontWeight: 600, minHeight: 24 }}>
+            {financeReady ? formatVndDisplay(flow.net) : <Skeleton.Input active size="small" style={{ width: 96 }} />}
+          </div>
         </div>
       </Space>
 
@@ -213,18 +225,22 @@ export function OrderExpensesPanel({ order }: { order: Order }) {
         {t("order.byMonth")}
       </Typography.Title>
       <div style={{ marginBottom: 24, maxWidth: 560 }}>
-      <DataTable
-        rowKey="month"
-        size="small"
-        pagination={false}
-        padded={false}
-        dateFilterField="month"
-        datePicker="month"
-        enableLocalSearch
-        dataSource={flow.months}
-        emptyDescription={t("order.cashflowEmpty")}
-        columns={monthColumns}
-      />
+        {financeReady ? (
+          <DataTable
+            rowKey="month"
+            size="small"
+            pagination={false}
+            padded={false}
+            dateFilterField="month"
+            datePicker="month"
+            enableLocalSearch
+            dataSource={flow.months}
+            emptyDescription={t("order.cashflowEmpty")}
+            columns={monthColumns}
+          />
+        ) : (
+          <Skeleton active paragraph={{ rows: 3 }} title={false} />
+        )}
       </div>
 
       <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }} wrap>

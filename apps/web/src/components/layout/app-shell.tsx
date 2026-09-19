@@ -24,7 +24,7 @@ import {
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Spin, Typography, theme, type MenuProps } from "antd";
+import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -322,7 +322,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               title={t("shell.refreshData")}
               style={{ borderRadius: token.borderRadius }}
             />
-            {refreshing ? <Spin size="small" /> : null}
             <Button
               type="text"
               icon={isDark ? <SunOutlined /> : <MoonOutlined />}

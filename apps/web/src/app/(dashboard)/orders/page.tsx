@@ -14,7 +14,7 @@ import { KanbanBoard } from "@/components/shared/kanban-board";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusSelect } from "@/components/shared/status-select";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
-import { useRemoteList } from "@/components/api-hydrator";
+import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { taskAssignedDraft } from "@/lib/notification-targets";
@@ -62,7 +62,9 @@ export default function OrdersPage() {
   const { addNotifications } = useNotifications();
   const { getMeta, stageOptions } = useOrderStatusConfig();
   const { currentUser, getEffectivePermissions, users } = useUsers();
+  const { listMeta } = useApiHydrate();
   const ordersRemote = useRemoteList("orders");
+  const cashflowReady = Boolean(listMeta.payments);
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canViewStages = Boolean(perms?.order_statuses?.view);
   const canEditStages = Boolean(perms?.order_statuses?.edit);
@@ -369,7 +371,7 @@ export default function OrdersPage() {
         cashflowForMonth(cashflowByOrder.get(b.id) ?? emptyFlow, cashflowMonth).thu,
       render: (_, r) => {
         const m = cashflowForMonth(cashflowByOrder.get(r.id) ?? emptyFlow, cashflowMonth);
-        return <CashflowAmounts thu={m.thu} chi={m.chi} />;
+        return <CashflowAmounts thu={m.thu} chi={m.chi} loading={!cashflowReady} />;
       },
     },
     {
@@ -379,7 +381,7 @@ export default function OrdersPage() {
       sorter: (a, b) => (cashflowByOrder.get(a.id)?.thu ?? 0) - (cashflowByOrder.get(b.id)?.thu ?? 0),
       render: (_, r) => {
         const f = cashflowByOrder.get(r.id) ?? emptyFlow;
-        return <CashflowAmounts thu={f.thu} chi={f.chi} />;
+        return <CashflowAmounts thu={f.thu} chi={f.chi} loading={!cashflowReady} />;
       },
     },
     {
@@ -388,7 +390,7 @@ export default function OrdersPage() {
       sorter: (a, b) => compareText(a.assignedUserName, b.assignedUserName),
     },
   ],
-    [t, stageOptions, requestStageChange, cashflowByOrder, cashflowMonth, services, orders],
+    [t, stageOptions, requestStageChange, cashflowByOrder, cashflowMonth, cashflowReady, services, orders],
   );
 
   return (

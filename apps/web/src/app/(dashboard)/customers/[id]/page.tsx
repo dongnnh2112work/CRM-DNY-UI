@@ -158,11 +158,12 @@ export default function CustomerDetailPage() {
   );
 
   useEffect(() => {
-    if (!ready || !id) return;
+    if (!id) return;
     if (getById(id)) {
       setLiveChecked(true);
       return;
     }
+    if (!ready) return;
     let cancelled = false;
     customersApi
       .get(id)
@@ -197,8 +198,8 @@ export default function CustomerDetailPage() {
     });
   }, [customer, editOpen, form]);
 
-  if (!ready || (!mockCustomer && !liveChecked)) return <PageLoading />;
   if (!customer) {
+    if (!ready || !liveChecked) return <PageLoading />;
     return (
       <EmptyState
         description={t("common.notFoundCustomer")}

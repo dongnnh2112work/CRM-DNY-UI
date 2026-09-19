@@ -3,6 +3,7 @@
 import { Select, Typography, type TableColumnsType } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useApiHydrate } from "@/components/api-hydrator";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -49,6 +50,8 @@ function PayrollPageContent() {
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
+  const { listMeta } = useApiHydrate();
+  const payrollReady = Boolean(listMeta.orders && listMeta.payments && listMeta.expenses);
   const [query, setQuery] = useState("");
   const applyUrlQuery = useCallback((q: string) => setQuery(q), []);
 
@@ -121,7 +124,7 @@ function PayrollPageContent() {
     );
   }
 
-  if (scope === "self") {
+  if (scope === "self" || !payrollReady) {
     return <PageLoading />;
   }
 

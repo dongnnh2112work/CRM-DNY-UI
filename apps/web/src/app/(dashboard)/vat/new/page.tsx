@@ -1,6 +1,8 @@
 "use client";
 
-import { Alert, App, Button, Col, Form, Input, InputNumber, Row, Select, Space, Typography } from "antd";
+import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Col, Form, Input, InputNumber, List, Row, Select, Space, Typography, Upload } from "antd";
+import type { UploadProps } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -9,12 +11,17 @@ import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { useCustomers } from "@/lib/customers-store";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
 import { useOrders } from "@/lib/orders-store";
 import type { Order } from "@/lib/types";
+import { PERMISSION } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { VAT_TAX_RATES, orderHasContractNumber, vatAmountsFromLines } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
 import { apiErrorMessage } from "@/lib/http/message";
+import { documentsApi } from "@/modules/documents/api";
+import { encodeVatFileType } from "@/modules/documents/map-to-ui";
 import { vatApi } from "@/modules/vat/api";
 import { mapApiVatToUi } from "@/modules/vat/map-to-ui";
 
@@ -43,8 +50,11 @@ function NewVatPageContent() {
   const { orders } = useOrders();
   const { getById: getCustomer } = useCustomers();
   const { addInvoice, replaceInvoices, invoices } = useVat();
+  const { can } = useSession();
+  const canUpload = can(PERMISSION.documentUpload);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const lines = Form.useWatch("lines", form);
   const taxRate = Form.useWatch("taxRate", form);
@@ -145,8 +155,18 @@ function NewVatPageContent() {
               mapApiVatToUi(created, order.orderNumber, order.contractNumber),
               ...invoices,
             ]);
+            if (pendingFiles.length > 0) {
+              const fileType = encodeVatFileType(created.id);
+              const results = await Promise.allSettled(
+                pendingFiles.map((file) => documentsApi.upload(file, { orderId: order.id, fileType })),
+              );
+              const failed = results.filter((r) => r.status === "rejected").length;
+              if (failed > 0) {
+                message.warning(t("vat.filesPartial", { failed, total: pendingFiles.length }));
+              }
+            }
             message.success(t("vat.createdDraft"));
-            router.push("/vat");
+            router.push(`/vat/${created.id}`);
           } catch (err) {
             message.error(apiErrorMessage(err, t("vat.createdDraft")));
           } finally {
@@ -248,6 +268,67 @@ function NewVatPageContent() {
         <Form.Item label={t("vat.total")}>
           <Input disabled value={formatVndDisplay(totals.totalAmount)} />
         </Form.Item>
+        <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
+          {t("vat.files")}
+        </Typography.Text>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          {t("vat.docsIntro")}
+        </Typography.Paragraph>
+        <Upload.Dragger
+          accept={ACCEPT_FILE_TYPES}
+          fileList={[]}
+          showUploadList={false}
+          multiple
+          disabled={!canUpload || !selectedOrder || saving}
+          beforeUpload={((file: File) => {
+            if (!canUpload) {
+              message.error(t("docs.needUploadPerm"));
+              return Upload.LIST_IGNORE;
+            }
+            if (!selectedOrder) {
+              message.warning(t("vat.selectOrder"));
+              return Upload.LIST_IGNORE;
+            }
+            if (getAttachmentType(file.name) === "other") {
+              message.error(t("file.allowedTypes"));
+              return Upload.LIST_IGNORE;
+            }
+            setPendingFiles((prev) => [...prev, file]);
+            return Upload.LIST_IGNORE;
+          }) as UploadProps["beforeUpload"]}
+        >
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined />
+          </p>
+          <p className="ant-upload-text">{t("docs.drop")}</p>
+          <p className="ant-upload-hint">{t("docs.uploadHint")}</p>
+        </Upload.Dragger>
+        {pendingFiles.length > 0 ? (
+          <List
+            size="small"
+            style={{ marginTop: 8, marginBottom: 16 }}
+            dataSource={pendingFiles}
+            renderItem={(file, index) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="remove"
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    disabled={saving}
+                    onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
+                  />,
+                ]}
+              >
+                {file.name}
+              </List.Item>
+            )}
+          />
+        ) : (
+          <div style={{ height: 16 }} />
+        )}
         <Space>
           <Button
             onClick={() => confirmDiscardIfDirty(modal, form, () => router.push("/vat"))}

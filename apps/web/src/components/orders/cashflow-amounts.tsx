@@ -4,8 +4,23 @@ import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { useT } from "@/lib/use-t";
 
-export function CashflowAmounts({ thu, chi }: { thu: number; chi: number }) {
+export function CashflowAmounts({
+  thu,
+  chi,
+  loading = false,
+}: {
+  thu: number;
+  chi: number;
+  loading?: boolean;
+}) {
   const t = useT();
+  if (loading) {
+    return (
+      <div style={{ fontSize: ds.fontSize.caption, lineHeight: 1.5, textAlign: "right", color: ds.inkFaint }}>
+        …
+      </div>
+    );
+  }
   return (
     <div style={{ fontSize: ds.fontSize.caption, lineHeight: 1.5, textAlign: "right" }}>
       <div style={{ color: ds.accentGreen, fontWeight: 600 }}>{t("order.thu", { amount: formatVndDisplay(thu) })}</div>

@@ -33,8 +33,8 @@ export function staleMsFor(scope: RefreshScope) {
 
 /** APIs this route actually renders. Nested paths share the parent list. */
 export function scopesForPath(pathname: string): RefreshScope[] {
-  if (pathname.startsWith("/customers")) return ["customers", "orders", "contracts"];
-  if (pathname.startsWith("/orders")) return ["orders", "customers", "contracts"];
+  if (pathname.startsWith("/customers")) return ["customers", "orders"];
+  if (pathname.startsWith("/orders")) return ["orders", "customers"];
   if (pathname.startsWith("/payments")) return ["orders", "payments"];
   if (pathname.startsWith("/expense")) return ["expenses", "orders"];
   if (pathname.startsWith("/vat")) return ["vat", "orders"];
@@ -43,6 +43,13 @@ export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/payroll")) return ["orders", "expenses", "payments"];
   if (pathname.startsWith("/notifications")) return ["notifications"];
   if (pathname.startsWith("/dashboard")) return ["orders", "customers", "payments"];
+  return [];
+}
+
+/** Heavy catalogs loaded after first paint on list routes that need Số HĐ / CTV / cashflow. */
+export function deferredScopesForPath(pathname: string): RefreshScope[] {
+  if (pathname.startsWith("/orders")) return ["contracts", "payments"];
+  if (pathname.startsWith("/customers")) return ["contracts"];
   return [];
 }
 

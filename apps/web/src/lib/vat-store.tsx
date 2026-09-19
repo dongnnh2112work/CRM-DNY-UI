@@ -21,8 +21,10 @@ export type NewVatInvoiceInput = Omit<VatInvoice, "id" | "invoiceNumber" | "issu
 type Ctx = {
   invoices: VatInvoice[];
   ready: boolean;
+  getById: (id: string) => VatInvoice | undefined;
   addInvoice: (input: NewVatInvoiceInput) => VatInvoice;
   updateInvoice: (id: string, patch: Partial<VatInvoice>) => void;
+  upsertInvoice: (item: VatInvoice) => void;
   deleteInvoices: (ids: string[]) => void;
   replaceInvoices: (items: VatInvoice[]) => void;
 };
@@ -83,14 +85,26 @@ export function VatProvider({ children }: { children: ReactNode }) {
     setInvoices((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
   }, []);
 
+  const upsertInvoice = useCallback((item: VatInvoice) => {
+    const next = ensureLines(item);
+    setInvoices((prev) => {
+      if (prev.some((v) => v.id === next.id)) {
+        return prev.map((v) => (v.id === next.id ? { ...v, ...next } : v));
+      }
+      return [next, ...prev];
+    });
+  }, []);
+
   const deleteInvoices = useCallback((ids: string[]) => {
     const set = new Set(ids);
     setInvoices((prev) => prev.filter((v) => !set.has(v.id)));
   }, []);
 
+  const getById = useCallback((id: string) => invoices.find((v) => v.id === id), [invoices]);
+
   const value = useMemo(
-    () => ({ invoices, ready, addInvoice, updateInvoice, deleteInvoices, replaceInvoices }),
-    [invoices, ready, addInvoice, updateInvoice, deleteInvoices, replaceInvoices],
+    () => ({ invoices, ready, getById, addInvoice, updateInvoice, upsertInvoice, deleteInvoices, replaceInvoices }),
+    [invoices, ready, getById, addInvoice, updateInvoice, upsertInvoice, deleteInvoices, replaceInvoices],
   );
 
   return <VatContext.Provider value={value}>{children}</VatContext.Provider>;

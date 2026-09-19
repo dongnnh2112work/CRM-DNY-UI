@@ -20,7 +20,7 @@ import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useReloadOrderFinance } from "@/components/api-hydrator";
+import { useReloadOrderFinance, useApiHydrate } from "@/components/api-hydrator";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DISPLAY_DATE_FORMAT } from "@/lib/format-date";
@@ -44,6 +44,7 @@ export default function PaymentDetailPage() {
   const { message, modal } = App.useApp();
   const { getById, getByOrderId, ready, addInstallment, markInstallmentPaid } = usePayments();
   const { getById: getOrder, orders } = useOrders();
+  const { ready: hydrateReady, listMeta } = useApiHydrate();
   const reloadFinance = useReloadOrderFinance();
   const [addOpen, setAddOpen] = useState(false);
   const [form] = Form.useForm();
@@ -54,6 +55,7 @@ export default function PaymentDetailPage() {
 
   const payment = getById(id) ?? getByOrderId(id);
   const order = payment ? getOrder(payment.orderId) : undefined;
+  const paymentsHydrated = Boolean(listMeta.payments) || (hydrateReady && ready);
 
   useEffect(() => {
     const orderId = payment?.orderId;
@@ -111,8 +113,8 @@ export default function PaymentDetailPage() {
     [t, markInstallmentPaid, message, payment, reloadFinance],
   );
 
-  if (!ready) return <PageLoading />;
   if (!payment) {
+    if (!paymentsHydrated) return <PageLoading />;
     return (
       <EmptyState
         description={t("common.notFoundPayment")}

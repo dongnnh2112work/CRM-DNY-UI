@@ -20,6 +20,13 @@ export type ApiVatInvoice = {
   updatedAt: string;
 };
 
+function unwrapVat(raw: ApiVatInvoice | { data: ApiVatInvoice } | null | undefined): ApiVatInvoice {
+  if (raw && typeof raw === "object" && "data" in raw && raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)) {
+    return raw.data;
+  }
+  return raw as ApiVatInvoice;
+}
+
 export const vatApi = {
   list(query: { page?: number; pageSize?: number } = {}) {
     const params = new URLSearchParams();
@@ -41,7 +48,14 @@ export const vatApi = {
     vatRate?: number;
     lines?: unknown;
   }) {
-    return apiRequest<ApiVatInvoice>("/vat-invoices", { method: "POST", body: JSON.stringify(body) });
+    return apiRequest<ApiVatInvoice | { data: ApiVatInvoice }>("/vat-invoices", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then(unwrapVat);
+  },
+
+  get(id: string) {
+    return apiRequest<ApiVatInvoice | { data: ApiVatInvoice }>(`/vat-invoices/${id}`).then(unwrapVat);
   },
 
   issue(id: string, issueDate?: string) {
