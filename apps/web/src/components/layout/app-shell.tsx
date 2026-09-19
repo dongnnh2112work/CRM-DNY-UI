@@ -24,7 +24,6 @@ import {
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { PageLoading } from "@/components/shared/page-loading";
 import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Spin, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -56,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useT();
   const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
   const { user: apiUser, can, logout: logoutApi } = useSession();
-  const { ready: hydrateReady, refreshing, lastSyncedAt, refreshCurrent } = useApiHydrate();
+  const { refreshing, lastSyncedAt, refreshCurrent } = useApiHydrate();
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
@@ -454,7 +453,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Space>
         </Header>
         <Content style={{ margin: 16 }}>
-          <div className="nt-page-shell">{hydrateReady ? children : <PageLoading />}</div>
+          <div className="nt-page-shell">{children}</div>
         </Content>
       </Layout>
     </Layout>

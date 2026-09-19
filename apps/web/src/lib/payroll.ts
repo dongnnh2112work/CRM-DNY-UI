@@ -1,4 +1,3 @@
-import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
 import {
   buildOrderCashflow,
   cashflowForMonth,
@@ -18,7 +17,6 @@ export function getPayrollScope(
   apiPermissions?: string[] | null,
 ): PayrollScope {
   if (!user) return "none";
-  if (isDevAuthBypass()) return "all";
   if (apiPermissions?.includes("commission.view") || perms?.payroll?.edit) return "all";
   return "self";
 }

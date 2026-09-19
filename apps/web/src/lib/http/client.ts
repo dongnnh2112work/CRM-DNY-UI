@@ -1,6 +1,4 @@
 import { isAwaitingAccess } from "@/lib/access-gate";
-import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
-import { mockDevBypassApi } from "@/lib/http/dev-bypass-api";
 import { reportApiError } from "@/lib/dev-debug";
 import { classifyApiError, isBlockedAccountError, isPendingMeError } from "@/lib/http/error-kind";
 import { ApiError, parseApiError, parseApiErrorText } from "@/lib/http/errors";
@@ -80,9 +78,6 @@ function logoutLocal() {
 
 export async function apiRequest<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const { skipAuth, skipRefresh, skipErrorEmit, headers, body, ...rest } = init;
-  if (isDevAuthBypass() && !skipAuth) {
-    return mockDevBypassApi<T>(path, init);
-  }
   const url = `${getApiBaseUrl()}${requestPath(path)}`;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const stored = skipAuth ? null : readStoredSession();

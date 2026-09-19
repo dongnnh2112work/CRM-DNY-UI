@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { PageLoading } from "@/components/shared/page-loading";
 
 /** Render children after mount so SSR HTML cannot mismatch (antd + localStorage + browser tooling). */
 export function ClientOnly({ children }: { children: ReactNode }) {
@@ -11,7 +12,7 @@ export function ClientOnly({ children }: { children: ReactNode }) {
   }, []);
 
   if (!mounted) {
-    return <div style={{ minHeight: "100vh" }} aria-hidden />;
+    return <PageLoading />;
   }
 
   return children;

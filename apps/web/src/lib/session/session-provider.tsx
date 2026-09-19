@@ -12,11 +12,10 @@ import {
 import { accessGate, isAwaitingAccess } from "@/lib/access-gate";
 import { classifyApiError, isBlockedAccountError, isPendingMeError, placeholderPendingUser } from "@/lib/http/error-kind";
 import { writeAuthNotice } from "@/lib/http/auth-notice";
-import { consumeOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
+import { consumeOAuthLoginInProgress, hasOAuthTokensInLocation, isOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
 import { ApiError } from "@/lib/http/errors";
 import { readCachedAuthUser, writeCachedAuthUser } from "@/lib/hydrate-cache";
 import { clearStoredSession, readStoredSession, SESSION_SAVED_EVENT, writeStoredSession } from "@/lib/http/tokens";
-import { DEV_BYPASS_USER, isDevAuthBypass } from "@/lib/session/dev-bypass";
 import { authApi, type AuthUser, type SessionResponse } from "@/modules/auth/api";
 
 type SessionStatus = "loading" | "authenticated" | "anonymous";
@@ -90,10 +89,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [applyProfile]);
 
   const restoreFromStorage = useCallback(async () => {
-    if (isDevAuthBypass()) {
-      applyProfile(DEV_BYPASS_USER);
+    // OAuth callback page owns token write + /auth/me — avoid a parallel me() with stale tokens.
+    if (hasOAuthTokensInLocation() || isOAuthLoginInProgress()) {
       return;
     }
+
     const stored = readStoredSession();
     if (!stored) {
       setUser(null);
@@ -165,6 +165,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onSaved = () => {
+      // OAuth callback owns /auth/me — skip duplicate restore while in progress.
+      if (isOAuthLoginInProgress()) return;
       void restoreFromStorage();
     };
     window.addEventListener(SESSION_SAVED_EVENT, onSaved);
@@ -173,7 +175,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onLogout = () => {
-      if (isDevAuthBypass()) return;
       setUser(null);
       setStatus("anonymous");
     };
@@ -182,7 +183,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const can = useCallback(
-    (permission: string) => isDevAuthBypass() || Boolean(user?.permissions.includes(permission)),
+    (permission: string) => Boolean(user?.permissions.includes(permission)),
     [user],
   );
 

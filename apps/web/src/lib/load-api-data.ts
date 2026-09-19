@@ -1,5 +1,5 @@
 import { CATALOG_PAGE_SIZE, LIST_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
-import { siblingOrders } from "@/lib/order-group";
+import { orderGroupKey, pickPrimaryOrder, siblingOrders } from "@/lib/order-group";
 import type { AppUser, Customer, Ctv, Order, OrderExpense, PaymentRecord, Service, VatInvoice } from "@/lib/types";
 import type { AuthUser } from "@/modules/auth/api";
 import { collaboratorsApi } from "@/modules/collaborators/api";
@@ -21,9 +21,9 @@ import { identityAdminApi } from "@/modules/identity-admin/api";
 import { mapAuthUserToUi, mapIdentityRoleToUi, mapIdentityUserToUi } from "@/modules/identity-admin/map-to-ui";
 import { notificationsApi } from "@/modules/notifications/api";
 import { mapApiNotificationToUi } from "@/modules/notifications/map-to-ui";
-import { ordersApi } from "@/modules/orders/api";
+import { ordersApi, type ApiScheduleLine } from "@/modules/orders/api";
 import { mapApiOrderToUi } from "@/modules/orders/map-to-ui";
-import { paymentsApi } from "@/modules/payments/api";
+import { paymentsApi, type ApiPayment } from "@/modules/payments/api";
 import { mapPaymentsToRecords, unwrapSchedule } from "@/modules/payments/map-to-ui";
 import { servicesApi } from "@/modules/services/api";
 import { mapApiServiceToUi } from "@/modules/services/map-to-ui";
@@ -169,7 +169,9 @@ export async function applyRemoteData(
   const loadUsers = core || wants(scopes, "users");
   const loadCustomers = wants(scopes, "customers");
   const loadServices = core || wants(scopes, "services");
-  const loadOrders = wants(scopes, "orders") || wants(scopes, "payments");
+  const loadOrders = wants(scopes, "orders");
+  const loadPayments = wants(scopes, "payments");
+  const loadContracts = wants(scopes, "contracts");
   const loadExpenses = wants(scopes, "expenses") || wantsDeferred(scopes);
   const loadVat = wants(scopes, "vat") || wantsDeferred(scopes);
   const loadNotifs = core || wants(scopes, "notifications") || wantsDeferred(scopes);
@@ -201,13 +203,13 @@ export async function applyRemoteData(
     loadOrders
       ? settled(fetchPage((p, s) => ordersApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
-    loadOrders
+    loadContracts
       ? settled(fetchPage((p, s) => contractsApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
-    loadOrders
+    loadContracts
       ? settled(fetchPage((p, s) => collaboratorsApi.list({ page: p, pageSize: s }), 1, catalogSize), null)
       : Promise.resolve(null),
-    loadOrders
+    loadPayments
       ? settled(fetchPage((p, s) => paymentsApi.list({ page: p, pageSize: s }), page, listSize), null)
       : Promise.resolve(null),
     loadExpenses
@@ -296,6 +298,15 @@ export async function applyRemoteData(
     applier.replaceCtvs(ctvs);
   }
 
+  if (apiContracts) {
+    applier.setListMeta("contracts", {
+      total: apiContracts.total,
+      page: apiContracts.page,
+      pageSize: apiContracts.pageSize,
+      loaded: apiContracts.items.length,
+    });
+  }
+
   const userName = new Map(uiUsers.map((u) => [u.id, u.name]));
   const customerName = new Map(customers.map((c) => [c.id, c.name]));
   const serviceName = new Map(services.map((s) => [s.id, s.name]));
@@ -308,6 +319,7 @@ export async function applyRemoteData(
     const mapped = apiOrders.items.map((o) => {
       const contract = contractById.get(o.contractId);
       const contractNumber = contract ? Number(contract.contractNumber) : undefined;
+      const existing = localById.get(o.id);
       const mappedOrder = mapApiOrderToUi(o, {
         customerName: customerName.get(o.customerId),
         serviceName: serviceName.get(o.serviceId),
@@ -315,9 +327,11 @@ export async function applyRemoteData(
         submitterName: userName.get(o.submitterUserId),
         reviewerName: o.reviewerUserId ? userName.get(o.reviewerUserId) : undefined,
         ctvName: o.collaboratorId ? ctvName.get(o.collaboratorId) : undefined,
-        contractNumber: Number.isFinite(contractNumber) ? contractNumber : undefined,
+        contractNumber: Number.isFinite(contractNumber)
+          ? contractNumber
+          : existing?.contractNumber,
       });
-      return mergeOrderLocal(mappedOrder, localById.get(o.id));
+      return mergeOrderLocal(mappedOrder, existing);
     });
     orders = append ? mergeById(current.orders, mapped) : mapped;
     applier.replaceOrders(orders);
@@ -327,17 +341,41 @@ export async function applyRemoteData(
       pageSize: apiOrders.pageSize,
       loaded: orders.length,
     });
-    const paymentRows = apiPayments?.items ?? [];
-    const paymentSourceOrders = append ? mapped : orders;
-    const paymentRecords = mapPaymentsToRecords(paymentSourceOrders, paymentRows);
+  } else if (apiContracts?.items.length || apiCollaborators) {
+    const contractById = new Map((apiContracts?.items ?? []).map((c) => [c.id, c]));
+    let changed = false;
+    orders = current.orders.map((o) => {
+      let next = o;
+      if (o.contractId && contractById.size) {
+        const contract = contractById.get(o.contractId);
+        const contractNumber = contract ? Number(contract.contractNumber) : undefined;
+        if (Number.isFinite(contractNumber) && next.contractNumber !== contractNumber) {
+          next = { ...next, contractNumber };
+          changed = true;
+        }
+      }
+      if (o.ctvId) {
+        const name = ctvName.get(o.ctvId);
+        if (name && next.ctvName !== name) {
+          next = { ...next, ctvName: name };
+          changed = true;
+        }
+      }
+      return next;
+    });
+    if (changed) applier.replaceOrders(orders);
+  }
+
+  if (apiPayments) {
+    const paymentRecords = mapPaymentsToRecords(orders, apiPayments.items);
     applier.replacePayments(
       append ? mergePaymentRecords(current.payments, paymentRecords) : paymentRecords,
     );
     applier.setListMeta("payments", {
-      total: apiOrders.total,
-      page: apiOrders.page,
-      pageSize: apiOrders.pageSize,
-      loaded: orders.length,
+      total: apiPayments.total,
+      page: apiPayments.page,
+      pageSize: apiPayments.pageSize,
+      loaded: paymentRecords.length,
     });
   }
 
@@ -395,48 +433,85 @@ export async function applyRemoteData(
   }
 }
 
+const FINANCE_CACHE_TTL_MS = 45_000;
+/** Shared-contract payment/schedule cache — skip N+1 when hopping siblings. */
+const financePaymentCache = new Map<string, { at: number }>();
+const financeInflight = new Map<string, Promise<void>>();
+
+/** Shared payment lives on the contract primary; do not fan out to every sibling. */
 export async function reloadOrderFinance(args: {
   order: Order;
   groupOrders?: Order[];
   users: AppUser[];
   upsertPayment: (record: PaymentRecord) => void;
   mergeExpensesForOrder: (orderId: string, items: OrderExpense[]) => void;
+  force?: boolean;
 }): Promise<void> {
-  const { order, users, upsertPayment, mergeExpensesForOrder } = args;
+  const { order, users, upsertPayment, mergeExpensesForOrder, force = false } = args;
   const group = siblingOrders(args.groupOrders?.length ? args.groupOrders : [order], order);
+  const primary = pickPrimaryOrder(group.length ? group : [order]);
+  const cacheKey = orderGroupKey(primary);
+  const cached = financePaymentCache.get(cacheKey);
+  const paymentsFresh = !force && Boolean(cached && Date.now() - cached.at < FINANCE_CACHE_TTL_MS);
+  const inflightKey = `${cacheKey}:${order.id}:${paymentsFresh ? "exp" : "full"}`;
+  const existing = financeInflight.get(inflightKey);
+  if (existing) return existing;
+
   const userName = new Map(users.map((u) => [u.id, u.name]));
-  const [paymentLists, scheduleEntries, expenses] = await Promise.all([
-    Promise.all(
-      group.map((o) =>
-        settled(
-          fetchPage((page, pageSize) => paymentsApi.list({ page, pageSize, orderId: o.id }), 1, CATALOG_PAGE_SIZE).then(
-            (r) => r.items,
-          ),
+
+  const run = async () => {
+    const paymentPromise: Promise<ApiPayment[] | null> = paymentsFresh
+      ? Promise.resolve(null)
+      : settled(
+          fetchPage(
+            (page, pageSize) => paymentsApi.list({ page, pageSize, orderId: primary.id }),
+            1,
+            CATALOG_PAGE_SIZE,
+          ).then((r) => r.items),
           [],
-        ),
-      ),
-    ),
-    Promise.all(
-      group.map(async (o) => [o.id, await settled(ordersApi.listSchedule(o.id).then(unwrapSchedule), [])] as const),
-    ),
-    settled(
-      fetchPage((page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id }), 1, CATALOG_PAGE_SIZE).then(
-        (r) => r.items,
-      ),
+        );
+
+    // 404 "Payment schedule not found" → empty via settled; only primary (not × siblings).
+    const schedulePromise: Promise<ApiScheduleLine[]> = paymentsFresh
+      ? Promise.resolve([])
+      : settled(ordersApi.listSchedule(primary.id).then(unwrapSchedule), []);
+
+    const expensesPromise = settled(
+      fetchPage(
+        (page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id }),
+        1,
+        CATALOG_PAGE_SIZE,
+      ).then((r) => r.items),
       [],
-    ),
-  ]);
-  const payments = paymentLists.flat();
-  const schedules = new Map(scheduleEntries);
-  const [record] = mapPaymentsToRecords(group, payments, schedules);
-  if (record) upsertPayment(record);
-  mergeExpensesForOrder(
-    order.id,
-    expenses.map((e) =>
-      mapApiExpenseToUi(e, order.orderNumber, {
-        requestedByName: userName.get(e.requestedByUserId),
-        reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
-      }),
-    ),
-  );
+    );
+
+    const [paymentRows, scheduleLines, expenses] = await Promise.all([
+      paymentPromise,
+      schedulePromise,
+      expensesPromise,
+    ]);
+
+    if (paymentRows) {
+      const schedules = new Map<string, ApiScheduleLine[]>([[primary.id, scheduleLines]]);
+      const [record] = mapPaymentsToRecords(group, paymentRows, schedules);
+      if (record) upsertPayment(record);
+      financePaymentCache.set(cacheKey, { at: Date.now() });
+    }
+
+    mergeExpensesForOrder(
+      order.id,
+      expenses.map((e) =>
+        mapApiExpenseToUi(e, order.orderNumber, {
+          requestedByName: userName.get(e.requestedByUserId),
+          reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
+        }),
+      ),
+    );
+  };
+
+  const promise = run().finally(() => {
+    financeInflight.delete(inflightKey);
+  });
+  financeInflight.set(inflightKey, promise);
+  return promise;
 }

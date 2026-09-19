@@ -15,7 +15,7 @@ import {
   readOAuthHashParams,
   readOAuthRedirectError,
 } from "@/lib/http/oauth-redirect";
-import { saveSession } from "@/lib/http/tokens";
+import { writeStoredSession } from "@/lib/http/tokens";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { authApi } from "@/modules/auth/api";
@@ -72,7 +72,7 @@ export default function AuthCallbackPage() {
     }
 
     markOAuthLoginInProgress();
-    saveSession({
+    writeStoredSession({
       accessToken: hash.accessToken,
       refreshToken: hash.refreshToken,
       expiresIn: Number.isFinite(hash.expiresIn) ? hash.expiresIn : 0,

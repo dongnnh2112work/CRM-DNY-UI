@@ -25,7 +25,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { isDevAuthBypass } from "@/lib/dev-auth-bypass";
 import { OrderDocuments } from "@/components/orders/order-documents";
 import { OrderExpensesPanel } from "@/components/orders/order-expenses-panel";
 import { LicenseUpload } from "@/components/orders/license-upload";
@@ -80,6 +79,25 @@ type ScreenBoot =
   | { status: "missing" }
   | { status: "error"; message: string };
 
+/** Dedupe Strict Mode double-mount so order+docs hit the network once. */
+const orderDetailBootInflight = new Map<
+  string,
+  Promise<[Awaited<ReturnType<typeof ordersApi.get>>, Awaited<ReturnType<typeof documentsApi.list>>]>
+>();
+
+function loadOrderDetailBoot(orderId: string) {
+  const hit = orderDetailBootInflight.get(orderId);
+  if (hit) return hit;
+  const pending = Promise.all([
+    ordersApi.get(orderId),
+    documentsApi.list({ orderId, pageSize: 100 }),
+  ]).finally(() => {
+    orderDetailBootInflight.delete(orderId);
+  });
+  orderDetailBootInflight.set(orderId, pending);
+  return pending;
+}
+
 function attachmentsFromDocs(docs: ApiDocument[], userName: Map<string, string>) {
   const mapDoc = (d: ApiDocument) => {
     try {
@@ -100,7 +118,7 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { ready: hydrateReady } = useApiHydrate();
-  const { upsertOrder, deleteOrder, orders, isContractTaken, getById } = useOrders();
+  const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
   const { can } = useSession();
@@ -151,23 +169,19 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (!id || !hydrateReady) return;
     let cancelled = false;
-    setBoot({ status: "loading" });
-    setOrder(null);
+
+    const cached = ordersRef.current.find((o) => o.id === id);
+    if (cached) {
+      setOrder(cached);
+      setBoot({ status: "ready" });
+    } else {
+      setBoot({ status: "loading" });
+      setOrder(null);
+    }
 
     const load = async () => {
       try {
-        const local = ordersRef.current.find((o) => o.id === id) ?? getById(id);
-        if (isDevAuthBypass() && local) {
-          if (cancelled) return;
-          setOrder(local);
-          setBoot({ status: "ready" });
-          return;
-        }
-
-        const [apiOrder, docsResult] = await Promise.all([
-          ordersApi.get(id),
-          documentsApi.list({ orderId: id, pageSize: 100 }),
-        ]);
+        const [apiOrder, docsResult] = await loadOrderDetailBoot(id);
         if (cancelled) return;
         if (!apiOrder?.id) {
           setBoot({ status: "missing" });
@@ -208,14 +222,16 @@ export default function OrderDetailPage() {
         if (cancelled) return;
         setOrder(mapped);
         upsertOrder(mapped);
-        await reloadOrderFinance({
+        setBoot({ status: "ready" });
+
+        // Finance in background — do not block PageLoading.
+        void reloadOrderFinance({
           order: mapped,
-          groupOrders: orders,
+          groupOrders: ordersRef.current,
           users: catalogUsers,
           upsertPayment,
           mergeExpensesForOrder,
         });
-        if (!cancelled) setBoot({ status: "ready" });
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && (err.statusCode === 404 || err.statusCode === 403)) {
@@ -230,7 +246,7 @@ export default function OrderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, hydrateReady, upsertOrder, upsertPayment, mergeExpensesForOrder, getById, t]);
+  }, [id, hydrateReady, upsertOrder, upsertPayment, mergeExpensesForOrder, t]);
 
   if (!hydrateReady || boot.status === "loading" || (boot.status === "ready" && !order)) {
     return <PageLoading />;

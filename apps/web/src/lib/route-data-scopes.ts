@@ -7,6 +7,7 @@ export type RefreshScope =
   | "services"
   | "orders"
   | "payments"
+  | "contracts"
   | "expenses"
   | "vat"
   | "notifications";
@@ -20,6 +21,7 @@ const STALE_MS: Partial<Record<RefreshScope, number>> = {
   customers: 60_000,
   expenses: 60_000,
   payments: 60_000,
+  contracts: 60_000,
   vat: 120_000,
   services: 5 * 60_000,
   users: 5 * 60_000,
@@ -31,16 +33,16 @@ export function staleMsFor(scope: RefreshScope) {
 
 /** APIs this route actually renders. Nested paths share the parent list. */
 export function scopesForPath(pathname: string): RefreshScope[] {
-  if (pathname.startsWith("/customers")) return ["customers", "orders"];
-  if (pathname.startsWith("/orders")) return ["orders", "customers"];
-  if (pathname.startsWith("/payments")) return ["orders"];
+  if (pathname.startsWith("/customers")) return ["customers", "orders", "contracts"];
+  if (pathname.startsWith("/orders")) return ["orders", "customers", "contracts"];
+  if (pathname.startsWith("/payments")) return ["orders", "payments"];
   if (pathname.startsWith("/expense")) return ["expenses", "orders"];
   if (pathname.startsWith("/vat")) return ["vat", "orders"];
   if (pathname.startsWith("/services")) return ["services"];
   if (pathname.startsWith("/users")) return ["users"];
-  if (pathname.startsWith("/payroll")) return ["orders", "expenses"];
+  if (pathname.startsWith("/payroll")) return ["orders", "expenses", "payments"];
   if (pathname.startsWith("/notifications")) return ["notifications"];
-  if (pathname.startsWith("/dashboard")) return ["orders", "customers"];
+  if (pathname.startsWith("/dashboard")) return ["orders", "customers", "payments"];
   return [];
 }
 
