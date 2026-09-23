@@ -10,7 +10,8 @@ export const ds = {
   ink: "#000000",
   inkSecondary: "#31302e",
   inkMuted: "#615d59",
-  inkFaint: "#a39e98",
+  /** ≥4.5:1 on white — was #a39e98 (~2.7:1) */
+  inkFaint: "#6f6b66",
   hairline: "#e6e6e6",
   accentSky: "#62aef0",
   accentPurple: "#d6b6f6",

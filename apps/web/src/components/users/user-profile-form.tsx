@@ -13,6 +13,7 @@ import {
   Switch,
   Typography,
   Upload,
+  theme,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useEffect, useState } from "react";
@@ -81,6 +82,7 @@ export function UserProfileForm({
   onCancel?: () => void;
 }) {
   const t = useT();
+  const { token } = theme.useToken();
   const { modal } = App.useApp();
   const [form] = Form.useForm<UserProfileFormValues>();
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
@@ -252,8 +254,8 @@ export function UserProfileForm({
           style={{
             marginBottom: 16,
             padding: 12,
-            border: "1px solid rgba(0,0,0,0.06)",
-            borderRadius: 8,
+            border: `1px solid ${token.colorBorder}`,
+            borderRadius: token.borderRadiusLG,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>

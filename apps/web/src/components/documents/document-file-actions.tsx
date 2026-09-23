@@ -36,13 +36,22 @@ export function DocumentFileActions({
   return (
     <Space size={4}>
       <Tooltip title={t("docs.review")}>
-        <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => viewer.open(file)} />
+        <Button
+          type="text"
+          size="small"
+          className="crm-pressable"
+          icon={<EyeOutlined />}
+          aria-label={t("docs.review")}
+          onClick={() => viewer.open(file)}
+        />
       </Tooltip>
       <Tooltip title={t("docs.download")}>
         <Button
           type="text"
           size="small"
+          className="crm-pressable"
           icon={<DownloadOutlined />}
+          aria-label={t("docs.download")}
           loading={viewer.isDownloading(file.id)}
           onClick={() => void viewer.download(file)}
         />

@@ -120,7 +120,14 @@ export function StatusSelect({
               onClick={stop}
               onMouseDown={stop}
             />
-            <Button size="small" type="text" icon={<PlusOutlined />} onClick={addStatus} />
+            <Button
+              size="small"
+              type="text"
+              className="crm-pressable"
+              icon={<PlusOutlined />}
+              aria-label={t("status.addAria")}
+              onClick={addStatus}
+            />
           </div>
         </>
       ) : null}

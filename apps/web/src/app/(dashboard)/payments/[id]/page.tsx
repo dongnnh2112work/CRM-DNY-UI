@@ -157,7 +157,7 @@ export default function PaymentDetailPage() {
           </Descriptions.Item>
           {(payment.groupedOrderIds?.length ?? 1) > 1 ? (
             <Descriptions.Item label={t("order.sameContract")} span={2}>
-              <Space wrap size={4}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
                 {(payment.groupedOrderIds ?? [payment.orderId]).map((oid) => {
                   const sibling = orders.find((o) => o.id === oid);
                   return (
@@ -166,7 +166,7 @@ export default function PaymentDetailPage() {
                     </Link>
                   );
                 })}
-              </Space>
+              </div>
             </Descriptions.Item>
           ) : order ? (
             <>

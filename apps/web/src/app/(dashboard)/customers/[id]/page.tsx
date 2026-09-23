@@ -28,6 +28,7 @@ import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import {
   collectCustomFields,
+  customerOwnerLabel,
   getCustomerFormExtraFields,
   getCustomerOrders,
   getCustomerUsedServices,
@@ -310,7 +311,9 @@ export default function CustomerDetailPage() {
           <Descriptions.Item label={t("field.company")}>{customer.company || "—"}</Descriptions.Item>
           <Descriptions.Item label={t("field.taxCode")}>{customer.taxCode || "—"}</Descriptions.Item>
           <Descriptions.Item label={t("field.address")}>{customer.address || "—"}</Descriptions.Item>
-          <Descriptions.Item label={t("field.owner")}>{customer.owner}</Descriptions.Item>
+          <Descriptions.Item label={t("field.owner")}>
+            {customerOwnerLabel(customer.owner, users)}
+          </Descriptions.Item>
           <Descriptions.Item label={t("common.channel")}>
             {customer.channel === "direct"
               ? t("channel.direct")

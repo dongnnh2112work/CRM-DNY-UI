@@ -51,7 +51,7 @@ export function PageHeader({
           <Input.Search
             placeholder={searchPlaceholder ?? t("common.search")}
             allowClear
-            style={{ width: 280 }}
+            style={{ width: "100%", maxWidth: 360, minWidth: 0, flex: "1 1 200px" }}
             value={searchValue}
             onChange={(e) => onSearch(e.target.value)}
           />

@@ -1,7 +1,8 @@
 "use client";
 
 import { AppstoreOutlined, BarsOutlined, BgColorsOutlined } from "@ant-design/icons";
-import { App, Button, Modal, Select, Segmented, Tag, type TableColumnsType } from "antd";
+import { App, Button, Modal, Select, Segmented, Skeleton, Tag, type TableColumnsType } from "antd";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useMemo, useState, type Key } from "react";
 import { CashflowAmounts } from "@/components/orders/cashflow-amounts";
@@ -10,11 +11,18 @@ import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { KanbanBoard } from "@/components/shared/kanban-board";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusSelect } from "@/components/shared/status-select";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
+
+const KanbanBoard = dynamic(
+  () => import("@/components/shared/kanban-board").then((m) => m.KanbanBoard),
+  {
+    ssr: false,
+    loading: () => <Skeleton active paragraph={{ rows: 10 }} style={{ padding: 16 }} />,
+  },
+);
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { taskAssignedDraft } from "@/lib/notification-targets";
@@ -154,16 +162,35 @@ export default function OrdersPage() {
 
   const handleMove = async (orderId: string, newStage: OrderStage) => {
     const order = orders.find((o) => o.id === orderId);
-    if (!order) return false;
+    if (!order || order.stage === newStage) return false;
+
+    const prev = {
+      stage: order.stage,
+      approvalStatus: order.approvalStatus,
+      pendingTransition: order.pendingTransition,
+    };
+
+    // Optimistic: card stays in the dropped column while the API runs.
+    updateOrder(orderId, {
+      stage: newStage,
+      approvalStatus: "none",
+      pendingTransition: undefined,
+    });
+
     try {
       await ordersApi.changeStage(orderId, newStage);
-      updateOrder(orderId, {
-        stage: newStage,
-        approvalStatus: "none",
-        pendingTransition: undefined,
-      });
       return true;
     } catch (err) {
+      updateOrder(orderId, (current) =>
+        current.stage === newStage
+          ? {
+              ...current,
+              stage: prev.stage,
+              approvalStatus: prev.approvalStatus,
+              pendingTransition: prev.pendingTransition,
+            }
+          : current,
+      );
       message.error(apiErrorMessage(err, t("order.stageUpdated")));
       return false;
     }

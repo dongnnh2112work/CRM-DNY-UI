@@ -24,7 +24,23 @@ import {
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Typography, theme, type MenuProps } from "antd";
+import {
+  App,
+  Avatar,
+  Badge,
+  Button,
+  Drawer,
+  Dropdown,
+  Grid,
+  Input,
+  Layout,
+  List,
+  Menu,
+  Space,
+  Typography,
+  theme,
+  type MenuProps,
+} from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -43,6 +59,7 @@ import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 
 const { Header, Sider, Content } = Layout;
+const { useBreakpoint } = Grid;
 
 type MenuItems = NonNullable<MenuProps["items"]>;
 
@@ -51,6 +68,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { message } = App.useApp();
   const { token } = theme.useToken();
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
   const { theme: appTheme, setTheme } = useAppConfig();
   const t = useT();
   const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
@@ -63,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     useNotifications();
   const { addEmails } = useEmails();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const scannedRef = useRef(false);
   const isDark = appTheme === "dark";
@@ -110,6 +130,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     getUser,
     t,
   ]);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   const menuItems = useMemo(() => {
     const payrollItem: MenuItems =
@@ -236,96 +260,144 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const displayName = apiUser?.displayName ?? currentUser?.name ?? t("shell.guest");
 
+  const brand = (
+    <div
+      style={{
+        height: 48,
+        margin: "0 8px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: collapsed && !isMobile ? "center" : "flex-start",
+        paddingInline: collapsed && !isMobile ? 0 : 12,
+        color: token.colorText,
+        fontWeight: 700,
+        fontSize: collapsed && !isMobile ? ds.fontSize.bodySm : ds.fontSize.body,
+        letterSpacing: "-0.3px",
+      }}
+    >
+      {collapsed && !isMobile ? "DNY" : "DNY CRM"}
+    </div>
+  );
+
+  const sideMenu = (
+    <Menu
+      mode="inline"
+      theme={isDark ? "dark" : "light"}
+      selectedKeys={[selectedKey]}
+      openKeys={collapsed && !isMobile ? undefined : openKeys}
+      onOpenChange={setOpenKeys}
+      items={menuItems}
+      onClick={() => {
+        if (isMobile) setMobileNavOpen(false);
+      }}
+      style={{
+        background: "transparent",
+        borderInlineEnd: "none",
+        padding: "4px 8px",
+        fontWeight: 500,
+        fontSize: ds.fontSize.bodySm,
+      }}
+    />
+  );
+
   return (
     <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
-      <Sider
-        className="crm-sider"
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        width={280}
-        theme={isDark ? "dark" : "light"}
-        style={{
-          background: token.colorBgContainer,
-          borderRight: `1px solid ${token.colorBorder}`,
-        }}
-      >
-        <div
+      <a href="#crm-main" className="crm-skip-link">
+        {t("shell.skipToContent")}
+      </a>
+      {!isMobile ? (
+        <Sider
+          className="crm-sider"
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          width={280}
+          theme={isDark ? "dark" : "light"}
           style={{
-            height: 48,
-            margin: "0 8px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: collapsed ? "center" : "flex-start",
-            paddingInline: collapsed ? 0 : 12,
-            color: token.colorText,
-            fontWeight: 700,
-            fontSize: collapsed ? ds.fontSize.bodySm : ds.fontSize.body,
-            letterSpacing: "-0.3px",
+            background: token.colorBgContainer,
+            borderRight: `1px solid ${token.colorBorder}`,
           }}
         >
-          {collapsed ? "DNY" : "DNY CRM"}
-        </div>
-        <Menu
-          mode="inline"
-          theme={isDark ? "dark" : "light"}
-          selectedKeys={[selectedKey]}
-          openKeys={collapsed ? undefined : openKeys}
-          onOpenChange={setOpenKeys}
-          items={menuItems}
-          style={{
-            background: "transparent",
-            borderInlineEnd: "none",
-            padding: "4px 8px",
-            fontWeight: 500,
-            fontSize: ds.fontSize.bodySm,
-          }}
-        />
-      </Sider>
+          {brand}
+          {sideMenu}
+        </Sider>
+      ) : (
+        <Drawer
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          placement="left"
+          width={280}
+          styles={{ body: { padding: 0 } }}
+          title="DNY CRM"
+        >
+          <div className="crm-sider">{sideMenu}</div>
+        </Drawer>
+      )}
       <Layout style={{ background: token.colorBgLayout }}>
         <Header
           style={{
-            padding: "0 20px",
-            height: 48,
-            lineHeight: "48px",
+            padding: isMobile ? "0 12px" : "0 20px",
+            height: 56,
+            lineHeight: "56px",
             display: "flex",
             alignItems: "center",
-            gap: 12,
+            gap: 8,
             borderBottom: `1px solid ${token.colorBorder}`,
             background: token.colorBgContainer,
           }}
         >
           <Button
             type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
+            className="crm-pressable crm-header-icon"
+            icon={
+              isMobile ? (
+                <MenuUnfoldOutlined />
+              ) : collapsed ? (
+                <MenuUnfoldOutlined />
+              ) : (
+                <MenuFoldOutlined />
+              )
+            }
+            aria-label={t("shell.toggleNav")}
+            aria-expanded={isMobile ? mobileNavOpen : !collapsed}
+            onClick={() => {
+              if (isMobile) setMobileNavOpen((open) => !open);
+              else setCollapsed(!collapsed);
+            }}
             style={{ borderRadius: token.borderRadius }}
           />
           <Input.Search
             placeholder={t(searchTarget.placeholderKey)}
             allowClear
-            style={{ maxWidth: 360, flex: 1 }}
+            style={{ maxWidth: isMobile ? "100%" : 360, flex: 1, minWidth: 0 }}
             onSearch={onSearch}
+            aria-label={t(searchTarget.placeholderKey)}
           />
-          <Space style={{ marginLeft: "auto" }} size={8}>
-            <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
-              {lastSyncedAt
-                ? t("shell.lastSynced", {
-                    time: formatDisplayDateTime(lastSyncedAt),
-                  })
-                : t("shell.lastSyncedNever")}
-            </Typography.Text>
+          <Space style={{ marginLeft: "auto", flexShrink: 0 }} size={4}>
+            {!isMobile ? (
+              <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
+                {lastSyncedAt
+                  ? t("shell.lastSynced", {
+                      time: formatDisplayDateTime(lastSyncedAt),
+                    })
+                  : t("shell.lastSyncedNever")}
+              </Typography.Text>
+            ) : null}
             <Button
               type="text"
+              className="crm-pressable crm-header-icon"
               icon={<ReloadOutlined spin={refreshing} />}
               onClick={() => void refreshCurrent()}
               title={t("shell.refreshData")}
+              aria-label={t("shell.refreshData")}
               style={{ borderRadius: token.borderRadius }}
             />
             <Button
               type="text"
+              className="crm-pressable crm-header-icon"
               icon={isDark ? <SunOutlined /> : <MoonOutlined />}
               onClick={() => setTheme(isDark ? "light" : "dark")}
+              aria-label={t("shell.toggleTheme")}
               style={{ borderRadius: token.borderRadius }}
             />
             <Dropdown
@@ -335,6 +407,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div
                   style={{
                     width: 360,
+                    maxWidth: "calc(100vw - 24px)",
                     maxHeight: 420,
                     overflow: "auto",
                     background: token.colorBgElevated,
@@ -369,6 +442,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                     locale={{ emptyText: t("shell.noNotifications") }}
                     renderItem={(item) => (
                       <List.Item
+                        role="button"
+                        tabIndex={0}
                         style={{
                           cursor: "pointer",
                           background: item.read ? undefined : token.colorPrimaryBg,
@@ -378,6 +453,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                         onClick={() => {
                           markRead(item.id);
                           if (item.href) router.push(item.href);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            markRead(item.id);
+                            if (item.href) router.push(item.href);
+                          }
                         }}
                       >
                         <List.Item.Meta
@@ -401,7 +483,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Badge count={unread} size="small" offset={[-2, 2]}>
                 <Button
                   type="text"
+                  className="crm-pressable crm-header-icon"
                   icon={<BellOutlined />}
+                  aria-label={t("shell.openNotifications")}
                   style={{ borderRadius: token.borderRadius }}
                 />
               </Badge>
@@ -434,24 +518,37 @@ export function AppShell({ children }: { children: ReactNode }) {
               trigger={["click"]}
               placement="bottomRight"
             >
-              <Space style={{ cursor: "pointer", paddingInline: 4 }} size={8}>
-                <Avatar
-                  size="small"
-                  src={currentUser?.avatar}
-                  icon={<UserOutlined />}
-                  style={{
-                    background: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
-                    color: token.colorText,
-                  }}
-                />
-                <Typography.Text style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
-                  {displayName}
-                </Typography.Text>
-              </Space>
+              <Button
+                type="text"
+                className="crm-pressable"
+                aria-label={t("shell.userMenu")}
+                style={{
+                  height: 40,
+                  paddingInline: isMobile ? 4 : 8,
+                  borderRadius: token.borderRadius,
+                }}
+              >
+                <Space size={8}>
+                  <Avatar
+                    size="small"
+                    src={currentUser?.avatar}
+                    icon={<UserOutlined />}
+                    style={{
+                      background: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
+                      color: token.colorText,
+                    }}
+                  />
+                  {!isMobile ? (
+                    <Typography.Text style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
+                      {displayName}
+                    </Typography.Text>
+                  ) : null}
+                </Space>
+              </Button>
             </Dropdown>
           </Space>
         </Header>
-        <Content style={{ margin: 16 }}>
+        <Content id="crm-main" tabIndex={-1} style={{ margin: isMobile ? 8 : 16, outline: "none" }}>
           <div className="nt-page-shell">{children}</div>
         </Content>
       </Layout>

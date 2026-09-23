@@ -16,6 +16,7 @@ import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import {
   getCustomerUsedServices,
   usedServiceNames,
+  customerOwnerLabel,
 } from "@/lib/customer-helpers";
 import { CUSTOMER_LOCKED_FIELD_KEYS, useCustomers } from "@/lib/customers-store";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
@@ -97,6 +98,7 @@ function CustomersPageContent() {
           c.taxCode,
           c.address,
           c.owner,
+          customerOwnerLabel(c.owner, users),
           c.status,
           getMeta(c.status).label,
           c.createdAt,
@@ -107,7 +109,7 @@ function CustomersPageContent() {
       );
     }
     return list;
-  }, [customers, statusFilter, ownerFilter, channelFilter, dateRange, query, usedByCustomer, getMeta]);
+  }, [customers, statusFilter, ownerFilter, channelFilter, dateRange, query, usedByCustomer, getMeta, users]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -156,7 +158,7 @@ function CustomersPageContent() {
     [t("common.company")]: c.company ?? "",
     [t("common.taxCode")]: c.taxCode ?? "",
     [t("common.status")]: c.status,
-    [t("common.owner")]: c.owner,
+    [t("common.owner")]: customerOwnerLabel(c.owner, users),
     [t("common.channel")]:
       c.channel === "direct"
         ? t("channel.direct")
@@ -192,7 +194,12 @@ function CustomersPageContent() {
         selectedRowKeys.map((id) => customersApi.update(String(id), { ownerId: assignOwner })),
       );
       selectedRowKeys.forEach((id) => updateCustomer(String(id), { owner: assignOwner }));
-      message.success(t("customer.assigned", { count: selectedCount, name: assignOwner }));
+      message.success(
+        t("customer.assigned", {
+          count: selectedCount,
+          name: customerOwnerLabel(assignOwner, users),
+        }),
+      );
       setAssignOpen(false);
       setAssignOwner(undefined);
       clearSelection();
@@ -276,6 +283,9 @@ function CustomersPageContent() {
         remote={customerRemote}
         linkField={{ key: "name", onClick: (record) => router.push(`/customers/${record.id}`) }}
         columnOverrides={{
+          owner: {
+            render: (value) => customerOwnerLabel(value != null ? String(value) : "", users),
+          },
           channel: {
             render: (value) => {
               if (value === "direct") return t("channel.direct");

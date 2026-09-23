@@ -92,6 +92,8 @@ function buildTheme(mode: AppTheme) {
       colorLink: ds.primary,
       colorTextBase: isDark ? "#ffffff" : ds.ink,
       colorTextSecondary: isDark ? "#a39e98" : ds.inkMuted,
+      colorTextTertiary: isDark ? "#a39e98" : ds.inkFaint,
+      colorTextQuaternary: isDark ? "#6f6b66" : ds.inkFaint,
       colorBgBase: isDark ? "#191919" : ds.canvasSoft,
       colorBgContainer: isDark ? "#202020" : ds.surface,
       colorBgElevated: isDark ? "#252525" : ds.surface,
@@ -178,7 +180,7 @@ function buildTheme(mode: AppTheme) {
         linkColor: ds.primary,
         itemColor: isDark ? "#a39e98" : ds.inkMuted,
         lastItemColor: isDark ? "#ffffff" : ds.ink,
-        separatorColor: isDark ? "#6f6b66" : ds.inkFaint,
+        separatorColor: isDark ? "#a39e98" : ds.inkFaint,
       },
       Typography: {
         colorTextHeading: isDark ? "#ffffff" : ds.ink,
@@ -233,9 +235,17 @@ export function AntdProvider({ children }: { children: ReactNode }) {
   };
 
   const handleSetTheme = (t: AppTheme) => {
+    // better-ui: suppress color/border/shadow transitions during theme flip
+    const style = document.createElement("style");
+    style.append(document.createTextNode("*,*::before,*::after{transition:none !important}"));
+    document.head.append(style);
     setTheme(t);
     localStorage.setItem("app_theme", t);
     applyDocumentTheme(t);
+    void document.body.offsetHeight;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => style.remove());
+    });
   };
 
   return (
