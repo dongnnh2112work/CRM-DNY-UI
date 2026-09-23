@@ -15,6 +15,16 @@ export const CUSTOMER_OWNER_OPTIONS = MOCK_USERS.filter(
   (u) => u.role === "staff" || u.role === "admin",
 ).map((u) => ({ value: u.name, label: u.name }));
 
+/** `Customer.owner` stores user id from API — resolve to display name for tables/export. */
+export function customerOwnerLabel(
+  ownerId: string | undefined | null,
+  users: { id: string; name: string }[],
+): string {
+  const id = ownerId?.trim();
+  if (!id) return "—";
+  return users.find((u) => u.id === id)?.name ?? id;
+}
+
 export function getCustomerOrders(customerId: string, orders: Order[]) {
   return orders.filter((o) => o.customerId === customerId);
 }

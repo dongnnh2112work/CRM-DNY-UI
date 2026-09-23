@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Checkbox, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Popconfirm, Select, Skeleton, Space, Tabs, Tag, Tooltip, Typography } from "antd";
+import { App, Button, Checkbox, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Tabs, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -27,7 +27,7 @@ import {
   licenseWarnMonthsForOrder,
   nextContractNumber,
 } from "@/lib/order-helpers";
-import { groupContractTotal, nextSiblingDossierNumber, pickPrimaryOrder, siblingOrders } from "@/lib/order-group";
+import { nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ApiError } from "@/lib/http/errors";
@@ -256,8 +256,6 @@ export default function OrderDetailPage() {
     licenseWarnMonthsForOrder(order, services),
   );
   const siblings = siblingOrders(orders, order);
-  const primary = pickPrimaryOrder(siblings);
-  const groupTotal = groupContractTotal(siblings);
   const activeServices = services.filter((s) => s.status === "active");
   const canAddService = can(PERMISSION.orderCreate) && order.stage !== "cancelled";
 
@@ -466,59 +464,29 @@ export default function OrderDetailPage() {
             <Tag color="green">{t("order.licenseCountTag", { count: licenseFileCount })}</Tag>
           )}
         </Space>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={t("order.contractServices")}
-          description={
-            <Space orientation="vertical" size={4}>
-              {siblings.length > 1 ? (
-                <span>
-                  {financeReady ? (
-                    t("order.sharedPaymentHint", {
-                      amount: formatVndDisplay(payment?.totalAmount ?? groupTotal),
-                      count: siblings.length,
-                      number: primary.orderNumber,
-                    })
-                  ) : (
-                    <Skeleton.Input active size="small" style={{ width: 280, verticalAlign: "middle" }} />
-                  )}
-                </span>
-              ) : (
-                <Typography.Text type="secondary">{t("order.addServiceToContractHint")}</Typography.Text>
-              )}
-              <Space wrap size={4}>
-                <Typography.Text type="secondary">{t("order.sameContract")}:</Typography.Text>
-                {siblings.map((s) =>
-                  s.id === order.id ? (
-                    <Tag key={s.id}>
-                      {s.orderNumber} · {s.serviceName}
-                    </Tag>
-                  ) : (
-                    <Link key={s.id} href={`/orders/${s.id}`}>
-                      {s.orderNumber} · {s.serviceName}
-                    </Link>
-                  ),
-                )}
-                {canAddService ? (
-                  <Button type="link" size="small" icon={<PlusOutlined />} onClick={openAddService}>
-                    {t("order.addServiceLine")}
-                  </Button>
-                ) : null}
-              </Space>
-              {siblings.length > 1 && payment ? (
-                <Link href={`/payments/${payment.id}`}>{t("order.payment")}</Link>
-              ) : null}
-            </Space>
-          }
-        />
 
         <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small" style={{ marginBottom: 16 }}>
           <Descriptions.Item label={t("common.customer")}>
             <Link href={`/customers/${order.customerId}`}>{order.customerName}</Link>
           </Descriptions.Item>
           <Descriptions.Item label={t("common.service")}>{order.serviceName}</Descriptions.Item>
+          {siblings.length > 1 ? (
+            <Descriptions.Item label={t("order.sameContract")} span={2}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                {siblings.map((s) =>
+                  s.id === order.id ? (
+                    <Typography.Text key={s.id} strong>
+                      {s.orderNumber} · {s.serviceName}
+                    </Typography.Text>
+                  ) : (
+                    <Link key={s.id} href={`/orders/${s.id}`}>
+                      {s.orderNumber} · {s.serviceName}
+                    </Link>
+                  ),
+                )}
+              </div>
+            </Descriptions.Item>
+          ) : null}
           <Descriptions.Item label={t("order.listPriceVnd")}>{formatVndDisplay(order.value)}</Descriptions.Item>
           <Descriptions.Item label={t("order.commissionPercent")}>
             {order.commissionPercent != null ? `${order.commissionPercent}%` : "—"}

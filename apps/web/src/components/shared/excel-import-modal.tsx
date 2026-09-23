@@ -3,7 +3,6 @@
 import { InboxOutlined } from "@ant-design/icons";
 import { Button, Modal, Space, Table, Typography, Upload } from "antd";
 import { useState, useCallback } from "react";
-import * as XLSX from "xlsx";
 import { ds } from "@/lib/design-tokens";
 import { tableIndexColumn } from "@/lib/table-index-column";
 import { useT } from "@/lib/use-t";
@@ -25,14 +24,17 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
   const handleFile = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const data = new Uint8Array(e.target?.result as ArrayBuffer);
-      const wb = XLSX.read(data, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-      if (json.length > 0) {
-        setColumns(Object.keys(json[0]));
-        setAllRows(json);
-      }
+      void (async () => {
+        const XLSX = await import("xlsx");
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+        if (json.length > 0) {
+          setColumns(Object.keys(json[0]));
+          setAllRows(json);
+        }
+      })();
     };
     reader.readAsArrayBuffer(file);
     return false;

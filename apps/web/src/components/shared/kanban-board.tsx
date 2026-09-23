@@ -1,5 +1,6 @@
 "use client";
 
+import { HolderOutlined } from "@ant-design/icons";
 import { Card, Tag, Typography, theme } from "antd";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -35,7 +36,17 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
   return (
     <div>
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: 16, minHeight: 500 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            overflowX: "auto",
+            padding: 16,
+            minHeight: 500,
+            WebkitOverflowScrolling: "touch",
+            touchAction: "pan-x",
+          }}
+        >
           {stageOptions.map((stage) => {
             const stageOrders = orders.filter((o) => o.stage === stage.value);
             return (
@@ -71,80 +82,118 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                               <div
                                 ref={dragProvided.innerRef}
                                 {...dragProvided.draggableProps}
-                                {...dragProvided.dragHandleProps}
+                                style={{
+                                  ...dragProvided.draggableProps.style,
+                                  borderRadius: token.borderRadius,
+                                }}
                               >
-                                <Link href={`/orders/${order.id}`} style={{ textDecoration: "none" }}>
-                                  <Card
-                                    size="small"
-                                    hoverable
-                                    styles={{
-                                      body: { background: token.colorBgElevated },
-                                    }}
-                                    style={{
-                                      cursor: "grab",
-                                      border: `1px solid ${token.colorBorder}`,
-                                      borderRadius: token.borderRadius,
+                                <Card
+                                  size="small"
+                                  hoverable
+                                  styles={{
+                                    body: {
                                       background: token.colorBgElevated,
-                                    }}
-                                  >
-                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
-                                      <Typography.Text strong style={{ fontSize: ds.fontSize.caption }}>
-                                        {order.orderNumber}
-                                      </Typography.Text>
-                                      {groupSize > 1 ? (
-                                        <Tag style={{ marginInlineEnd: 0 }}>{t("order.groupTag", { count: groupSize })}</Tag>
-                                      ) : null}
-                                    </div>
-                                    <div
+                                      padding: 10,
+                                      // outer 8 + padding 2 ≈ concentric with column radius
+                                      borderRadius: Math.max(0, token.borderRadiusLG - 8),
+                                    },
+                                  }}
+                                  style={{
+                                    border: `1px solid ${token.colorBorder}`,
+                                    borderRadius: token.borderRadius,
+                                    background: token.colorBgElevated,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                                    <button
+                                      type="button"
+                                      {...dragProvided.dragHandleProps}
+                                      aria-label={t("order.dragHandle")}
+                                      className="crm-pressable"
                                       style={{
-                                        fontSize: ds.fontSize.caption,
-                                        color: token.colorTextSecondary,
-                                        marginTop: 4,
-                                      }}
-                                    >
-                                      {order.customerName}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: ds.fontSize.caption,
-                                        marginTop: 4,
-                                        color: token.colorText,
-                                      }}
-                                    >
-                                      {order.serviceName}
-                                    </div>
-                                    {order.zaloGroupUrl ? (
-                                      <div style={{ marginTop: 6 }}>
-                                        <ZaloGroupLink url={order.zaloGroupUrl} variant="tag" />
-                                      </div>
-                                    ) : null}
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        marginTop: 8,
-                                        fontSize: ds.fontSize.caption,
+                                        display: "inline-flex",
                                         alignItems: "center",
-                                        gap: 4,
-                                        color: token.colorTextSecondary,
+                                        justifyContent: "center",
+                                        width: 32,
+                                        height: 32,
+                                        margin: "-4px 0 0 -4px",
+                                        padding: 0,
+                                        border: "none",
+                                        borderRadius: token.borderRadiusSM,
+                                        background: "transparent",
+                                        color: token.colorTextTertiary,
+                                        cursor: "grab",
+                                        touchAction: "none",
+                                        flexShrink: 0,
                                       }}
                                     >
-                                      <span>{formatVndDisplay(order.value)}</span>
-                                      <Tag style={{ fontSize: ds.fontSize.caption }}>{order.assignedUserName}</Tag>
-                                    </div>
-                                    {(fileCount > 0) && (
+                                      <HolderOutlined />
+                                    </button>
+                                    <Link
+                                      href={`/orders/${order.id}`}
+                                      style={{ textDecoration: "none", color: "inherit", flex: 1, minWidth: 0 }}
+                                    >
+                                      <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
+                                        <Typography.Text strong style={{ fontSize: ds.fontSize.caption }}>
+                                          {order.orderNumber}
+                                        </Typography.Text>
+                                        {groupSize > 1 ? (
+                                          <Tag style={{ marginInlineEnd: 0 }}>
+                                            {t("order.groupTag", { count: groupSize })}
+                                          </Tag>
+                                        ) : null}
+                                      </div>
                                       <div
                                         style={{
-                                          marginTop: 6,
                                           fontSize: ds.fontSize.caption,
-                                          color: token.colorTextTertiary,
+                                          color: token.colorTextSecondary,
+                                          marginTop: 4,
                                         }}
                                       >
-                                        {t("order.fileCount", { count: fileCount })}
+                                        {order.customerName}
                                       </div>
-                                    )}
-                                  </Card>
-                                </Link>
+                                      <div
+                                        style={{
+                                          fontSize: ds.fontSize.caption,
+                                          marginTop: 4,
+                                          color: token.colorText,
+                                        }}
+                                      >
+                                        {order.serviceName}
+                                      </div>
+                                      {order.zaloGroupUrl ? (
+                                        <div style={{ marginTop: 6 }}>
+                                          <ZaloGroupLink url={order.zaloGroupUrl} variant="tag" />
+                                        </div>
+                                      ) : null}
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          marginTop: 8,
+                                          fontSize: ds.fontSize.caption,
+                                          alignItems: "center",
+                                          gap: 4,
+                                          color: token.colorTextSecondary,
+                                        }}
+                                      >
+                                        <span>{formatVndDisplay(order.value)}</span>
+                                        <Tag style={{ fontSize: ds.fontSize.caption }}>{order.assignedUserName}</Tag>
+                                      </div>
+                                      {fileCount > 0 ? (
+                                        <div
+                                          style={{
+                                            marginTop: 6,
+                                            fontSize: ds.fontSize.caption,
+                                            color: token.colorTextTertiary,
+                                          }}
+                                        >
+                                          {t("order.fileCount", { count: fileCount })}
+                                        </div>
+                                      ) : null}
+                                    </Link>
+                                  </div>
+                                </Card>
                               </div>
                             )}
                           </Draggable>
