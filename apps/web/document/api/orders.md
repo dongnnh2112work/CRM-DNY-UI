@@ -68,6 +68,8 @@ interface Order {
 
 **Không gửi `reviewerUserId` trên POST** — `CreateOrderDto` forbid field này (`property reviewerUserId should not exist`). Sau khi có `id`, gán người duyệt chi bằng `PATCH /orders/:id` `{ reviewerUserId }`.
 
+**Chưa có `commissionPercent`** (% hoa hồng nhân viên, dùng tính lương). BE cần persist: [FRONTEND_HANDOFF_ORDER_COMMISSION.md](./FRONTEND_HANDOFF_ORDER_COMMISSION.md).
+
 ---
 
 ## Commands

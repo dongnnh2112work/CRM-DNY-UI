@@ -148,6 +148,13 @@ export const identityAdminApi = {
     });
   },
 
+  createPermission(body: { code: string; description?: string }) {
+    return apiRequest<IdentityPermission>("/permissions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
   setGroupPermissions(id: string, permissionCodes: string[]) {
     return apiRequest<IdentityPermissionGroup>(`/permission-groups/${id}/permissions`, {
       method: "PUT",

@@ -4,6 +4,7 @@ import { Alert, App, Checkbox, Empty, Input, Modal, Space, Spin, Typography } fr
 import { useEffect, useMemo, useState } from "react";
 import { ds } from "@/lib/design-tokens";
 import { apiErrorMessage } from "@/lib/http/message";
+import { ApiError } from "@/lib/http/errors";
 import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
@@ -124,6 +125,15 @@ export function PermissionGroupEditor({
         saved = created;
       } else {
         saved = group;
+      }
+      const registered = new Set(catalog.filter((item) => item.id).map((item) => item.code));
+      for (const code of picked) {
+        if (registered.has(code)) continue;
+        try {
+          await identityAdminApi.createPermission({ code });
+        } catch (err) {
+          if (!(err instanceof ApiError) || err.statusCode !== 409) throw err;
+        }
       }
       const updated = unwrapIdentityEntity<IdentityPermissionGroup>(
         await identityAdminApi.setGroupPermissions(saved.id, picked),

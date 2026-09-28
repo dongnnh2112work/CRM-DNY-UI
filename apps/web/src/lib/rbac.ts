@@ -24,11 +24,13 @@ export const PERMISSION = {
   permissionManage: "permission.manage",
   configManage: "config.manage",
   documentUpload: "document.upload",
+  emailTemplateManage: "email.template.manage",
+  notificationViewOwn: "notification.view_own",
 } as const;
 
 /**
  * Permission tối thiểu để thấy menu trang (phương án A).
- * `null` = không gắn API capability (dashboard / emails / config local).
+ * `null` = không gắn API capability (dashboard / config). Email ẩn khi thiếu `email.template.manage`.
  */
 export const PAGE_VIEW_PERMISSION: Record<SystemPageKey, string | null> = {
   dashboard: null,
@@ -39,7 +41,7 @@ export const PAGE_VIEW_PERMISSION: Record<SystemPageKey, string | null> = {
   payroll: null,
   vat: PERMISSION.vatView,
   services: PERMISSION.serviceView,
-  emails: null,
+  emails: PERMISSION.emailTemplateManage,
   users: PERMISSION.userManage,
   config: null,
   order_statuses: PERMISSION.configManage,

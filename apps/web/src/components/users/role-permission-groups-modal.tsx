@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { PermissionGroupEditor } from "@/components/users/permission-group-editor";
 import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
-import { permissionTitle } from "@/lib/permission-catalog";
+import { ALL_PERMISSION_CODES, permissionTitle } from "@/lib/permission-catalog";
 import { ds } from "@/lib/design-tokens";
 import { fetchAllPages, unwrapList, type PageResult } from "@/lib/http/paging";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -48,6 +48,15 @@ async function loadCatalogRows<T>(
     // BE may not accept page query — fall back to unfiltered list.
   }
   return unwrapList(await fallback());
+}
+
+/** GET /permissions is the live catalog. Newer codes (e.g. email.template.manage) may be missing until seeded. */
+function withKnownPermissionCodes(rows: IdentityPermission[]): IdentityPermission[] {
+  const seen = new Set(rows.map((row) => row.code?.trim()).filter(Boolean));
+  const extra: IdentityPermission[] = ALL_PERMISSION_CODES.filter((code) => !seen.has(code)).map((code) => ({
+    code,
+  }));
+  return [...rows, ...extra];
 }
 
 export function RolePermissionGroupsAdmin({
@@ -128,11 +137,11 @@ export function RolePermissionGroupsAdmin({
           () => [] as IdentityPermission[],
         ),
       ]);
-      setCatalog(
+      setCatalog(withKnownPermissionCodes(
         permsResult
           .map((row) => unwrapIdentityEntity<IdentityPermission>(row) ?? row)
           .filter((row) => row?.code),
-      );
+      ));
       const apiGroups = groupsResult.rows;
       if (groupsResult.error) setLoadError(groupsResult.error);
       const roleRows = apiRoles

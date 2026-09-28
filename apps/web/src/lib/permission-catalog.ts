@@ -70,6 +70,7 @@ export const ALL_PERMISSION_CODES = [
   "role.manage",
   "permission.manage",
   "notification.view_own",
+  "email.template.manage",
   "config.manage",
 ] as const;
 
@@ -94,6 +95,7 @@ export const PERMISSION_RESOURCE_ORDER = [
   "role",
   "permission",
   "notification",
+  "email",
   "config",
 ] as const;
 

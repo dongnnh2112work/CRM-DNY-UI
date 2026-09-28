@@ -34,7 +34,6 @@ import { formatDisplayDateTime } from "@/lib/format-date";
 import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
-import { useEmails } from "@/lib/emails-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
 import { getPayrollScope } from "@/lib/payroll";
@@ -53,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { token } = theme.useToken();
   const { theme: appTheme, setTheme } = useAppConfig();
   const t = useT();
-  const { currentUser, logout, getById: getUser, getEffectivePermissions } = useUsers();
+  const { currentUser, logout, getEffectivePermissions } = useUsers();
   const { user: apiUser, can, logout: logoutApi } = useSession();
   const { refreshing, lastSyncedAt, refreshCurrent } = useApiHydrate();
   const { orders, ready: ordersReady } = useOrders();
@@ -61,7 +60,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { config } = useAppReminderConfig();
   const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
     useNotifications();
-  const { addEmails } = useEmails();
   const [collapsed, setCollapsed] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const scannedRef = useRef(false);
@@ -76,40 +74,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ordersReady || !servicesReady || !notifReady || scannedRef.current) return;
     scannedRef.current = true;
-    const created = scanOrderAlerts(orders, {
+    scanOrderAlerts(orders, {
       services,
       vatWarnDays: config.vatIssueWarnDays,
     });
-    const today = new Date().toISOString().slice(0, 10);
-    const viewLabel = t("shell.viewDetails");
-    addEmails(
-      created.flatMap((n) => {
-        const user = getUser(n.userId);
-        if (!user?.email) return [];
-        return [
-          {
-            subject: n.title,
-            recipients: [user.email],
-            recipientCount: 1,
-            status: "sent" as const,
-            sentAt: today,
-            body: `<p>${n.body}</p><p><a href="${n.href ?? "#"}">${viewLabel}</a></p>`,
-          },
-        ];
-      }),
-    );
-  }, [
-    ordersReady,
-    servicesReady,
-    notifReady,
-    orders,
-    services,
-    config.vatIssueWarnDays,
-    scanOrderAlerts,
-    addEmails,
-    getUser,
-    t,
-  ]);
+  }, [ordersReady, servicesReady, notifReady, orders, services, config.vatIssueWarnDays, scanOrderAlerts]);
 
   const menuItems = useMemo(() => {
     const payrollItem: MenuItems =

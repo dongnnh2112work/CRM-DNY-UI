@@ -50,6 +50,7 @@ export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
     scheduled: { label: "Đã lên lịch", color: "processing" },
     sent: { label: "Đã gửi", color: "success" },
     failed: { label: "Thất bại", color: "error" },
+    skipped: { label: "Bỏ qua", color: "warning" },
   },
   vat: {
     draft: { label: "Nháp", color: "default" },

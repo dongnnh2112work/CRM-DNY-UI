@@ -164,6 +164,16 @@ UI **không** dùng `/imports/batches` (pipeline đó là **leads**). UI `POST /
 
 ---
 
+## 11. `%` hoa hồng nhân viên trên đơn
+
+UI nhập `commissionPercent` (0–100) lúc tạo/sửa đơn. `POST`/`PATCH /orders` **không** có field này; reload mất và lương FE = 0.
+
+**BE cần:** cột nullable trên Order, trả trên GET, nhận trên POST và PATCH. Chi tiết: [api/FRONTEND_HANDOFF_ORDER_COMMISSION.md](./api/FRONTEND_HANDOFF_ORDER_COMMISSION.md).
+
+**Không làm:** API tính lương mới, không gắn với `collaboratorPrice` / module commissions.
+
+---
+
 ## Checklist BE (thứ tự)
 
 1. Google user: pending + không role; admin `PUT roles` + `ACTIVE`.
@@ -173,3 +183,4 @@ UI **không** dùng `/imports/batches` (pipeline đó là **leads**). UI `POST /
 5. `PATCH /config/:key` nhận 3 key mục 2 (đã upsert thì chỉ seed `config.manage`).
 6. Service PATCH/archive giữ ARCHIVED.
 7. Map role/permission (mục 5A hoặc 5B) — một lần, không song song hai hệ.
+8. Order `commissionPercent` trên GET/POST/PATCH (mục 11).

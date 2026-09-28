@@ -71,7 +71,7 @@ NEXT_PUBLIC_API_URL=https://apidyn.otcayxe.com/api/v1
 | Workflows | [workflows.md](./workflows.md) | **Live** |
 | Tasks | [tasks.md](./tasks.md) | **Live** |
 | Documents | [documents.md](./documents.md) · [FRONTEND_HANDOFF_DOCUMENTS.md](./FRONTEND_HANDOFF_DOCUMENTS.md) | **Live** |
-| Orders | [orders.md](./orders.md) | **Live** |
+| Orders | [orders.md](./orders.md) · % NV: [FRONTEND_HANDOFF_ORDER_COMMISSION.md](./FRONTEND_HANDOFF_ORDER_COMMISSION.md) | **Live** (thiếu `commissionPercent`) |
 | Payments | [payments.md](./payments.md) | **Live** |
 | VAT invoices | [vat.md](./vat.md) | **Live** |
 | Expenses | [expenses.md](./expenses.md) | **Live** |
