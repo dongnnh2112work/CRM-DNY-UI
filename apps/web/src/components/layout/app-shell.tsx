@@ -15,6 +15,7 @@ import {
   MenuUnfoldOutlined,
   MoonOutlined,
   ProjectOutlined,
+  QuestionCircleOutlined,
   ReloadOutlined,
   SafetyOutlined,
   SettingOutlined,
@@ -145,6 +146,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       });
     }
     items.push({ key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> });
+    items.push({
+      key: "/huong-dan",
+      icon: <QuestionCircleOutlined />,
+      label: <Link href="/huong-dan">{t("nav.guide")}</Link>,
+    });
     const pageByPath: Record<string, Parameters<typeof canSeeMenuPage>[0]["page"]> = {
       "/orders": "orders",
       "/customers": "customers",
