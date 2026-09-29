@@ -62,6 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
     useNotifications();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobile, setMobile] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const scannedRef = useRef(false);
   const isDark = appTheme === "dark";
@@ -195,7 +196,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/users")) {
       setOpenKeys((prev) => (prev.includes("users-group") ? prev : [...prev, "users-group"]));
     }
-  }, [pathname]);
+    if (mobile) setCollapsed(true);
+  }, [pathname, mobile]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 991px)");
+    const apply = () => {
+      setMobile(media.matches);
+      if (media.matches) setCollapsed(true);
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
 
   const searchTarget = useMemo(() => getHeaderSearchTarget(pathname), [pathname]);
 
@@ -212,17 +225,44 @@ export function AppShell({ children }: { children: ReactNode }) {
   const displayName = apiUser?.displayName ?? currentUser?.name ?? t("shell.guest");
 
   return (
-    <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
+    <Layout className="crm-layout" style={{ height: "100dvh", overflow: "hidden", background: token.colorBgLayout }}>
+      {mobile && !collapsed ? (
+        <button
+          type="button"
+          aria-label="Đóng menu"
+          onClick={() => setCollapsed(true)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            border: 0,
+            padding: 0,
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 150,
+          }}
+        />
+      ) : null}
       <Sider
         className="crm-sider"
         collapsible
+        trigger={null}
         collapsed={collapsed}
+        collapsedWidth={mobile ? 0 : 80}
+        zeroWidthTriggerStyle={{ display: "none" }}
         onCollapse={setCollapsed}
         width={280}
         theme={isDark ? "dark" : "light"}
         style={{
           background: token.colorBgContainer,
           borderRight: `1px solid ${token.colorBorder}`,
+          ...(mobile
+            ? {
+                position: "fixed",
+                zIndex: 200,
+                height: "100dvh",
+                left: 0,
+                top: 0,
+              }
+            : null),
         }}
       >
         <div
@@ -257,8 +297,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           }}
         />
       </Sider>
-      <Layout style={{ background: token.colorBgLayout }}>
+      <Layout className="crm-main" style={{ minWidth: 0, minHeight: 0, height: "100%", overflow: "hidden", background: token.colorBgLayout }}>
         <Header
+          className="crm-header"
           style={{
             padding: "0 20px",
             height: 48,
@@ -266,6 +307,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             display: "flex",
             alignItems: "center",
             gap: 12,
+            flex: "0 0 48px",
             borderBottom: `1px solid ${token.colorBorder}`,
             background: token.colorBgContainer,
           }}
@@ -279,11 +321,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Input.Search
             placeholder={t(searchTarget.placeholderKey)}
             allowClear
-            style={{ maxWidth: 360, flex: 1 }}
+            style={{ maxWidth: 360, flex: 1, minWidth: 0 }}
             onSearch={onSearch}
           />
           <Space style={{ marginLeft: "auto" }} size={8}>
-            <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
+            <Typography.Text className="crm-sync" type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
               {lastSyncedAt
                 ? t("shell.lastSynced", {
                     time: formatDisplayDateTime(lastSyncedAt),
@@ -419,14 +461,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                     color: token.colorText,
                   }}
                 />
-                <Typography.Text style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
+                <Typography.Text className="crm-user-name" style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
                   {displayName}
                 </Typography.Text>
               </Space>
             </Dropdown>
           </Space>
         </Header>
-        <Content style={{ margin: 16 }}>
+        <Content
+          className="crm-content"
+          style={{ margin: 16, flex: 1, minHeight: 0, minWidth: 0, display: "flex", overflow: "hidden" }}
+        >
           <div className="nt-page-shell">{children}</div>
         </Content>
       </Layout>
