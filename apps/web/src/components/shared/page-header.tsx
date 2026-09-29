@@ -51,7 +51,7 @@ export function PageHeader({
           <Input.Search
             placeholder={searchPlaceholder ?? t("common.search")}
             allowClear
-            style={{ width: 280 }}
+            style={{ width: "100%", maxWidth: 280, minWidth: 0, flex: "1 1 160px" }}
             value={searchValue}
             onChange={(e) => onSearch(e.target.value)}
           />
@@ -64,6 +64,7 @@ export function PageHeader({
             value={dateRange}
             onChange={(next) => onDateRangeChange(next)}
             placeholder={[t("common.dateFrom"), t("common.dateTo")]}
+            style={{ maxWidth: "100%" }}
           />
         ) : null}
         {children}

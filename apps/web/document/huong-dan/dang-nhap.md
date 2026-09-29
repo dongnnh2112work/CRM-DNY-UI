@@ -1,30 +1,57 @@
-# Đăng nhập
+# 1. Đăng nhập
 
-Mở CRM. Nếu chưa đăng nhập, bạn sẽ thấy màn hình dưới đây.
+Chưa có phiên thì CRM mở màn dưới đây.
 
-![Màn đăng nhập: nút Google, ô email và mật khẩu](/huong-dan/dang-nhap.png)
+![Màn đăng nhập](/huong-dan/dang-nhap.png)
 
-## Cách vào
+Hình 1.1. Màn đăng nhập: Google hoặc email
 
-1. Bấm **Đăng nhập bằng Google** nếu công ty cấp cho bạn Gmail.
-2. Hoặc điền **Email** và **Mật khẩu**, rồi bấm **Đăng nhập**.
+## 1.1 Cách vào
 
-Đúng tài khoản thì vào **Tổng quan**.
+```map
+Vào CRM
+  Google
+  Email + mật khẩu
+    Đúng tài khoản
+      Tổng quan
+    Sai mật khẩu
+      Ở lại màn đăng nhập
+```
 
-## Gmail mới
+### 1.1.1 Google
 
-Lần đầu đăng nhập Google, tài khoản được tạo nhưng **chưa được vào làm việc**. Màn hình chỉ báo đang chờ duyệt và có nút đăng xuất.
+Bấm ==Đăng nhập bằng Google== nếu công ty cấp Gmail.
 
-![Màn chờ duyệt sau khi đăng nhập Google lần đầu](/huong-dan/cho-duyet.png)
+### 1.1.2 Email
 
-Việc của bạn: báo quản trị. Khi họ đã gán quyền, bấm **Kiểm tra lại** hoặc mở lại trang. Không cần đợi email.
+Điền **Email**, **Mật khẩu**, rồi bấm ==Đăng nhập==.
 
-## Khi không vào được
+## 1.2 Gmail lần đầu
 
-- Sai email hoặc mật khẩu: kiểm tra lại, thử Google nếu đó là cách bạn được cấp.
+Tài khoản được tạo nhưng ==chưa được vào làm việc==.
+
+![Màn chờ duyệt](/huong-dan/cho-duyet.png)
+
+Hình 1.2. Tài khoản đang chờ quản trị gán quyền
+
+```flow
+Google lần đầu → Chờ duyệt → Quản trị gán quyền → Kiểm tra lại → Tổng quan
+```
+
+:::note
+Không cần đợi email. Khi đã được gán quyền, bấm **Kiểm tra lại** hoặc mở lại trang.
+:::
+
+## 1.3 Không vào được
+
+- Sai email hoặc mật khẩu: nhập lại, hoặc thử Google nếu đó là cách được cấp.
 - Google báo lỗi: quay về đăng nhập và thử lại.
-- Tài khoản bị khóa: liên hệ quản trị. Tự đăng nhập lại không mở được.
+- Tài khoản bị khóa: báo quản trị. Tự đăng nhập lại ==không mở được==.
 
-## Đăng xuất
+:::warn
+Đừng gửi ảnh màn hình có mật khẩu cho người khác.
+:::
 
-Góc trên bên phải, bấm tên của bạn, chọn **Đăng xuất**.
+## 1.4 Đăng xuất
+
+Góc trên bên phải, bấm tên của bạn, chọn ==Đăng xuất==.
