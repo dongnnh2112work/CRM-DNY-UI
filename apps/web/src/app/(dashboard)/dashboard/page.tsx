@@ -206,20 +206,15 @@ export default function DashboardPage() {
                 <Typography.Text type="secondary">{t("dash.payrollNoAccess")}</Typography.Text>
               </Card>
             ) : (
-              <Link href="/payroll" style={{ color: "inherit", display: "block" }}>
+              <Link href="/payroll" style={{ color: "inherit", display: "block", height: "100%" }}>
                 <StatCard
                   title={payrollScope === "self" ? t("dash.myPayroll") : t("dash.commissionPaid")}
                   value={0}
                   prefix={<TrophyOutlined />}
                   suffix=""
                   accent={ds.accentOrange}
+                  description={t("dash.openPayroll")}
                 />
-                <Typography.Text
-                  type="secondary"
-                  style={{ display: "block", marginTop: -8, padding: "0 16px 12px", fontSize: 12 }}
-                >
-                  {t("dash.openPayroll")}
-                </Typography.Text>
               </Link>
             )}
           </Col>

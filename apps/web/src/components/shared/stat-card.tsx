@@ -24,6 +24,7 @@ export function StatCard({
   prefix,
   suffix,
   accent = ds.primary,
+  description,
 }: {
   title: string;
   value: number | string;
@@ -31,6 +32,8 @@ export function StatCard({
   suffix?: string;
   /** Metric accent — icon chip + value tint */
   accent?: string;
+  /** Optional hint under the value (kept inside the card so it is not clipped). */
+  description?: ReactNode;
 }) {
   const { token } = theme.useToken();
 
@@ -49,6 +52,7 @@ export function StatCard({
       style={{
         borderRadius: token.borderRadiusLG,
         background: token.colorBgContainer,
+        height: "100%",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -82,6 +86,18 @@ export function StatCard({
               },
             }}
           />
+          {description ? (
+            <div
+              style={{
+                marginTop: 6,
+                color: token.colorTextSecondary,
+                fontSize: ds.fontSize.caption,
+                lineHeight: 1.4,
+              }}
+            >
+              {description}
+            </div>
+          ) : null}
         </div>
       </div>
     </Card>
