@@ -35,9 +35,12 @@ import { useUsers } from "@/lib/users-store";
 import { identityAdminApi } from "@/modules/identity-admin/api";
 import {
   mapIdentityUserToUi,
+  roleCodesEqual,
   uiRoleToApiCodes,
   uiStatusToApi,
+  unwrapIdentityEntity,
 } from "@/modules/identity-admin/map-to-ui";
+import type { IdentityUser } from "@/modules/identity-admin/api";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -91,9 +94,31 @@ export default function UsersPage() {
     setProfileOpen(true);
   };
 
-  const openUser = (user: AppUser) => {
+  const openUser = async (user: AppUser) => {
     setEditUser(user);
     setProfileOpen(true);
+    try {
+      const raw = await identityAdminApi.getUser(user.id);
+      const detail = unwrapIdentityEntity<IdentityUser>(raw) ?? raw;
+      const mapped = mapIdentityUserToUi(detail);
+      setEditUser({
+        ...user,
+        ...mapped,
+        email: mapped.email || user.email,
+        phone: mapped.phone ?? user.phone,
+        dateOfBirth: user.dateOfBirth,
+        address: user.address,
+        avatar: user.avatar,
+      });
+      updateUser(user.id, {
+        role: mapped.role,
+        roleCodes: mapped.roleCodes,
+        status: mapped.status,
+        name: mapped.name,
+      });
+    } catch {
+      // Keep list row if detail fetch fails — save may still work with selected role.
+    }
   };
 
   const closeProfile = () => {
@@ -262,17 +287,22 @@ export default function UsersPage() {
                   phone: values.phone,
                   status: uiStatusToApi(values.status),
                 });
-                if (values.role && values.role !== editUser.role) {
-                  await identityAdminApi.setUserRoles(editUser.id, uiRoleToApiCodes(values.role));
+                const nextRoleCodes = values.role
+                  ? uiRoleToApiCodes(values.role)
+                  : (editUser.roleCodes ?? uiRoleToApiCodes(editUser.role));
+                const prevRoleCodes = editUser.roleCodes ?? uiRoleToApiCodes(editUser.role);
+                if (!roleCodesEqual(prevRoleCodes, nextRoleCodes)) {
+                  await identityAdminApi.setUserRoles(editUser.id, nextRoleCodes);
                   if (apiUser?.id === editUser.id) await refreshMe();
                   else message.info(t("user.refreshSessionHint"));
                 }
                 const mapped = mapIdentityUserToUi({
                   ...updated,
-                  roleCodes: values.role ? uiRoleToApiCodes(values.role) : updated.roleCodes,
+                  roleCodes: nextRoleCodes,
                 });
                 updateUser(editUser.id, {
                   ...mapped,
+                  roleCodes: nextRoleCodes,
                   email: values.email,
                   dateOfBirth: values.dateOfBirth,
                   address: values.address,

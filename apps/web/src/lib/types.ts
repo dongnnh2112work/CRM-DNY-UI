@@ -39,6 +39,8 @@ export interface AppUser {
   dateOfBirth?: string; // YYYY-MM-DD
   address?: string;
   role: UserRole;
+  /** Raw BE role codes — needed because several API roles collapse into one UI key. */
+  roleCodes?: string[];
   status: UserStatus;
   authMethod: "google" | "email";
   avatar?: string;

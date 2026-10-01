@@ -243,8 +243,17 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const mergeRemoteRoles = useCallback((items: RoleDefinition[]) => {
-    const extras = items.filter((r) => !r.builtin && !BUILT_IN_ROLES.some((b) => b.key === r.key));
-    setRoles([...BUILT_IN_ROLES, ...extras]);
+    const byKey = new Map<string, RoleDefinition>();
+    for (const role of BUILT_IN_ROLES) byKey.set(role.key, role);
+    for (const role of items) {
+      const existing = byKey.get(role.key);
+      if (existing?.builtin) {
+        byKey.set(role.key, { ...existing, label: role.label || existing.label });
+      } else {
+        byKey.set(role.key, role);
+      }
+    }
+    setRoles([...byKey.values()]);
   }, []);
 
   const hydratePagePermissions = useCallback((raw: unknown | null) => {

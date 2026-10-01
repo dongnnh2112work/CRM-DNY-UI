@@ -12,19 +12,26 @@ export function mapApiRoleCodeToUi(code: string): UserRole {
   const c = code.toUpperCase();
   if (c === "SUPER_ADMIN") return "super_admin";
   if (c === "ADMIN") return "admin";
-  if (c === "ACCOUNTANT") return "accountant";
+  if (c === "ACCOUNTANT" || c === "ACCOUNTING") return "accountant";
   if (c.includes("CTV") || c.includes("COLLAB")) return "ctv_role";
   if (c === "SALES" || c === "STAFF") return "staff";
+  if (c === "MANAGER") return "manager";
+  if (c === "LAWYER") return "lawyer";
+  if (c === "LEGAL_ASSISTANT") return "legal_assistant";
   return code.toLowerCase();
 }
 
+/** Primary API role code to send on PUT /users/:id/roles. */
 export function uiRoleToApiCodes(role: UserRole): string[] {
   const map: Record<string, string> = {
     super_admin: "SUPER_ADMIN",
     admin: "ADMIN",
-    accountant: "ACCOUNTANT",
+    accountant: "ACCOUNTING",
     staff: "SALES",
-    ctv_role: "CTV",
+    ctv_role: "COLLABORATOR",
+    manager: "MANAGER",
+    lawyer: "LAWYER",
+    legal_assistant: "LEGAL_ASSISTANT",
   };
   return [map[role] ?? String(role).toUpperCase()];
 }
@@ -32,9 +39,12 @@ export function uiRoleToApiCodes(role: UserRole): string[] {
 const UI_ROLE_API_ALIASES: Record<string, string[]> = {
   super_admin: ["SUPER_ADMIN"],
   admin: ["ADMIN"],
-  accountant: ["ACCOUNTANT", "ACCOUNTING"],
+  accountant: ["ACCOUNTING", "ACCOUNTANT"],
   staff: ["SALES", "STAFF"],
-  ctv_role: ["CTV", "COLLABORATOR"],
+  ctv_role: ["COLLABORATOR", "CTV"],
+  manager: ["MANAGER"],
+  lawyer: ["LAWYER"],
+  legal_assistant: ["LEGAL_ASSISTANT"],
 };
 
 export function apiCodesForUiRole(uiKey: string): string[] {
@@ -54,9 +64,10 @@ export function userHasApiRole(user: Pick<IdentityUser, "roleCodes">, codes: str
   return (user.roleCodes ?? []).some((code) => aliases.has(code.toUpperCase()));
 }
 
-export function stripApiRoleCodes(roleCodes: string[] | undefined, drop: string[]): string[] {
-  const aliases = new Set(drop.map((c) => c.toUpperCase()));
-  return (roleCodes ?? []).filter((code) => !aliases.has(code.toUpperCase()));
+export function roleCodesEqual(a: string[] | undefined, b: string[] | undefined): boolean {
+  const left = [...(a ?? [])].map((c) => c.toUpperCase()).sort();
+  const right = [...(b ?? [])].map((c) => c.toUpperCase()).sort();
+  return left.length === right.length && left.every((code, i) => code === right[i]);
 }
 
 export function unwrapIdentityEntity<T extends object>(raw: unknown): T | undefined {
@@ -91,12 +102,26 @@ export function uiStatusToApi(status: UserStatus | undefined): "ACTIVE" | "SUSPE
 }
 
 function mapRole(codes: string[] | undefined): UserRole {
-  const c = (codes ?? []).map((x) => x.toUpperCase());
-  if (c.includes("SUPER_ADMIN")) return "super_admin";
-  if (c.includes("ADMIN")) return "admin";
-  if (c.includes("ACCOUNTANT")) return "accountant";
-  if (c.some((x) => x.includes("CTV") || x.includes("COLLAB"))) return "ctv_role";
-  return "staff";
+  const list = codes ?? [];
+  if (!list.length) return "staff";
+  const priority = [
+    "SUPER_ADMIN",
+    "ADMIN",
+    "MANAGER",
+    "ACCOUNTING",
+    "ACCOUNTANT",
+    "LAWYER",
+    "LEGAL_ASSISTANT",
+    "COLLABORATOR",
+    "CTV",
+    "SALES",
+    "STAFF",
+  ];
+  const upper = list.map((x) => x.toUpperCase());
+  for (const code of priority) {
+    if (upper.includes(code)) return mapApiRoleCodeToUi(code);
+  }
+  return mapApiRoleCodeToUi(list[0]);
 }
 
 function mapStatus(status: string | undefined): UserStatus {
@@ -111,6 +136,7 @@ export function mapIdentityUserToUi(u: IdentityUser): AppUser {
     email: u.email,
     phone: u.phone ?? undefined,
     role: mapRole(u.roleCodes),
+    roleCodes: u.roleCodes?.length ? [...u.roleCodes] : undefined,
     status: mapStatus(u.status),
     authMethod: "email",
     createdAt: u.createdAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
@@ -123,6 +149,7 @@ export function mapAuthUserToUi(u: AuthUser): AppUser {
     name: u.displayName || u.email,
     email: u.email,
     role: mapRole(u.roleCodes),
+    roleCodes: u.roleCodes?.length ? [...u.roleCodes] : undefined,
     status: mapStatus(u.status),
     authMethod: "email",
     createdAt: new Date().toISOString().slice(0, 10),

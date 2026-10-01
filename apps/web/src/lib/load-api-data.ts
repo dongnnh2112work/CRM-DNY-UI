@@ -18,7 +18,9 @@ import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
 import { expensesApi } from "@/modules/expenses/api";
 import { mapApiExpenseToUi } from "@/modules/expenses/map-to-ui";
 import { identityAdminApi } from "@/modules/identity-admin/api";
-import { mapAuthUserToUi, mapIdentityRoleToUi, mapIdentityUserToUi } from "@/modules/identity-admin/map-to-ui";
+import { mapAuthUserToUi, mapIdentityRoleToUi, mapIdentityUserToUi, unwrapIdentityEntity } from "@/modules/identity-admin/map-to-ui";
+import { fillMissingRoleCodes } from "@/modules/identity-admin/reassign-pending";
+import type { IdentityUser } from "@/modules/identity-admin/api";
 import { notificationsApi } from "@/modules/notifications/api";
 import { mapApiNotificationToUi } from "@/modules/notifications/map-to-ui";
 import { ordersApi, type ApiScheduleLine } from "@/modules/orders/api";
@@ -275,7 +277,10 @@ export async function applyRemoteData(
 
   let uiUsers = current.users;
   if (apiUsers) {
-    const mapped = apiUsers.items.map(mapIdentityUserToUi);
+    const withRoles = await fillMissingRoleCodes(
+      apiUsers.items.map((row) => unwrapIdentityEntity<IdentityUser>(row) ?? row),
+    );
+    const mapped = withRoles.map(mapIdentityUserToUi);
     uiUsers = append ? mergeById(current.users, mapped) : mapped;
     if (sessionUser && !uiUsers.some((u) => u.id === sessionUser.id)) {
       uiUsers.unshift(mapAuthUserToUi(sessionUser));

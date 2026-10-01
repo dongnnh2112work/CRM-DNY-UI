@@ -3351,6 +3351,12 @@ const ROLE_I18N: Record<string, MessageKey> = {
   staff: "role.staff",
   accountant: "role.accountant",
   ctv_role: "role.ctv_role",
+  manager: "role.MANAGER",
+  lawyer: "role.LAWYER",
+  legal_assistant: "role.LEGAL_ASSISTANT",
+  accounting: "role.ACCOUNTING",
+  sales: "role.SALES",
+  collaborator: "role.COLLABORATOR",
 };
 
 let currentLocale: AppLocale = "vi";

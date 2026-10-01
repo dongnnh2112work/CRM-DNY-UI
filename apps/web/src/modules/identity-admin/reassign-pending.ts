@@ -48,7 +48,7 @@ export async function listAllIdentityUsers(): Promise<IdentityUser[]> {
   return all.filter((row) => row?.id);
 }
 
-async function fillMissingRoleCodes(users: IdentityUser[]): Promise<IdentityUser[]> {
+export async function fillMissingRoleCodes(users: IdentityUser[]): Promise<IdentityUser[]> {
   const missing = users.filter((user) => !user.roleCodes);
   if (!missing.length) return users;
   const filled = new Map<string, IdentityUser>();
