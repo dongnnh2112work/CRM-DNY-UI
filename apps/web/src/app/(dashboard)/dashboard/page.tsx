@@ -19,6 +19,7 @@ import { buildPaidRevenueByMonth } from "@/lib/dashboard-metrics";
 import { ds } from "@/lib/design-tokens";
 import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { currentYearMonth } from "@/lib/order-cashflow";
 import { looksLikeUuid } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
@@ -99,7 +100,14 @@ export default function DashboardPage() {
   const { customers } = useCustomers();
   const { listMeta } = useApiHydrate();
   const { stageOptions } = useOrderStatusConfig();
-  const statsReady = Boolean(listMeta.orders && listMeta.customers && listMeta.payments);
+  const countsReady = Boolean(listMeta.orders && listMeta.customers && listMeta.payments);
+  const ordersFull =
+    Boolean(listMeta.orders) && listMeta.orders!.loaded >= listMeta.orders!.total;
+  const paymentsFull =
+    Boolean(listMeta.payments) && listMeta.payments!.loaded >= listMeta.payments!.total;
+  const chartsReady = ordersFull && paymentsFull;
+  const previewReady = orders.length > 0 || payments.length > 0;
+  const expensesReady = Boolean(listMeta.expenses) && listMeta.expenses!.loaded > 0;
   const recentOrders = orders.slice(0, 5);
   const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
   const orderStatusData = buildOrderStatusChart(orders, stageOptions);
@@ -123,6 +131,12 @@ export default function DashboardPage() {
     return visible.reduce((sum, s) => sum + s.total, 0);
   }, [orders, payments, expenses, payrollScope, currentUser]);
 
+  const displayName = (value?: string) => {
+    const text = value?.trim();
+    if (!text || looksLikeUuid(text)) return "—";
+    return text;
+  };
+
   const revenueData = useMemo(
     () =>
       revenueByMonth.map((item) => {
@@ -142,7 +156,7 @@ export default function DashboardPage() {
       <div style={{ padding: 16 }}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
-            {statsReady ? (
+            {chartsReady ? (
               <StatCard
                 title={t("dash.revenueMonth")}
                 value={revenueThisMonth}
@@ -157,7 +171,7 @@ export default function DashboardPage() {
             )}
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            {statsReady ? (
+            {countsReady ? (
               <StatCard
                 title={t("dash.totalOrders")}
                 value={totalOrders}
@@ -171,7 +185,7 @@ export default function DashboardPage() {
             )}
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            {statsReady ? (
+            {countsReady ? (
               <StatCard
                 title={t("dash.totalCustomers")}
                 value={totalCustomers}
@@ -185,7 +199,7 @@ export default function DashboardPage() {
             )}
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            {statsReady ? (
+            {expensesReady && chartsReady ? (
               payrollScope === "none" ? (
                 <StatCard
                   title={t("dash.commissionPaid")}
@@ -214,7 +228,7 @@ export default function DashboardPage() {
         </Row>
 
         <DashboardCharts
-          ready={statsReady}
+          ready={chartsReady}
           revenueData={revenueData}
           orderStatusData={orderStatusData}
           highlightMonth={thisMonthKey}
@@ -229,7 +243,7 @@ export default function DashboardPage() {
               className="crm-dash-card"
               extra={<Link href="/orders">{t("common.viewAll")}</Link>}
             >
-              {statsReady ? (
+              {previewReady ? (
                 <Space orientation="vertical" style={{ width: "100%" }} size={0}>
                   {recentOrders.map((o) => (
                     <div key={o.id} className="crm-dash-list-row">
@@ -244,7 +258,7 @@ export default function DashboardPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {o.customerName} · {o.serviceName}
+                          {displayName(o.customerName)} · {displayName(o.serviceName)}
                         </div>
                       </div>
                       <Typography.Text
@@ -267,7 +281,7 @@ export default function DashboardPage() {
               className="crm-dash-card"
               extra={<Link href="/payments">{t("common.viewAll")}</Link>}
             >
-              {statsReady ? (
+              {previewReady ? (
                 <Space orientation="vertical" style={{ width: "100%" }} size={0}>
                   {upcomingPayments.map((p) => (
                     <div key={p.id} className="crm-dash-list-row">
@@ -282,7 +296,7 @@ export default function DashboardPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {p.customerName} ·{" "}
+                          {displayName(p.customerName)} ·{" "}
                           {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
                         </div>
                       </div>

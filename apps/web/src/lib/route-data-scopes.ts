@@ -44,7 +44,6 @@ export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/users")) return ["users"];
   if (pathname.startsWith("/payroll")) return ["orders", "expenses", "payments"];
   if (pathname.startsWith("/notifications")) return ["notifications"];
-  if (pathname.startsWith("/dashboard")) return ["orders", "customers", "payments"];
   return [];
 }
 
