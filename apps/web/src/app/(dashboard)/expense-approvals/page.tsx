@@ -22,6 +22,7 @@ import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { expensesApi } from "@/modules/expenses/api";
+import { EXPENSE_VOID_NOTE } from "@/modules/expenses/map-to-ui";
 import { useT } from "@/lib/use-t";
 import { useRemoteList } from "@/components/api-hydrator";
 
@@ -53,7 +54,11 @@ export default function ExpenseApprovalsPage() {
 
   const filtered = useMemo(() => {
     let list = [...expenses];
-    if (statusFilter !== "all") list = list.filter((e) => e.status === statusFilter);
+    if (statusFilter === "pending") {
+      list = list.filter((e) => e.status === "pending" || e.status === "cancelled");
+    } else if (statusFilter !== "all") {
+      list = list.filter((e) => e.status === statusFilter);
+    }
     if (dateRange?.[0] || dateRange?.[1]) {
       list = list.filter((e) => isInDateRange(e.requestedAt, dateRange));
     }
@@ -131,22 +136,41 @@ export default function ExpenseApprovalsPage() {
         key: "actions",
         render: (_, r) => {
           if (r.status !== "pending") {
-            return r.reviewedByName ? (
-              <Tag>
-                {r.status === "approved"
-                  ? t("expense.approvedBy", { name: r.reviewedByName })
-                  : t("expense.rejectedBy", { name: r.reviewedByName })}
-              </Tag>
-            ) : (
-              "—"
-            );
+            if (!r.reviewedByName) return "—";
+            const label =
+              r.status === "approved"
+                ? t("expense.approvedBy", { name: r.reviewedByName })
+                : r.status === "cancelled"
+                  ? t("expense.voidedBy", { name: r.reviewedByName })
+                  : t("expense.rejectedBy", { name: r.reviewedByName });
+            return <Tag>{label}</Tag>;
           }
           if (!currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
           const block = expenseReviewBlock({
             hasExpenseApprovePermission: canApproveApi,
           });
+          const canVoid = block === "ok" || r.requestedById === currentUser.id;
+          const voidAction = canVoid ? (
+            <Popconfirm
+              title={t("expense.voidTitle")}
+              description={t("expense.voidBody")}
+              okText={t("expense.void")}
+              cancelText={t("common.cancel")}
+              onConfirm={async () => {
+                try {
+                  if (!r.id.startsWith("ex-")) await expensesApi.reject(r.id, EXPENSE_VOID_NOTE);
+                  reviewExpense(r.id, "cancelled", { id: currentUser.id, name: currentUser.name }, EXPENSE_VOID_NOTE);
+                  message.success(t("expense.voided"));
+                } catch (err) {
+                  message.error(apiErrorMessage(err, t("expense.voided")));
+                }
+              }}
+            >
+              <Button size="small">{t("expense.void")}</Button>
+            </Popconfirm>
+          ) : null;
           if (block !== "ok") {
-            return <Tag>{t("expense.needApprovePerm")}</Tag>;
+            return voidAction ?? <Tag>{t("expense.needApprovePerm")}</Tag>;
           }
           return (
             <Space>
@@ -203,6 +227,7 @@ export default function ExpenseApprovalsPage() {
                   {t("common.reject")}
                 </Button>
               </Popconfirm>
+              {voidAction}
             </Space>
           );
         },
@@ -251,6 +276,7 @@ export default function ExpenseApprovalsPage() {
             { value: "pending", label: t("status.approval.pending_review") },
             { value: "approved", label: t("common.approved") },
             { value: "rejected", label: t("common.reject") },
+            { value: "cancelled", label: t("status.approvalRequest.cancelled") },
             { value: "all", label: t("common.all") },
           ]}
         />
@@ -261,6 +287,7 @@ export default function ExpenseApprovalsPage() {
         dataSource={filtered}
         columnManagerKey="expense-approvals"
         remote={expensesRemote}
+        onRow={(row) => (row.status === "cancelled" ? { style: { opacity: 0.45 } } : {})}
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}

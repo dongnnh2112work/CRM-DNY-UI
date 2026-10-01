@@ -22,7 +22,9 @@ export function customerOwnerLabel(
 ): string {
   const id = ownerId?.trim();
   if (!id) return "—";
-  return users.find((u) => u.id === id)?.name ?? id;
+  const user = users.find((u) => u.id === id || u.id.toLowerCase() === id.toLowerCase());
+  if (user?.name?.trim()) return user.name.trim();
+  return id;
 }
 
 export function getCustomerOrders(customerId: string, orders: Order[]) {

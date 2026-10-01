@@ -7,8 +7,10 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { serviceDisplayName } from "@/lib/order-helpers";
 import { siblingOrders } from "@/lib/order-group";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
+import { useServices } from "@/lib/services-store";
 import type { Order, OrderStage } from "@/lib/types";
 import Link from "next/link";
 import { useT } from "@/lib/use-t";
@@ -24,6 +26,7 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
   const t = useT();
   const { token } = theme.useToken();
   const { stageOptions } = useOrderStatusConfig();
+  const { services } = useServices();
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
@@ -159,7 +162,7 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                           color: token.colorText,
                                         }}
                                       >
-                                        {order.serviceName}
+                                        {serviceDisplayName(order, services)}
                                       </div>
                                       {order.zaloGroupUrl ? (
                                         <div style={{ marginTop: 6 }}>

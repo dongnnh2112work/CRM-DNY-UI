@@ -1,60 +1,43 @@
 "use client";
 
-import { PlusOutlined, UserOutlined } from "@ant-design/icons";
+import { UserOutlined } from "@ant-design/icons";
 import {
-  Alert,
   App,
   Avatar,
   Button,
-  Input,
   Modal,
-  Select,
   Space,
   Tag,
   Tooltip,
   Typography,
   type TableColumnsType,
 } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
-import { PermissionMatrix } from "@/components/users/permission-matrix";
+import { RolePermissionGroupsAdmin } from "@/components/users/role-permission-groups-modal";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
-import {
-  emptyPagePermissions,
-  normalizePagePermissions,
-  type AppUser,
-  type RolePagePermissions,
-  type UserRole,
-} from "@/lib/types";
+import { type AppUser, type UserRole } from "@/lib/types";
 import { getStatusMeta } from "@/lib/status-config";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { formatDisplayDate } from "@/lib/format-date";
 import { matchesTableQuery } from "@/lib/table-search";
-import { ApiError } from "@/lib/http/errors";
 import { apiErrorMessage } from "@/lib/http/message";
-import { unwrapList } from "@/lib/http/paging";
 import { PERMISSION } from "@/lib/rbac";
-import { ConfigNotPersistedError } from "@/modules/config/api";
-import { useRemoteList, useApiRefresh } from "@/components/api-hydrator";
-import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
+import { useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
-import { identityAdminApi, type IdentityUser } from "@/modules/identity-admin/api";
+import { identityAdminApi } from "@/modules/identity-admin/api";
 import {
-  apiCodesForUiRole,
-  findIdentityRoleForUi,
   mapIdentityUserToUi,
-  stripApiRoleCodes,
   uiRoleToApiCodes,
   uiStatusToApi,
 } from "@/modules/identity-admin/map-to-ui";
-import { applyLostRoles, loadUsersWithRoles } from "@/modules/identity-admin/reassign-pending";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -70,30 +53,18 @@ export default function UsersPage() {
     createUser,
     updateUser,
     rolePermissions,
-    updateRolePermissions,
-    createRole,
-    deleteRole,
     getRoleLabel,
   } = useUsers();
   const usersRemote = useRemoteList("users");
-  const refresh = useApiRefresh();
   const [profileOpen, setProfileOpen] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
   const [permRole, setPermRole] = useState<UserRole | null>(null);
-  const [draftPerms, setDraftPerms] = useState<RolePagePermissions | null>(null);
-  const [newRoleLabel, setNewRoleLabel] = useState("");
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const applyUrlQuery = useCallback((q: string) => {
     setQuery(q);
   }, []);
   const [saving, setSaving] = useState(false);
-  const [savingPerms, setSavingPerms] = useState(false);
-  const [deleteRoleOpen, setDeleteRoleOpen] = useState(false);
-  const [deleteRoleUsers, setDeleteRoleUsers] = useState<IdentityUser[]>([]);
-  const [deleteRoleRemaining, setDeleteRoleRemaining] = useState<Map<string, string[]>>(new Map());
-  const [deleteRoleSkipSelf, setDeleteRoleSkipSelf] = useState(false);
-  const [deletingRole, setDeletingRole] = useState(false);
 
   const filtered = users.filter((u) => {
     if (dateRange?.[0] || dateRange?.[1]) {
@@ -115,16 +86,6 @@ export default function UsersPage() {
     ]);
   });
 
-  useEffect(() => {
-    if (permRole) {
-      setDraftPerms(
-        normalizePagePermissions(rolePermissions[permRole] ?? emptyPagePermissions()),
-      );
-    } else {
-      setDraftPerms(null);
-    }
-  }, [permRole, rolePermissions]);
-
   const openCreate = () => {
     setEditUser(null);
     setProfileOpen(true);
@@ -142,103 +103,6 @@ export default function UsersPage() {
 
   const openRolePerms = (roleKey: UserRole) => {
     setPermRole(roleKey);
-    setNewRoleLabel("");
-  };
-
-  const selectedRoleDef = permRole ? roles.find((r) => r.key === permRole) : null;
-  const canManageConfig = can(PERMISSION.configManage);
-  const canManageUsers = can(PERMISSION.userManage);
-
-  const openDeleteRole = async () => {
-    if (!selectedRoleDef || selectedRoleDef.builtin) return;
-    setDeletingRole(true);
-    try {
-      const dropCodes = apiCodesForUiRole(selectedRoleDef.key);
-      const apiRoles = unwrapList(await identityAdminApi.listRoles());
-      const nestRole = findIdentityRoleForUi(apiRoles, selectedRoleDef.key);
-      if (nestRole && !dropCodes.some((code) => code.toUpperCase() === nestRole.code.toUpperCase())) {
-        dropCodes.push(nestRole.code);
-      }
-      const remainingByUserId = new Map<string, string[]>();
-      let affected: IdentityUser[] = [];
-      if (canManageUsers) {
-        const identityUsers = await loadUsersWithRoles();
-        for (const item of identityUsers) {
-          const remaining = stripApiRoleCodes(item.roleCodes, dropCodes);
-          remainingByUserId.set(item.id, remaining);
-          if (remaining.length === 0 && (item.roleCodes ?? []).length > 0) {
-            affected.push(item);
-          }
-        }
-      } else {
-        affected = users
-          .filter((item) => item.role === selectedRoleDef.key)
-          .map((item) => ({
-            id: item.id,
-            email: item.email,
-            displayName: item.name,
-            status: item.status,
-            roleCodes: uiRoleToApiCodes(item.role),
-          }));
-      }
-      setDeleteRoleRemaining(remainingByUserId);
-      setDeleteRoleSkipSelf(Boolean(apiUser?.id && affected.some((item) => item.id === apiUser.id)));
-      setDeleteRoleUsers(affected.filter((item) => item.id !== apiUser?.id));
-      setDeleteRoleOpen(true);
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("user.roleDeleteFailed")));
-    } finally {
-      setDeletingRole(false);
-    }
-  };
-
-  const confirmDeleteRole = async () => {
-    if (!selectedRoleDef) return;
-    setDeletingRole(true);
-    try {
-      let parkedCount = 0;
-      if (canManageUsers && deleteRoleRemaining.size) {
-        const identityUsers = await loadUsersWithRoles();
-        const result = await applyLostRoles({
-          users: identityUsers,
-          remainingByUserId: deleteRoleRemaining,
-          skipUserId: apiUser?.id,
-        });
-        for (const parked of result.parked) {
-          updateUser(parked.id, { status: "inactive" });
-        }
-        parkedCount = result.parked.length;
-        if (result.failed.length) {
-          message.warning(t("user.reassignPartialFail", { count: String(result.failed.length) }));
-        }
-      } else if (!canManageUsers && deleteRoleUsers.length) {
-        message.warning(t("user.reassignNeedUserManage"));
-        return;
-      }
-      const res = await deleteRole(selectedRoleDef.key);
-      if (!res.ok) {
-        message.warning(res.reason);
-        return;
-      }
-      message.success(
-        parkedCount
-          ? t("user.roleDeletedParked", { count: String(parkedCount) })
-          : t("user.roleDeleted"),
-      );
-      setDeleteRoleOpen(false);
-      setPermRole("staff");
-      await refresh("users");
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("user.roleDeleteFailed")));
-    } finally {
-      setDeletingRole(false);
-    }
-  };
-
-  const savePermsError = (err: unknown) => {
-    if (err instanceof ConfigNotPersistedError) return t("user.savePermsNotPersisted");
-    if (err instanceof ApiError && err.isForbidden) return t("user.savePermsForbidden");
-    return apiErrorMessage(err, t("user.savePermsFailed"));
   };
 
   const columns: TableColumnsType<AppUser> = [
@@ -384,7 +248,6 @@ export default function UsersPage() {
           }
           showRole
           showStatus={Boolean(editUser)}
-          showCustomPermissions={Boolean(editUser)}
           roleOptions={roles}
           rolePermissionsLookup={rolePermissions}
           submitLabel={editUser ? t("common.save") : t("common.createUser")}
@@ -414,10 +277,6 @@ export default function UsersPage() {
                   dateOfBirth: values.dateOfBirth,
                   address: values.address,
                   avatar: values.avatar,
-                  useCustomPermissions: values.useCustomPermissions,
-                  customPermissions: values.useCustomPermissions
-                    ? values.customPermissions
-                    : undefined,
                 });
                 message.success(t("user.updated"));
               } else {
@@ -456,133 +315,17 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        title={t("user.rolePerms")}
+        title={t("user.roleGroups")}
         open={!!permRole}
         onCancel={() => setPermRole(null)}
-        width={640}
+        footer={null}
+        width={720}
         centered
-        okText={t("user.saveMatrix")}
-        cancelText={t("common.cancel")}
-        confirmLoading={savingPerms}
-        onOk={async () => {
-          if (!permRole || !draftPerms) return;
-          setSavingPerms(true);
-          try {
-            await updateRolePermissions(permRole, draftPerms);
-            message.success(t("user.savedPerms", { role: getRoleLabel(permRole) }));
-            setPermRole(null);
-          } catch (err) {
-            message.error(savePermsError(err));
-          } finally {
-            setSavingPerms(false);
-          }
-        }}
+        destroyOnHidden
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
       >
-        <Typography.Paragraph type="secondary" style={{ fontSize: ds.fontSize.bodySm }}>
-          {t("user.rolePermsHint")}
-        </Typography.Paragraph>
-        {can(PERMISSION.roleManage) || can(PERMISSION.permissionManage) ? (
-          <Link href={permRole ? `/users/permissions?role=${encodeURIComponent(permRole)}` : "/users/permissions"}>
-            <Button style={{ marginBottom: 12 }}>{t("user.openRoleGroups")}</Button>
-          </Link>
-        ) : null}
-        {!canManageConfig ? (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 12 }}
-            title={t("user.matrixNeedsConfigManage")}
-          />
-        ) : null}
-
-        <Space wrap style={{ width: "100%", marginBottom: 12 }} align="start">
-          <Select
-            style={{ minWidth: 220 }}
-            value={permRole ?? undefined}
-            options={roles.map((r) => ({
-              value: r.key,
-              label: r.builtin ? r.label : `${r.label} ${t("user.customSuffix")}`,
-            }))}
-            onChange={(key) => openRolePerms(key)}
-          />
-          {selectedRoleDef && !selectedRoleDef.builtin ? (
-            <Button danger size="small" loading={deletingRole} onClick={() => void openDeleteRole()}>
-              {t("user.deleteRole")}
-            </Button>
-          ) : null}
-        </Space>
-
-        <Space.Compact style={{ width: "100%", marginBottom: 16 }}>
-          <Input
-            placeholder={t("user.newRolePlaceholder")}
-            value={newRoleLabel}
-            onChange={(e) => setNewRoleLabel(e.target.value)}
-            onPressEnter={async () => {
-              if (!newRoleLabel.trim()) return;
-              try {
-                const created = await createRole(newRoleLabel, permRole ?? "staff");
-                try {
-                  await identityAdminApi.createRole({
-                    code: created.key.toUpperCase(),
-                    name: created.label,
-                  });
-                } catch (err) {
-                  message.warning(apiErrorMessage(err, created.label));
-                }
-                message.success(t("user.roleCreated", { label: created.label }));
-                setNewRoleLabel("");
-                openRolePerms(created.key);
-              } catch (err) {
-                message.error(savePermsError(err));
-              }
-            }}
-          />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={async () => {
-              if (!newRoleLabel.trim()) {
-                message.warning(t("user.enterRoleName"));
-                return;
-              }
-              try {
-                const created = await createRole(newRoleLabel, permRole ?? "staff");
-                try {
-                  await identityAdminApi.createRole({
-                    code: created.key.toUpperCase(),
-                    name: created.label,
-                  });
-                } catch (err) {
-                  message.warning(apiErrorMessage(err, created.label));
-                }
-                message.success(t("user.roleCreated", { label: created.label }));
-                setNewRoleLabel("");
-                openRolePerms(created.key);
-              } catch (err) {
-                message.error(savePermsError(err));
-              }
-            }}
-          >
-            {t("user.addRole")}
-          </Button>
-        </Space.Compact>
-
-        {draftPerms ? (
-          <PermissionMatrix value={draftPerms} onChange={setDraftPerms} />
-        ) : null}
+        {permRole ? <RolePermissionGroupsAdmin embedded initialUiRole={permRole} /> : null}
       </Modal>
-
-      <ReassignPendingConfirmModal
-        open={deleteRoleOpen}
-        title={t("user.deleteRoleTitle", { label: selectedRoleDef?.label || "" })}
-        hint={t("user.deleteRoleBody")}
-        attachedRoles={[]}
-        users={deleteRoleUsers}
-        skippedSelf={deleteRoleSkipSelf}
-        confirmLoading={deletingRole}
-        onCancel={() => setDeleteRoleOpen(false)}
-        onConfirm={() => void confirmDeleteRole()}
-      />
     </>
   );
 }

@@ -260,7 +260,17 @@ function NewVatPageContent() {
           />
         </Form.Item>
         <Form.Item label={t("vat.goodsAmount")}>
-          <Input disabled value={formatVndDisplay(totals.amount)} />
+          <InputNumber
+            {...vndInputProps}
+            value={totals.amount}
+            onChange={(v) => {
+              const next = Math.max(0, Number(v) || 0);
+              const line1Raw = Number(form.getFieldValue(["lines", 1, "amount"])) || 0;
+              const line1 = Math.min(line1Raw, next);
+              form.setFieldValue(["lines", 0, "amount"], next - line1);
+              form.setFieldValue(["lines", 1, "amount"], line1);
+            }}
+          />
         </Form.Item>
         <Form.Item label={t("vat.taxAmount")}>
           <Input disabled value={formatVndDisplay(totals.taxAmount)} />

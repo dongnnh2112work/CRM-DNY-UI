@@ -35,7 +35,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('app_theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('app_theme');if(t==='binance')t='dark';if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}}catch(e){}})();`,
           }}
         />
         <link rel="preconnect" href={apiOrigin()} crossOrigin="anonymous" />

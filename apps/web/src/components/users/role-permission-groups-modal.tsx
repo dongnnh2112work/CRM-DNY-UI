@@ -1,12 +1,10 @@
 "use client";
 
-import { PlusOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Checkbox, Empty, Select, Space, Spin, Tag, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
-import { PermissionGroupEditor } from "@/components/users/permission-group-editor";
 import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
-import { ALL_PERMISSION_CODES, permissionTitle } from "@/lib/permission-catalog";
+import { permissionTitle } from "@/lib/permission-catalog";
 import { ds } from "@/lib/design-tokens";
 import { fetchAllPages, unwrapList, type PageResult } from "@/lib/http/paging";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -16,7 +14,6 @@ import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 import {
   identityAdminApi,
-  type IdentityPermission,
   type IdentityPermissionGroup,
   type IdentityRole,
   type IdentityUser,
@@ -50,19 +47,13 @@ async function loadCatalogRows<T>(
   return unwrapList(await fallback());
 }
 
-/** GET /permissions is the live catalog. Newer codes (e.g. email.template.manage) may be missing until seeded. */
-function withKnownPermissionCodes(rows: IdentityPermission[]): IdentityPermission[] {
-  const seen = new Set(rows.map((row) => row.code?.trim()).filter(Boolean));
-  const extra: IdentityPermission[] = ALL_PERMISSION_CODES.filter((code) => !seen.has(code)).map((code) => ({
-    code,
-  }));
-  return [...rows, ...extra];
-}
-
 export function RolePermissionGroupsAdmin({
   initialUiRole,
+  embedded = false,
 }: {
   initialUiRole?: string | null;
+  /** Inside the user-list dialog: group assignment only, no page chrome. */
+  embedded?: boolean;
 }) {
   const t = useT();
   const { message } = App.useApp();
@@ -77,9 +68,6 @@ export function RolePermissionGroupsAdmin({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [roles, setRoles] = useState<IdentityRole[]>([]);
   const [groups, setGroups] = useState<IdentityPermissionGroup[]>([]);
-  const [catalog, setCatalog] = useState<IdentityPermission[]>([]);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<IdentityPermissionGroup | null>(null);
   const [roleId, setRoleId] = useState<string | null>(null);
   const [draftCodes, setDraftCodes] = useState<string[]>([]);
   const [loadedCodes, setLoadedCodes] = useState<string[]>([]);
@@ -114,7 +102,7 @@ export function RolePermissionGroupsAdmin({
     setLoading(true);
     setLoadError(null);
     try {
-      const [apiRoles, groupsResult, permsResult] = await Promise.all([
+      const [apiRoles, groupsResult] = await Promise.all([
         loadCatalogRows<IdentityRole>(
           (page, pageSize) => identityAdminApi.listRoles({ page, pageSize }),
           () => identityAdminApi.listRoles(),
@@ -129,19 +117,7 @@ export function RolePermissionGroupsAdmin({
             error: apiErrorMessage(err, t("user.roleGroupsLoadFailed")),
           }),
         ),
-        loadCatalogRows<IdentityPermission>(
-          (page, pageSize) => identityAdminApi.listPermissions({ page, pageSize }),
-          () => identityAdminApi.listPermissions(),
-        ).then(
-          (rows) => rows,
-          () => [] as IdentityPermission[],
-        ),
       ]);
-      setCatalog(withKnownPermissionCodes(
-        permsResult
-          .map((row) => unwrapIdentityEntity<IdentityPermission>(row) ?? row)
-          .filter((row) => row?.code),
-      ));
       const apiGroups = groupsResult.rows;
       if (groupsResult.error) setLoadError(groupsResult.error);
       const roleRows = apiRoles
@@ -335,34 +311,29 @@ export function RolePermissionGroupsAdmin({
 
   const allowed = canManageRoles || canManageGroups;
 
+  const saveButton = allowed ? (
+    <Button
+      type="primary"
+      loading={saving}
+      disabled={!canManageRoles || !selected || loading}
+      onClick={() => void onSave()}
+    >
+      {t("user.saveRoleGroups")}
+    </Button>
+  ) : null;
+
   return (
     <>
-      <PageHeader
-        breadcrumbs={[{ title: t("nav.users"), href: "/users" }, { title: t("nav.permissions") }]}
-      >
-        {canManageGroups ? (
-          <Button
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingGroup(null);
-              setEditorOpen(true);
-            }}
-          >
-            {t("user.createGroup")}
-          </Button>
-        ) : null}
-        {allowed ? (
-          <Button
-            type="primary"
-            loading={saving}
-            disabled={!canManageRoles || !selected || loading}
-            onClick={() => void onSave()}
-          >
-            {t("user.saveRoleGroups")}
-          </Button>
-        ) : null}
-      </PageHeader>
-      <div style={{ padding: 16, maxWidth: 880 }}>
+      {embedded ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>{saveButton}</div>
+      ) : (
+        <PageHeader
+          breadcrumbs={[{ title: t("nav.users"), href: "/users" }, { title: t("nav.permissions") }]}
+        >
+          {saveButton}
+        </PageHeader>
+      )}
+      <div style={{ padding: embedded ? 0 : 16, maxWidth: 880 }}>
         {!allowed ? (
           <Typography.Text type="secondary">{t("user.roleGroupsNeedRoleManage")}</Typography.Text>
         ) : (
@@ -466,33 +437,19 @@ export function RolePermissionGroupsAdmin({
                         ) : null}
                       </Space>
                       {canManageGroups ? (
-                        <Space size={0} onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            size="small"
-                            type="link"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setEditingGroup(group);
-                              setEditorOpen(true);
-                            }}
-                          >
-                            {t("common.edit")}
-                          </Button>
-                          <Button
-                            size="small"
-                            type="link"
-                            danger
-                            loading={deleting && deleteTarget?.id === group.id}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              void openDeleteGroup(group);
-                            }}
-                          >
-                            {t("common.delete")}
-                          </Button>
-                        </Space>
+                        <Button
+                          size="small"
+                          type="link"
+                          danger
+                          loading={deleting && deleteTarget?.id === group.id}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void openDeleteGroup(group);
+                          }}
+                        >
+                          {t("common.delete")}
+                        </Button>
                       ) : null}
                     </div>
                   );
@@ -509,27 +466,6 @@ export function RolePermissionGroupsAdmin({
         )}
       </div>
 
-      <PermissionGroupEditor
-        open={editorOpen}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditingGroup(null);
-        }}
-        group={editingGroup}
-        catalog={catalog}
-        onSaved={(next) => {
-          setGroups((prev) => {
-            const exists = prev.some((item) => item.id === next.id);
-            const rows = exists
-              ? prev.map((item) => (item.id === next.id ? { ...item, ...next } : item))
-              : [...prev, next];
-            return rows.sort((a, b) => a.code.localeCompare(b.code));
-          });
-          if (!editingGroup) {
-            setDraftCodes((prev) => (prev.includes(next.code) ? prev : [...prev, next.code]));
-          }
-        }}
-      />
       <ReassignPendingConfirmModal
         open={Boolean(deleteTarget)}
         title={t("user.deleteGroupTitle", { name: deleteTarget?.name || deleteTarget?.code || "" })}

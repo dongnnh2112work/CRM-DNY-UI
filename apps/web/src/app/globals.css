@@ -26,27 +26,44 @@
   --nt-radius-lg: 12px;
   --nt-radius-full: 9999px;
   --nt-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+  /* better-ui surfaces.md — shadow as border for cards */
+  --nt-shadow-border: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06),
+    0 2px 4px rgba(0, 0, 0, 0.04);
+  --nt-shadow-border-hover: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.06);
 
   --background: var(--nt-canvas-soft);
   --foreground: var(--nt-ink-secondary);
 }
 
 html[data-theme="dark"] {
-  --nt-canvas: #202020;
-  --nt-canvas-soft: #191919;
-  --nt-surface: #202020;
+  /* True black floor — not muddy #191919 gray (better-ui: hairline for structure) */
+  --nt-canvas: #000000;
+  --nt-canvas-soft: #000000;
+  --nt-surface: #0a0a0a;
   --nt-ink: #ffffff;
   --nt-ink-secondary: #e8e6e3;
   --nt-ink-muted: #a39e98;
-  --nt-ink-faint: #a39e98;
-  --nt-hairline: #333333;
+  --nt-ink-faint: #8a8680;
+  --nt-hairline: #222222;
   --nt-hover: rgba(255, 255, 255, 0.06);
-  --nt-selected: rgba(0, 117, 222, 0.2);
-  --nt-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --nt-selected: rgba(0, 117, 222, 0.22);
+  --nt-shadow: none;
+  --nt-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --nt-shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
 
   --background: var(--nt-canvas-soft);
   --foreground: var(--nt-ink-secondary);
   color-scheme: dark;
+}
+
+html[data-theme="dark"] .ph-page-shell,
+html[data-theme="dark"] .nt-page-shell,
+html[data-theme="dark"] .ph-card,
+html[data-theme="dark"] .nt-card {
+  background: var(--nt-surface);
+  border-color: var(--nt-hairline);
+  box-shadow: none;
 }
 
 @theme inline {
@@ -285,4 +302,85 @@ a.crm-skip-link:focus {
   .anticon-spin {
     animation: none !important;
   }
+}
+
+/* Dashboard cards — elevation via shadow, not muddy borders */
+.crm-dash-card.ant-card {
+  box-shadow: var(--nt-shadow-border);
+  border: none !important;
+  transition-property: box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.crm-dash-card.ant-card:hover {
+  box-shadow: var(--nt-shadow-border-hover);
+}
+
+a:active .crm-dash-card.ant-card {
+  transform: scale(0.96);
+  transition-property: box-shadow, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-dash-card.ant-card,
+  a:active .crm-dash-card.ant-card {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+.crm-dash-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.crm-dash-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--nt-hairline);
+}
+
+.crm-dash-list-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.crm-dash-list-row:first-child {
+  padding-top: 0;
+}
+
+.crm-pie-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  justify-content: center;
+  padding: 4px 8px 8px;
+}
+
+.crm-pie-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--nt-ink-secondary);
+  line-height: 1.3;
+}
+
+.crm-pie-legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }

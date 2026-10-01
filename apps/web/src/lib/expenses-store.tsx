@@ -33,7 +33,7 @@ type Ctx = {
   addExpense: (input: NewExpenseInput) => OrderExpense;
   reviewExpense: (
     id: string,
-    status: Extract<OrderExpenseStatus, "approved" | "rejected">,
+    status: Extract<OrderExpenseStatus, "approved" | "rejected" | "cancelled">,
     reviewer: { id: string; name: string },
     reviewNote?: string,
   ) => void;
@@ -115,7 +115,7 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
   const reviewExpense = useCallback(
     (
       id: string,
-      status: Extract<OrderExpenseStatus, "approved" | "rejected">,
+      status: Extract<OrderExpenseStatus, "approved" | "rejected" | "cancelled">,
       reviewer: { id: string; name: string },
       reviewNote?: string,
     ) => {

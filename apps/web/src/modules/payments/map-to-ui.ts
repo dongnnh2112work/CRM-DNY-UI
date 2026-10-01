@@ -10,8 +10,8 @@ import type { ApiPayment } from "@/modules/payments/api";
 import type { ApiScheduleLine } from "@/modules/orders/api";
 
 function installmentStatus(p: ApiPayment): PaymentInstallment["status"] {
+  if (p.verificationStatus === "VOIDED") return "cancelled";
   if (p.verificationStatus === "VERIFIED") return "paid";
-  if (p.verificationStatus === "VOIDED") return "pending";
   return "pending";
 }
 
@@ -33,7 +33,7 @@ function installmentsForOrders(
   const createdAt = group[0]?.createdAt ?? "";
 
   for (const order of group) {
-    const rows = (paymentsByOrder.get(order.id) ?? []).filter((p) => p.verificationStatus !== "VOIDED");
+    const rows = paymentsByOrder.get(order.id) ?? [];
     const lines = [...(schedules.get(order.id) ?? [])].sort(
       (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
     );
@@ -49,6 +49,7 @@ function installmentsForOrders(
         paidDate: pay?.verificationStatus === "VERIFIED" ? pay.recordedAt.slice(0, 10) : undefined,
         method: pay?.method,
         status: pay ? installmentStatus(pay) : "pending",
+        voidable: Boolean(pay && pay.verificationStatus !== "VOIDED"),
       });
     }
 
@@ -62,6 +63,7 @@ function installmentsForOrders(
         paidDate: p.verificationStatus === "VERIFIED" ? p.recordedAt.slice(0, 10) : undefined,
         method: p.method,
         status: installmentStatus(p),
+        voidable: p.verificationStatus !== "VOIDED",
       });
     }
   }

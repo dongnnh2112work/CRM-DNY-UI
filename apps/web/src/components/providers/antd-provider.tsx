@@ -18,6 +18,13 @@ import { setI18nLocale, type AppLocale } from "@/lib/i18n";
 export type { AppLocale };
 export type AppTheme = "light" | "dark";
 
+function resolveAppTheme(v: string | null): AppTheme {
+  if (v === "dark") return "dark";
+  /* Legacy "binance" preference maps to dark */
+  if (v === "binance") return "dark";
+  return "light";
+}
+
 interface AppConfig {
   locale: AppLocale;
   setLocale: (l: AppLocale) => void;
@@ -92,14 +99,15 @@ function buildTheme(mode: AppTheme) {
       colorLink: ds.primary,
       colorTextBase: isDark ? "#ffffff" : ds.ink,
       colorTextSecondary: isDark ? "#a39e98" : ds.inkMuted,
-      colorTextTertiary: isDark ? "#a39e98" : ds.inkFaint,
+      colorTextTertiary: isDark ? "#8a8680" : ds.inkFaint,
       colorTextQuaternary: isDark ? "#6f6b66" : ds.inkFaint,
-      colorBgBase: isDark ? "#191919" : ds.canvasSoft,
-      colorBgContainer: isDark ? "#202020" : ds.surface,
-      colorBgElevated: isDark ? "#252525" : ds.surface,
-      colorBgLayout: isDark ? "#191919" : ds.canvasSoft,
-      colorBorder: isDark ? "#333333" : ds.hairline,
-      colorBorderSecondary: isDark ? "#2a2a2a" : ds.hairline,
+      /* True black layout; cards lift via #0A0A0A + hairline, not gray wash */
+      colorBgBase: isDark ? "#000000" : ds.canvasSoft,
+      colorBgContainer: isDark ? "#0A0A0A" : ds.surface,
+      colorBgElevated: isDark ? "#141414" : ds.surface,
+      colorBgLayout: isDark ? "#000000" : ds.canvasSoft,
+      colorBorder: isDark ? "#222222" : ds.hairline,
+      colorBorderSecondary: isDark ? "#1A1A1A" : ds.hairline,
       borderRadius: ds.radius.md,
       borderRadiusLG: ds.radius.lg,
       borderRadiusSM: ds.radius.xs,
@@ -107,8 +115,8 @@ function buildTheme(mode: AppTheme) {
       fontSize: ds.fontSize.bodySm,
       controlHeight: 36,
       controlHeightLG: 40,
-      boxShadow: ds.shadow,
-      boxShadowSecondary: ds.shadow,
+      boxShadow: isDark ? "none" : ds.shadow,
+      boxShadowSecondary: isDark ? "none" : ds.shadow,
       wireframe: false,
     },
     components: {
@@ -126,49 +134,50 @@ function buildTheme(mode: AppTheme) {
       Card: {
         paddingLG: 24,
         borderRadiusLG: ds.radius.lg,
-        boxShadowTertiary: ds.shadow,
-        colorBorderSecondary: isDark ? "#333333" : ds.hairline,
+        boxShadowTertiary: isDark ? "none" : ds.shadow,
+        colorBorderSecondary: isDark ? "#222222" : ds.hairline,
       },
       Layout: {
-        siderBg: isDark ? "#202020" : ds.canvas,
-        headerBg: isDark ? "#202020" : ds.canvas,
-        bodyBg: isDark ? "#191919" : ds.canvasSoft,
-        triggerBg: isDark ? "#252525" : ds.canvasSoft,
+        siderBg: isDark ? "#000000" : ds.canvas,
+        headerBg: isDark ? "#000000" : ds.canvas,
+        bodyBg: isDark ? "#000000" : ds.canvasSoft,
+        triggerBg: isDark ? "#141414" : ds.canvasSoft,
         triggerColor: isDark ? "#ffffff" : ds.ink,
       },
       Menu: {
         itemBg: "transparent",
         subMenuItemBg: "transparent",
-        itemSelectedBg: isDark ? "rgba(0,117,222,0.2)" : ds.selected,
+        itemSelectedBg: isDark ? "rgba(0,117,222,0.22)" : ds.selected,
         itemSelectedColor: isDark ? "#ffffff" : ds.ink,
         itemHoverBg: isDark ? "rgba(255,255,255,0.06)" : ds.hover,
         itemColor: isDark ? "#a39e98" : ds.inkSecondary,
-        itemActiveBg: isDark ? "rgba(0,117,222,0.2)" : ds.selected,
+        itemActiveBg: isDark ? "rgba(0,117,222,0.22)" : ds.selected,
         activeBarBorderWidth: 0,
         iconSize: 16,
         borderRadius: ds.radius.sm,
       },
       Input: {
         activeBorderColor: ds.primary,
-        hoverBorderColor: isDark ? "#444444" : ds.hairline,
+        hoverBorderColor: isDark ? "#333333" : ds.hairline,
         activeShadow: `0 0 0 2px ${ds.focusRing}`,
         borderRadius: ds.radius.xs,
         paddingBlock: 6,
         paddingInline: 10,
+        colorBgContainer: isDark ? "#0A0A0A" : undefined,
       },
       Select: {
-        optionSelectedBg: isDark ? "rgba(0,117,222,0.2)" : ds.selected,
+        optionSelectedBg: isDark ? "rgba(0,117,222,0.22)" : ds.selected,
         borderRadius: ds.radius.xs,
       },
       Table: {
-        headerBg: isDark ? "#252525" : ds.canvasSoft,
+        headerBg: isDark ? "#141414" : ds.canvasSoft,
         headerColor: isDark ? "#ffffff" : ds.inkMuted,
-        borderColor: isDark ? "#333333" : ds.hairline,
+        borderColor: isDark ? "#222222" : ds.hairline,
         rowHoverBg: isDark ? "rgba(255,255,255,0.04)" : ds.hover,
       },
       Tag: {
         borderRadiusSM: ds.radius.full,
-        defaultBg: isDark ? "#333333" : ds.canvasSoft,
+        defaultBg: isDark ? "#141414" : ds.canvasSoft,
         defaultColor: isDark ? "#ffffff" : ds.inkSecondary,
       },
       Tabs: {
@@ -180,7 +189,7 @@ function buildTheme(mode: AppTheme) {
         linkColor: ds.primary,
         itemColor: isDark ? "#a39e98" : ds.inkMuted,
         lastItemColor: isDark ? "#ffffff" : ds.ink,
-        separatorColor: isDark ? "#a39e98" : ds.inkFaint,
+        separatorColor: isDark ? "#8a8680" : ds.inkFaint,
       },
       Typography: {
         colorTextHeading: isDark ? "#ffffff" : ds.ink,
@@ -188,19 +197,19 @@ function buildTheme(mode: AppTheme) {
       },
       Modal: {
         borderRadiusLG: ds.radius.xl,
-        boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.25)" : ds.shadow,
+        boxShadow: isDark ? "0 0 0 1px #222222, 0 16px 40px rgba(0,0,0,0.65)" : ds.shadow,
       },
       Drawer: {
-        colorBgElevated: isDark ? "#202020" : ds.surface,
+        colorBgElevated: isDark ? "#0A0A0A" : ds.surface,
       },
       Descriptions: {
-        labelBg: isDark ? "#252525" : ds.canvasSoft,
+        labelBg: isDark ? "#141414" : ds.canvasSoft,
       },
       Segmented: {
-        itemSelectedBg: isDark ? "#3a3a3a" : ds.surface,
+        itemSelectedBg: isDark ? "#141414" : ds.surface,
         itemSelectedColor: isDark ? "#ffffff" : ds.ink,
         itemColor: isDark ? "#a39e98" : ds.inkSecondary,
-        trackBg: isDark ? "#252525" : ds.canvasSoft,
+        trackBg: isDark ? "#000000" : ds.canvasSoft,
         borderRadius: ds.radius.md,
       },
     },
@@ -210,7 +219,7 @@ function buildTheme(mode: AppTheme) {
 function applyDocumentTheme(mode: AppTheme) {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = mode;
-  document.documentElement.style.colorScheme = mode;
+  document.documentElement.style.colorScheme = mode === "light" ? "light" : "dark";
 }
 
 export function AntdProvider({ children }: { children: ReactNode }) {
@@ -219,13 +228,15 @@ export function AntdProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const savedLocale = localStorage.getItem("app_locale") as AppLocale | null;
-    const savedTheme = (localStorage.getItem("app_theme") as AppTheme | null) ?? "light";
+    const savedTheme = localStorage.getItem("app_theme");
     if (savedLocale === "vi" || savedLocale === "en" || savedLocale === "zh") {
       setLocale(savedLocale);
       applyDocumentLocale(savedLocale);
     }
-    setTheme(savedTheme);
-    applyDocumentTheme(savedTheme);
+    const nextTheme = resolveAppTheme(savedTheme);
+    setTheme(nextTheme);
+    applyDocumentTheme(nextTheme);
+    if (savedTheme === "binance") localStorage.setItem("app_theme", "dark");
   }, []);
 
   const handleSetLocale = (l: AppLocale) => {

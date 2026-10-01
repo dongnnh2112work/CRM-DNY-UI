@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { config } = useAppReminderConfig();
   const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
     useNotifications();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mobile, setMobile] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const scannedRef = useRef(false);

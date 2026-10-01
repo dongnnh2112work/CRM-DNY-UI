@@ -26,6 +26,7 @@ import {
   licenseExpiryTagColor,
   licenseWarnMonthsForOrder,
   nextContractNumber,
+  serviceDisplayName,
 } from "@/lib/order-helpers";
 import { nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
@@ -469,24 +470,9 @@ export default function OrderDetailPage() {
           <Descriptions.Item label={t("common.customer")}>
             <Link href={`/customers/${order.customerId}`}>{order.customerName}</Link>
           </Descriptions.Item>
-          <Descriptions.Item label={t("common.service")}>{order.serviceName}</Descriptions.Item>
-          {siblings.length > 1 ? (
-            <Descriptions.Item label={t("order.sameContract")} span={2}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-                {siblings.map((s) =>
-                  s.id === order.id ? (
-                    <Typography.Text key={s.id} strong>
-                      {s.orderNumber} · {s.serviceName}
-                    </Typography.Text>
-                  ) : (
-                    <Link key={s.id} href={`/orders/${s.id}`}>
-                      {s.orderNumber} · {s.serviceName}
-                    </Link>
-                  ),
-                )}
-              </div>
-            </Descriptions.Item>
-          ) : null}
+          <Descriptions.Item label={t("common.service")}>
+            {serviceDisplayName(order, services)}
+          </Descriptions.Item>
           <Descriptions.Item label={t("order.listPriceVnd")}>{formatVndDisplay(order.value)}</Descriptions.Item>
           <Descriptions.Item label={t("order.commissionPercent")}>
             {order.commissionPercent != null ? `${order.commissionPercent}%` : "—"}

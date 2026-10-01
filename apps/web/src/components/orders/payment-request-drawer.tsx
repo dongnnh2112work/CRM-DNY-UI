@@ -1,7 +1,7 @@
 "use client";
 
 import { App, AutoComplete, Button, Drawer, Form, Input, InputNumber } from "antd";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
 import { vndInputProps } from "@/lib/format-vnd";
@@ -42,6 +42,8 @@ export function PaymentRequestDrawer({
   const t = useT();
   const { message, modal } = App.useApp();
   const [form] = Form.useForm<FormValues>();
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const { currentUser } = useUsers();
   const { orders } = useOrders();
   const { expenses, addExpense, replaceExpenses } = useExpenses();
@@ -84,7 +86,7 @@ export function PaymentRequestDrawer({
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button onClick={() => confirmDiscardIfDirty(modal, form, close)}>{t("common.cancel")}</Button>
-          <Button type="primary" onClick={() => form.submit()}>
+          <Button type="primary" loading={saving} disabled={saving} onClick={() => form.submit()}>
             {t("expense.sendRequest")}
           </Button>
         </div>
@@ -94,7 +96,12 @@ export function PaymentRequestDrawer({
         form={form}
         layout="vertical"
         onFinish={async (values) => {
+          if (savingRef.current) return;
+          savingRef.current = true;
+          setSaving(true);
           if (!currentUser) {
+            savingRef.current = false;
+            setSaving(false);
             message.error(t("expense.notLoggedIn"));
             return;
           }
@@ -169,6 +176,9 @@ export function PaymentRequestDrawer({
             close();
           } catch (err) {
             message.error(apiErrorMessage(err, t("expense.sent")));
+          } finally {
+            savingRef.current = false;
+            setSaving(false);
           }
         }}
       >

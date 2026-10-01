@@ -31,6 +31,7 @@ import {
   getOrderLicenseExpirySummary,
   licenseExpiryTagColor,
   licenseWarnMonthsForOrder,
+  serviceDisplayName,
 } from "@/lib/order-helpers";
 import { siblingOrders, allocatePaymentShare } from "@/lib/order-group";
 import {
@@ -316,7 +317,8 @@ export default function OrdersPage() {
     {
       title: t("common.service"),
       dataIndex: "serviceName",
-      sorter: (a, b) => compareText(a.serviceName, b.serviceName),
+      sorter: (a, b) => compareText(serviceDisplayName(a, services), serviceDisplayName(b, services)),
+      render: (_, record) => serviceDisplayName(record, services),
     },
     {
       title: "Zalo",

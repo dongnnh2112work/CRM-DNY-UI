@@ -2,9 +2,17 @@ import { num } from "@/lib/http/message";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 import type { ApiExpense } from "@/modules/expenses/api";
 
-function mapStatus(status: string): OrderExpenseStatus {
+/** Ghi vào reviewNote khi hủy phiếu — backend chỉ có reject, UI tách “đã hủy”. */
+export const EXPENSE_VOID_NOTE = "VOIDED";
+
+export function isExpenseVoid(status: string, reviewNote?: string | null): boolean {
+  return status.toUpperCase() === "REJECTED" && (reviewNote ?? "").trim() === EXPENSE_VOID_NOTE;
+}
+
+function mapStatus(status: string, reviewNote?: string | null): OrderExpenseStatus {
   const s = status.toUpperCase();
   if (s === "APPROVED") return "approved";
+  if (isExpenseVoid(s, reviewNote)) return "cancelled";
   if (s === "REJECTED") return "rejected";
   return "pending";
 }
@@ -29,7 +37,7 @@ export function mapApiExpenseToUi(
     payeeName: e.payeeName ?? "",
     bankAccount: bank.bankAccount,
     bankName: bank.bankName,
-    status: mapStatus(e.status),
+    status: mapStatus(e.status, e.reviewNote),
     reviewedById: e.reviewedByUserId ?? undefined,
     reviewedByName: names.reviewedByName,
     reviewedAt: e.reviewedAt?.slice(0, 10),

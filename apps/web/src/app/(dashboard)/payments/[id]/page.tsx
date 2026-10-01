@@ -19,7 +19,7 @@ import {
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useReloadOrderFinance, useApiHydrate } from "@/components/api-hydrator";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -47,6 +47,9 @@ export default function PaymentDetailPage() {
   const { ready: hydrateReady, listMeta } = useApiHydrate();
   const reloadFinance = useReloadOrderFinance();
   const [addOpen, setAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const savingRef = useRef(false);
   const [form] = Form.useForm();
   const closeAdd = () => {
     form.resetFields();
@@ -85,32 +88,62 @@ export default function PaymentDetailPage() {
       {
         title: t("common.actions"),
         key: "action",
-        render: (_: unknown, row: PaymentInstallment) =>
-          row.status !== "paid" ? (
-            <Popconfirm
-              title={t("payment.markPaidTitle")}
-              description={t("payment.markPaidBody")}
-              okText={t("common.confirm")}
-              cancelText={t("common.cancel")}
-              onConfirm={async () => {
-                try {
-                  await paymentsApi.verify(row.id);
-                  markInstallmentPaid(payment!.id, row.id);
-                  await reloadFinance(payment!.orderId);
-                  message.success(t("payment.markedPaid"));
-                } catch (err) {
-                  message.error(apiErrorMessage(err, t("payment.markedPaid")));
-                }
-              }}
-            >
-              <Button size="small">{t("payment.markPaidBtn")}</Button>
-            </Popconfirm>
-          ) : (
-            "—"
-          ),
+        render: (_: unknown, row: PaymentInstallment) => {
+          if (row.status === "cancelled") return "—";
+          return (
+            <Space>
+              {row.status !== "paid" ? (
+                <Popconfirm
+                  title={t("payment.markPaidTitle")}
+                  description={t("payment.markPaidBody")}
+                  okText={t("common.confirm")}
+                  cancelText={t("common.cancel")}
+                  onConfirm={async () => {
+                    try {
+                      await paymentsApi.verify(row.id);
+                      markInstallmentPaid(payment!.id, row.id);
+                      await reloadFinance(payment!.orderId);
+                      message.success(t("payment.markedPaid"));
+                    } catch (err) {
+                      message.error(apiErrorMessage(err, t("payment.markedPaid")));
+                    }
+                  }}
+                >
+                  <Button size="small">{t("payment.markPaidBtn")}</Button>
+                </Popconfirm>
+              ) : null}
+              {row.voidable ? (
+                <Popconfirm
+                  title={t("payment.voidTitle")}
+                  description={t("payment.voidBody")}
+                  okText={t("payment.void")}
+                  cancelText={t("common.cancel")}
+                  okButtonProps={{ danger: true }}
+                  onConfirm={async () => {
+                    if (voidingId) return;
+                    setVoidingId(row.id);
+                    try {
+                      await paymentsApi.void(row.id);
+                      await reloadFinance(payment!.orderId);
+                      message.success(t("payment.voided"));
+                    } catch (err) {
+                      message.error(apiErrorMessage(err, t("payment.voided")));
+                    } finally {
+                      setVoidingId(null);
+                    }
+                  }}
+                >
+                  <Button size="small" danger loading={voidingId === row.id}>
+                    {t("payment.void")}
+                  </Button>
+                </Popconfirm>
+              ) : null}
+            </Space>
+          );
+        },
       },
     ],
-    [t, markInstallmentPaid, message, payment, reloadFinance],
+    [t, markInstallmentPaid, message, payment, reloadFinance, voidingId],
   );
 
   if (!payment) {
@@ -193,6 +226,9 @@ export default function PaymentDetailPage() {
           enableLocalSearch
           emptyDescription={t("payment.noInstallments")}
           columns={installmentColumns}
+          onRow={(row) =>
+            row.status === "cancelled" ? { style: { opacity: 0.45 } } : {}
+          }
         />
       </div>
 
@@ -205,7 +241,7 @@ export default function PaymentDetailPage() {
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Button onClick={() => confirmDiscardIfDirty(modal, form, closeAdd)}>{t("common.cancel")}</Button>
-            <Button type="primary" onClick={() => form.submit()}>
+            <Button type="primary" loading={saving} disabled={saving} onClick={() => form.submit()}>
               {t("payment.add")}
             </Button>
           </div>
@@ -215,6 +251,9 @@ export default function PaymentDetailPage() {
           form={form}
           layout="vertical"
           onFinish={async (values) => {
+            if (savingRef.current) return;
+            savingRef.current = true;
+            setSaving(true);
             try {
               const created = await paymentsApi.create({
                 orderId: payment.orderId,
@@ -238,6 +277,9 @@ export default function PaymentDetailPage() {
               closeAdd();
             } catch (err) {
               message.error(apiErrorMessage(err, t("payment.addedInstallment")));
+            } finally {
+              savingRef.current = false;
+              setSaving(false);
             }
           }}
         >

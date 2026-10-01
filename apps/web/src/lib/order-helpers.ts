@@ -20,6 +20,26 @@ export function licenseWarnMonthsForOrder(
   return licenseWarnMonthsOf(services.find((s) => s.id === order.serviceId));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function looksLikeUuid(value: string | undefined | null): boolean {
+  return UUID_RE.test(value?.trim() ?? "");
+}
+
+/** Catalog name when `serviceName` is still the service id from the API. */
+export function serviceDisplayName(
+  order: { serviceId?: string; serviceName?: string },
+  services: Array<{ id: string; name: string }>,
+): string {
+  const byId = order.serviceId
+    ? services.find((s) => s.id === order.serviceId)?.name?.trim()
+    : undefined;
+  const stored = order.serviceName?.trim();
+  if (byId) return byId;
+  if (stored && !looksLikeUuid(stored)) return stored;
+  return stored || "—";
+}
+
 /** DNY + YY + MM + seq (vd DNY260856). Bỏ hậu tố -1, -2 của đơn con cùng HĐ. */
 export function nextDossierNumber(orders: Order[], from = new Date()): string {
   const yy = String(from.getFullYear()).slice(-2);

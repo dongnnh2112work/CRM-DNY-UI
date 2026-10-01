@@ -20,6 +20,7 @@ import type { Order, OrderExpense } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { expensesApi } from "@/modules/expenses/api";
+import { EXPENSE_VOID_NOTE } from "@/modules/expenses/map-to-ui";
 import { useT } from "@/lib/use-t";
 
 export function OrderExpensesPanel({
@@ -121,10 +122,34 @@ export function OrderExpensesPanel({
         key: "actions",
         render: (_: unknown, r: OrderExpense) => {
           if (r.status !== "pending") {
+            if (r.status === "cancelled" && r.reviewedByName) {
+              return t("expense.voidedBy", { name: r.reviewedByName });
+            }
             return r.reviewedByName ?? "—";
           }
-          if (!canReview || !currentUser) {
-            return <Tag>{t("expense.needApprovePerm")}</Tag>;
+          if (!currentUser) return <Tag>{t("expense.needApprovePerm")}</Tag>;
+          const canVoid = canReview || r.requestedById === currentUser.id;
+          const voidAction = canVoid ? (
+            <Popconfirm
+              title={t("expense.voidTitle")}
+              description={t("expense.voidBody")}
+              okText={t("expense.void")}
+              cancelText={t("common.cancel")}
+              onConfirm={async () => {
+                try {
+                  if (!r.id.startsWith("ex-")) await expensesApi.reject(r.id, EXPENSE_VOID_NOTE);
+                  reviewExpense(r.id, "cancelled", { id: currentUser.id, name: currentUser.name }, EXPENSE_VOID_NOTE);
+                  message.success(t("expense.voided"));
+                } catch (err) {
+                  message.error(apiErrorMessage(err, t("expense.voided")));
+                }
+              }}
+            >
+              <Button size="small">{t("expense.void")}</Button>
+            </Popconfirm>
+          ) : null;
+          if (!canReview) {
+            return voidAction ?? <Tag>{t("expense.needApprovePerm")}</Tag>;
           }
           return (
             <Space>
@@ -181,6 +206,7 @@ export function OrderExpensesPanel({
                   {t("common.reject")}
                 </Button>
               </Popconfirm>
+              {voidAction}
             </Space>
           );
         },
@@ -266,6 +292,7 @@ export function OrderExpensesPanel({
         enableLocalSearch
         emptyDescription={t("expense.empty")}
         columns={expenseColumns}
+        onRow={(row) => (row.status === "cancelled" ? { style: { opacity: 0.45 } } : {})}
       />
     </div>
   );

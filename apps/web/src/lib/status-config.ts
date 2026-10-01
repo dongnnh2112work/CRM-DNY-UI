@@ -44,6 +44,7 @@ export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
     pending: { label: "Chờ", color: "warning" },
     paid: { label: "Đã TT", color: "success" },
     overdue: { label: "Quá hạn", color: "error" },
+    cancelled: { label: "Đã hủy", color: "default" },
   },
   email: {
     draft: { label: "Nháp", color: "default" },
@@ -79,6 +80,7 @@ export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
     pending: { label: "Chờ", color: "processing" },
     approved: { label: "Đã duyệt", color: "success" },
     rejected: { label: "Từ chối", color: "error" },
+    cancelled: { label: "Đã hủy", color: "default" },
   },
   orderStage: {
     new: { label: "Mới", color: "processing" },

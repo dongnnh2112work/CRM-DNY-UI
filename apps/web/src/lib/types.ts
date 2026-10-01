@@ -307,7 +307,7 @@ export interface Order {
 
 /* ── Payment request (đề nghị thanh toán) ───────────────────────── */
 
-export type OrderExpenseStatus = "pending" | "approved" | "rejected";
+export type OrderExpenseStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export interface OrderExpense {
   id: string;
@@ -374,8 +374,10 @@ export interface PaymentInstallment {
   dueDate: string;
   paidDate?: string;
   method?: string;
-  status: "pending" | "paid" | "overdue";
+  status: "pending" | "paid" | "overdue" | "cancelled";
   note?: string;
+  /** Đã có phiếu trên backend — hủy được, không xóa. */
+  voidable?: boolean;
 }
 
 export interface PaymentRecord {

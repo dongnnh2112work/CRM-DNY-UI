@@ -36,12 +36,12 @@ const DashboardCharts = dynamic(
     loading: () => (
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={14}>
-          <Card size="small">
+          <Card size="small" className="crm-dash-card">
             <Skeleton active paragraph={{ rows: 8 }} title={false} style={{ padding: 16 }} />
           </Card>
         </Col>
         <Col xs={24} lg={10}>
-          <Card size="small">
+          <Card size="small" className="crm-dash-card">
             <Skeleton active paragraph={{ rows: 8 }} title={false} style={{ padding: 16 }} />
           </Card>
         </Col>
@@ -63,7 +63,8 @@ function buildOrderStatusChart(
     {} as Record<string, number>,
   );
 
-  return stageOptions
+  const known = new Set(stageOptions.map((s) => s.value));
+  const fromConfig = stageOptions
     .map((stage) => ({
       key: stage.value,
       name: stage.label,
@@ -73,6 +74,18 @@ function buildOrderStatusChart(
         : (ORDER_STAGE_CHART_COLORS[stage.value] ?? ds.inkFaint),
     }))
     .filter((item) => item.value > 0);
+
+  /** Đơn có stage không còn trong cấu hình — vẫn đếm để khớp tổng BE */
+  const orphans = Object.entries(counts)
+    .filter(([key]) => !known.has(key))
+    .map(([key, value]) => ({
+      key,
+      name: key,
+      value,
+      color: ORDER_STAGE_CHART_COLORS[key] ?? ds.inkFaint,
+    }));
+
+  return [...fromConfig, ...orphans];
 }
 
 export default function DashboardPage() {
@@ -135,27 +148,38 @@ export default function DashboardPage() {
                 value={revenueThisMonth}
                 prefix={<DollarOutlined />}
                 suffix="₫"
+                accent={ds.primary}
               />
             ) : (
-              <Card size="small" styles={{ body: { padding: 16 } }}>
+              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
                 <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
               </Card>
             )}
           </Col>
           <Col xs={24} sm={12} lg={6}>
             {statsReady ? (
-              <StatCard title={t("dash.totalOrders")} value={totalOrders} prefix={<ProjectOutlined />} />
+              <StatCard
+                title={t("dash.totalOrders")}
+                value={totalOrders}
+                prefix={<ProjectOutlined />}
+                accent={ds.accentTeal}
+              />
             ) : (
-              <Card size="small" styles={{ body: { padding: 16 } }}>
+              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
                 <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
               </Card>
             )}
           </Col>
           <Col xs={24} sm={12} lg={6}>
             {statsReady ? (
-              <StatCard title={t("dash.totalCustomers")} value={totalCustomers} prefix={<TeamOutlined />} />
+              <StatCard
+                title={t("dash.totalCustomers")}
+                value={totalCustomers}
+                prefix={<TeamOutlined />}
+                accent={ds.secondary}
+              />
             ) : (
-              <Card size="small" styles={{ body: { padding: 16 } }}>
+              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
                 <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
               </Card>
             )}
@@ -168,6 +192,7 @@ export default function DashboardPage() {
                   value={payrollThisMonth}
                   prefix={<TrophyOutlined />}
                   suffix="₫"
+                  accent={ds.accentOrange}
                 />
               ) : (
                 <Link href="/payroll" style={{ color: "inherit", display: "block" }}>
@@ -176,45 +201,57 @@ export default function DashboardPage() {
                     value={payrollThisMonth}
                     prefix={<TrophyOutlined />}
                     suffix="₫"
+                    accent={ds.accentOrange}
                   />
                 </Link>
               )
             ) : (
-              <Card size="small" styles={{ body: { padding: 16 } }}>
+              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
                 <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
               </Card>
             )}
           </Col>
         </Row>
 
-        <DashboardCharts ready={statsReady} revenueData={revenueData} orderStatusData={orderStatusData} />
+        <DashboardCharts
+          ready={statsReady}
+          revenueData={revenueData}
+          orderStatusData={orderStatusData}
+          highlightMonth={thisMonthKey}
+          totalOrders={totalOrders}
+        />
 
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24} lg={12}>
             <Card
               title={t("dash.recentOrders")}
               size="small"
+              className="crm-dash-card"
               extra={<Link href="/orders">{t("common.viewAll")}</Link>}
             >
               {statsReady ? (
-                <Space orientation="vertical" style={{ width: "100%" }} size={8}>
+                <Space orientation="vertical" style={{ width: "100%" }} size={0}>
                   {recentOrders.map((o) => (
-                    <div
-                      key={o.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <div>
+                    <div key={o.id} className="crm-dash-list-row">
+                      <div style={{ minWidth: 0 }}>
                         <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
-                        <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
+                        <div
+                          style={{
+                            fontSize: ds.fontSize.caption,
+                            color: token.colorTextSecondary,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {o.customerName} · {o.serviceName}
                         </div>
                       </div>
-                      <Typography.Text>{formatVndDisplay(o.value)}</Typography.Text>
+                      <Typography.Text
+                        style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0 }}
+                      >
+                        {formatVndDisplay(o.value)}
+                      </Typography.Text>
                     </div>
                   ))}
                 </Space>
@@ -227,24 +264,26 @@ export default function DashboardPage() {
             <Card
               title={t("dash.upcomingPayments")}
               size="small"
+              className="crm-dash-card"
               extra={<Link href="/payments">{t("common.viewAll")}</Link>}
             >
               {statsReady ? (
-                <Space orientation="vertical" style={{ width: "100%" }} size={8}>
+                <Space orientation="vertical" style={{ width: "100%" }} size={0}>
                   {upcomingPayments.map((p) => (
-                    <div
-                      key={p.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <div>
+                    <div key={p.id} className="crm-dash-list-row">
+                      <div style={{ minWidth: 0 }}>
                         <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
-                        <div style={{ fontSize: ds.fontSize.caption, color: token.colorTextSecondary }}>
-                          {p.customerName} · {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
+                        <div
+                          style={{
+                            fontSize: ds.fontSize.caption,
+                            color: token.colorTextSecondary,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {p.customerName} ·{" "}
+                          {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
                         </div>
                       </div>
                       <StatusBadge module="payment" status={p.status} />
