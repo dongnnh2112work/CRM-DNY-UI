@@ -10,6 +10,7 @@ import { useExpenses } from "@/lib/expenses-store";
 import {
   applyRemoteData,
   reloadOrderFinance,
+  type ApplyRemoteOptions,
   type ListSliceMeta,
   type RefreshScope,
 } from "@/lib/load-api-data";
@@ -23,6 +24,7 @@ import {
   scopesForPath,
   staleMsFor,
 } from "@/lib/route-data-scopes";
+import { NOTIFICATION_PAGE_SIZE, PREVIEW_PAGE_SIZE, LIST_PAGE_SIZE } from "@/lib/http/paging";
 import { useServices } from "@/lib/services-store";
 import { isAwaitingAccess } from "@/lib/access-gate";
 import { useSession } from "@/lib/session/session-provider";
@@ -35,10 +37,18 @@ const hydrateInflight = new Map<string, Promise<void>>();
 function hydrateKey(
   userId: string | undefined,
   scope: RefreshScope | RefreshScope[],
-  options?: { page?: number; append?: boolean },
+  options?: ApplyRemoteOptions,
 ) {
   const scopes = Array.isArray(scope) ? scope : [scope];
-  return `${userId ?? ""}:${scopes.slice().sort().join(",")}:p${options?.page ?? 1}:a${options?.append ? 1 : 0}`;
+  return [
+    userId ?? "",
+    scopes.slice().sort().join(","),
+    `p${options?.page ?? 1}`,
+    `a${options?.append ? 1 : 0}`,
+    `c${options?.countsOnly ? 1 : 0}`,
+    `s${options?.pageSize ?? ""}`,
+    `g${options?.loadConfig ? 1 : 0}`,
+  ].join(":");
 }
 
 type ApiRefreshContextValue = {
@@ -117,6 +127,8 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const snapshotRef = useRef({ users, customers, services, ctvs, orders, payments, expenses, invoices });
   snapshotRef.current = { users, customers, services, ctvs, orders, payments, expenses, invoices };
   const fetchedAtRef = useRef<Partial<Record<RefreshScope, number>>>({});
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const pageRef = useRef<Partial<Record<RefreshScope, number>>>({});
   const listMetaRef = useRef(listMeta);
   listMetaRef.current = listMeta;
@@ -175,7 +187,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   );
 
   const run = useCallback(
-    async (scope: RefreshScope | RefreshScope[], options?: { page?: number; append?: boolean }) => {
+    async (scope: RefreshScope | RefreshScope[], options?: ApplyRemoteOptions) => {
       if (status !== "authenticated" || isAwaitingAccess(user)) return;
       const key = hydrateKey(user?.id, scope, options);
       const existing = hydrateInflight.get(key);
@@ -188,6 +200,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
 
         const pending = (async () => {
           await applyRemoteData(applier, user, scope, () => snapshotRef.current, options);
+          if (options?.countsOnly || options?.abandonIf?.()) return;
           const now = Date.now();
           setLastSyncedAt(now);
           const scopes = Array.isArray(scope) ? scope : [scope];
@@ -225,13 +238,21 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   );
 
   const refreshCurrent = useCallback(async () => {
+    if (pathname.startsWith("/dashboard")) {
+      await run(["orders", "customers", "payments"], { countsOnly: true, pageSize: 1 });
+      await run(["orders", "payments", "customers"], {
+        pageSize: PREVIEW_PAGE_SIZE,
+        abandonIf: () => !pathnameRef.current.startsWith("/dashboard"),
+      });
+      return;
+    }
     const scopes = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)];
     if (scopes.length === 0) {
-      await refresh("core");
+      await run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE, loadConfig: true });
       return;
     }
     await refresh(scopes);
-  }, [pathname, refresh]);
+  }, [pathname, refresh, run]);
 
   const loadMore = useCallback(
     async (scope?: RefreshScope) => {
@@ -270,9 +291,24 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     let cancelled = false;
     setReady(false);
     const boot = async () => {
+      if (pathname.startsWith("/dashboard")) {
+        await run(["orders", "customers", "payments"], { countsOnly: true, pageSize: 1 });
+        if (cancelled) return;
+        setReady(true);
+        void run(["orders", "payments", "customers"], {
+          pageSize: PREVIEW_PAGE_SIZE,
+          abandonIf: () => !pathnameRef.current.startsWith("/dashboard"),
+        });
+        void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE, loadConfig: true });
+        return;
+      }
       const pathScopes = scopesForPath(pathname);
-      await run(pathScopes.length ? ["core", ...pathScopes] : "core");
-      if (!cancelled) setReady(true);
+      if (pathScopes.length) await run(pathScopes);
+      if (cancelled) return;
+      setReady(true);
+      const deferred = deferredScopesForPath(pathname);
+      if (deferred.length) void run(deferred);
+      void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE, loadConfig: true });
     };
     void boot();
     return () => {
@@ -285,9 +321,24 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== "authenticated" || !ready) return;
     const now = Date.now();
-    const due = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)].filter((s) => {
-      const at = fetchedAtRef.current[s];
-      return at == null || now - at > staleMsFor(s);
+    const due = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)].filter((scope) => {
+      const at = fetchedAtRef.current[scope];
+      const stale = at == null || now - at > staleMsFor(scope);
+      const meta = listMetaRef.current[scope];
+      const listScope =
+        scope === "orders" ||
+        scope === "customers" ||
+        scope === "payments" ||
+        scope === "expenses" ||
+        scope === "vat";
+      const undersized =
+        listScope &&
+        Boolean(meta) &&
+        meta!.page > 0 &&
+        meta!.loaded < meta!.total &&
+        meta!.pageSize < LIST_PAGE_SIZE;
+      const neverLoaded = listScope && (!meta || meta.page === 0) && at == null;
+      return stale || undersized || neverLoaded;
     });
     // One refresh batch — avoid parallel due + deferred streams.
     if (due.length) void refresh(due);
@@ -311,7 +362,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       if (document.visibilityState === "hidden") return;
       const at = fetchedAtRef.current.notifications;
       if (at && Date.now() - at < staleMsFor("notifications")) return;
-      void run("notifications", { page: 1, append: false });
+      void run("notifications", { page: 1, append: false, pageSize: NOTIFICATION_PAGE_SIZE });
     }, 30_000);
     return () => {
       window.removeEventListener("focus", onVisible);

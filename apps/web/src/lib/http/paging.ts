@@ -7,6 +7,9 @@ export type PageResult<T> = {
 
 export const LIST_PAGE_SIZE = 50;
 export const CATALOG_PAGE_SIZE = 100;
+/** Dashboard widgets after the totals return. Not a full list. */
+export const PREVIEW_PAGE_SIZE = 20;
+export const NOTIFICATION_PAGE_SIZE = 20;
 
 export function unwrapList<T>(data: PageResult<T> | T[] | undefined | null): T[] {
   if (!data) return [];

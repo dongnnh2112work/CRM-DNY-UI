@@ -31,8 +31,10 @@ export function staleMsFor(scope: RefreshScope) {
   return STALE_MS[scope] ?? 60_000;
 }
 
-/** APIs this route actually renders. Nested paths share the parent list. */
+/** APIs this route actually renders. Nested paths share the parent list.
+ * Dashboard lists are not here: boot loads totals, then a small preview, so this effect does not pull full pages. */
 export function scopesForPath(pathname: string): RefreshScope[] {
+  if (pathname.startsWith("/dashboard")) return [];
   if (pathname.startsWith("/customers")) return ["customers", "orders"];
   if (pathname.startsWith("/orders")) return ["orders", "customers"];
   if (pathname.startsWith("/payments")) return ["orders", "payments"];
@@ -48,8 +50,13 @@ export function scopesForPath(pathname: string): RefreshScope[] {
 
 /** Heavy catalogs loaded after first paint on list routes that need Số HĐ / CTV / cashflow. */
 export function deferredScopesForPath(pathname: string): RefreshScope[] {
-  if (pathname.startsWith("/orders")) return ["contracts", "payments"];
-  if (pathname.startsWith("/customers")) return ["contracts"];
+  if (pathname.startsWith("/dashboard")) return [];
+  if (pathname.startsWith("/orders")) return ["contracts", "payments", "services", "users"];
+  if (pathname.startsWith("/customers")) return ["contracts", "services", "users"];
+  if (pathname.startsWith("/payments")) return ["services", "users"];
+  if (pathname.startsWith("/expense")) return ["users"];
+  if (pathname.startsWith("/vat")) return ["users"];
+  if (pathname.startsWith("/payroll")) return ["users", "services"];
   return [];
 }
 

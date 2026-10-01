@@ -43,6 +43,14 @@ export type ListSliceMeta = {
 export type ApplyRemoteOptions = {
   page?: number;
   append?: boolean;
+  /** `pageSize` for list endpoints in this batch. Catalogs stay on CATALOG_PAGE_SIZE unless this is smaller. */
+  pageSize?: number;
+  /** Record `total` only. Do not write rows into the stores. */
+  countsOnly?: boolean;
+  /** Load CRM config. Page-permissions key is fetched only when the list omits it. */
+  loadConfig?: boolean;
+  /** Skip writing this batch (preview started on dashboard, user already left). */
+  abandonIf?: () => boolean;
 };
 
 
@@ -164,9 +172,9 @@ export async function applyRemoteData(
   const core = wantsCore(scopes);
   const page = Math.max(1, options.page ?? 1);
   const append = Boolean(options.append) && page > 1;
-  const listSize = LIST_PAGE_SIZE;
-  const catalogSize = CATALOG_PAGE_SIZE;
-  const loadUsers = core || wants(scopes, "users");
+  const listSize = options.pageSize ?? LIST_PAGE_SIZE;
+  const catalogSize = Math.min(CATALOG_PAGE_SIZE, options.pageSize ?? CATALOG_PAGE_SIZE);
+  const loadUsers = !options.countsOnly && (core || wants(scopes, "users"));
   const loadCustomers = wants(scopes, "customers");
   const loadServices = core || wants(scopes, "services");
   const loadOrders = wants(scopes, "orders");
@@ -174,8 +182,8 @@ export async function applyRemoteData(
   const loadContracts = wants(scopes, "contracts");
   const loadExpenses = wants(scopes, "expenses") || wantsDeferred(scopes);
   const loadVat = wants(scopes, "vat") || wantsDeferred(scopes);
-  const loadNotifs = core || wants(scopes, "notifications") || wantsDeferred(scopes);
-  const loadConfig = core;
+  const loadNotifs = !options.countsOnly && (core || wants(scopes, "notifications") || wantsDeferred(scopes));
+  const loadConfig = !options.countsOnly && (Boolean(options.loadConfig) || core);
 
   const [
     apiUsers,
@@ -223,15 +231,14 @@ export async function applyRemoteData(
       : Promise.resolve(null),
     loadConfig
       ? settled(
-          Promise.all([
-            configApi.list(),
-            configApi.get(PAGE_PERMISSIONS_CONFIG_KEY, { silent: true }).catch(() => undefined),
-          ]).then(([list, pagePerms]) => {
+          configApi.list().then(async (list) => {
             const items = [...(list.items ?? [])];
-            if (pagePerms?.key) {
-              const idx = items.findIndex((row) => row.key === pagePerms.key);
-              if (idx >= 0) items[idx] = pagePerms;
-              else items.push(pagePerms);
+            const hasPagePerms = items.some((row) => row.key === PAGE_PERMISSIONS_CONFIG_KEY);
+            if (!hasPagePerms) {
+              const pagePerms = await configApi
+                .get(PAGE_PERMISSIONS_CONFIG_KEY, { silent: true })
+                .catch(() => undefined);
+              if (pagePerms?.key) items.push(pagePerms);
             }
             return { items };
           }),
@@ -242,6 +249,27 @@ export async function applyRemoteData(
       ? settled(identityAdminApi.listRoles().then(unwrapList), [])
       : Promise.resolve(null),
   ]);
+
+  if (options.abandonIf?.()) return;
+
+  if (options.countsOnly) {
+    const publishCount = (
+      scope: RefreshScope,
+      page: { total: number } | null,
+    ) => {
+      if (!page) return;
+      applier.setListMeta(scope, {
+        total: page.total,
+        page: 0,
+        pageSize: 1,
+        loaded: 0,
+      });
+    };
+    publishCount("orders", apiOrders);
+    publishCount("customers", apiCustomers);
+    publishCount("payments", apiPayments);
+    return;
+  }
 
   const current = getSnapshot();
 

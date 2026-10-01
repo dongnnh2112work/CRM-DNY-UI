@@ -19,7 +19,7 @@ import { buildPaidRevenueByMonth } from "@/lib/dashboard-metrics";
 import { ds } from "@/lib/design-tokens";
 import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { currentYearMonth } from "@/lib/order-cashflow";
+import { looksLikeUuid } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";

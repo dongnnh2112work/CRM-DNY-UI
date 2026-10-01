@@ -37,7 +37,7 @@ export function serviceDisplayName(
   const stored = order.serviceName?.trim();
   if (byId) return byId;
   if (stored && !looksLikeUuid(stored)) return stored;
-  return stored || "—";
+  return "—";
 }
 
 /** DNY + YY + MM + seq (vd DNY260856). Bỏ hậu tố -1, -2 của đơn con cùng HĐ. */
