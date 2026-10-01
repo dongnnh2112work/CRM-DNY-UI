@@ -87,6 +87,15 @@ export function permissionCodesOf(group: IdentityPermissionGroup): string[] {
 
 export function roleHasGroupField(role: IdentityRole | undefined | null): boolean {
   if (!role) return false;
+  // Empty arrays on list payloads are not authoritative — detail may still have groups.
+  if (Array.isArray(role.permissionGroupCodes) && role.permissionGroupCodes.length > 0) return true;
+  if (Array.isArray(role.permissionGroups) && role.permissionGroups.length > 0) return true;
+  return false;
+}
+
+/** True when the payload explicitly includes a groups field (even if empty). */
+export function roleDeclaresGroups(role: IdentityRole | undefined | null): boolean {
+  if (!role) return false;
   return Array.isArray(role.permissionGroupCodes) || Array.isArray(role.permissionGroups);
 }
 

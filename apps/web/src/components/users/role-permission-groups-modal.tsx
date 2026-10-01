@@ -21,6 +21,7 @@ import {
 import {
   findIdentityRoleForUi,
   permissionCodesOf,
+  roleDeclaresGroups,
   roleGroupCodes,
   roleHasGroupField,
   unwrapIdentityEntity,
@@ -150,30 +151,41 @@ export function RolePermissionGroupsAdmin({
     let cancelled = false;
     const cached = rolesRef.current.find((r) => r.id === roleId);
     const fromList = roleGroupCodes(cached);
-    if (cached && roleHasGroupField(cached)) {
-      setDraftCodes(fromList);
-      setLoadedCodes(fromList);
-      setGroupsKnown(true);
-      return;
-    }
+
+    // Seed from list cache immediately, then always hydrate from GET /roles/:id.
+    // List often returns permissionGroupCodes: [] which previously short-circuited
+    // and made saves look lost after reload.
+    setDraftCodes(fromList);
+    setLoadedCodes(fromList);
+    setGroupsKnown(roleHasGroupField(cached));
+
     void identityAdminApi
       .getRole(roleId)
       .then((raw) => {
         if (cancelled) return;
         const role = unwrapIdentityEntity<IdentityRole>(raw);
         const codes = roleGroupCodes(role);
+        const known = roleDeclaresGroups(role) || roleHasGroupField(role);
         setDraftCodes(codes);
         setLoadedCodes(codes);
-        setGroupsKnown(roleHasGroupField(role));
+        setGroupsKnown(known);
         if (role) {
-          setRoles((prev) => prev.map((item) => (item.id === role.id ? { ...item, ...role } : item)));
+          setRoles((prev) =>
+            prev.map((item) =>
+              item.id === role.id
+                ? {
+                    ...item,
+                    ...role,
+                    permissionGroupCodes: role.permissionGroupCodes ?? codes,
+                    permissionGroups: role.permissionGroups,
+                  }
+                : item,
+            ),
+          );
         }
       })
       .catch(() => {
-        if (cancelled) return;
-        setDraftCodes(fromList);
-        setLoadedCodes(fromList);
-        setGroupsKnown(false);
+        /* keep list seed */
       });
     return () => {
       cancelled = true;
@@ -190,12 +202,59 @@ export function RolePermissionGroupsAdmin({
     if (!selected) return;
     setSaving(true);
     try {
-      await identityAdminApi.setRolePermissionGroups(selected.id, draftCodes);
+      const savedRaw = await identityAdminApi.setRolePermissionGroups(selected.id, draftCodes);
+      const saved = unwrapIdentityEntity<IdentityRole>(savedRaw);
+      // Confirm persistence — list endpoints often omit groups, and some BE builds
+      // return 200 without writing. Re-read detail before celebrating.
+      let confirmed = roleGroupCodes(saved);
+      let known = roleDeclaresGroups(saved);
+      try {
+        const detailRaw = await identityAdminApi.getRole(selected.id);
+        const detail = unwrapIdentityEntity<IdentityRole>(detailRaw);
+        if (detail) {
+          confirmed = roleGroupCodes(detail);
+          known = roleDeclaresGroups(detail) || roleHasGroupField(detail);
+          setRoles((prev) =>
+            prev.map((item) =>
+              item.id === selected.id
+                ? {
+                    ...item,
+                    ...detail,
+                    permissionGroupCodes: detail.permissionGroupCodes ?? confirmed,
+                    permissionGroups: detail.permissionGroups,
+                  }
+                : item,
+            ),
+          );
+        }
+      } catch {
+        // Keep PUT response if detail re-fetch fails.
+      }
+
+      const want = [...draftCodes].map((c) => c.toUpperCase()).sort();
+      const got = [...confirmed].map((c) => c.toUpperCase()).sort();
+      const persisted =
+        want.length === got.length && want.every((code, i) => code === got[i]);
+
+      if (!persisted && known) {
+        setDraftCodes(confirmed);
+        setLoadedCodes(confirmed);
+        setGroupsKnown(true);
+        message.error(t("user.roleGroupsNotPersisted"));
+        return;
+      }
+      if (!persisted && !known) {
+        message.warning(t("user.roleGroupsUnknownAfterSave"));
+      }
+
+      setDraftCodes(draftCodes);
       setLoadedCodes(draftCodes);
       setGroupsKnown(true);
       setRoles((prev) =>
         prev.map((item) =>
-          item.id === selected.id ? { ...item, permissionGroupCodes: draftCodes } : item,
+          item.id === selected.id
+            ? { ...item, ...(saved ?? {}), permissionGroupCodes: draftCodes }
+            : item,
         ),
       );
       const affectsMe = Boolean(

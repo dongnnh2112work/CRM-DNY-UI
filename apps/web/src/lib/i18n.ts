@@ -35,6 +35,8 @@ const vi = {
   "auth.accountBlocked": "Tài khoản đã bị khóa",
   "auth.accountBlockedBody": "Tài khoản này không còn quyền truy cập. Liên hệ quản trị viên.",
   "auth.oauthDenied": "Bạn đã hủy đăng nhập Google.",
+  "auth.oauthLocalRedirectBlocked":
+    "Google login trên local bị chặn: BE chỉ cho phép redirect về production (crm-dny-ui-sepia.vercel.app). Đăng nhập trên bản Vercel, hoặc thêm http://localhost:3001 vào OAUTH_REDIRECT_ALLOW_PREFIX trên Railway.",
   "auth.sessionExpired": "Phiên đăng nhập hết hạn hoặc tài khoản không còn hiệu lực.",
   "auth.serverError": "Máy chủ đang gặp sự cố. Thử lại sau.",
   "auth.networkError": "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
@@ -910,6 +912,10 @@ const vi = {
   "user.roleGroupsStillHas": "Vẫn xem được đơn vì {perm} đang có từ: {groups}. Bỏ tick hết các nhóm đó rồi lưu, sau đó đăng nhập lại acc admin.",
   "user.roleGroupsUnknown":
     "GET /roles/:id chưa trả permissionGroups. Lưu vẫn được nhưng có thể ghi đè nhóm hiện có — BE nên trả permissionGroupCodes hoặc permissionGroups.",
+  "user.roleGroupsNotPersisted":
+    "API báo thành công nhưng đọc lại vai trò thì nhóm quyền chưa đổi. Kiểm tra BE PUT /roles/:id/permission-groups có ghi DB không.",
+  "user.roleGroupsUnknownAfterSave":
+    "Đã gửi lưu nhưng GET /roles/:id chưa trả nhóm quyền — sau reload có thể thấy trống. Cần BE trả permissionGroupCodes.",
   "user.createGroup": "Tạo nhóm quyền",
   "user.editGroup": "Sửa nhóm quyền",
   "user.deleteGroupTitle": "Xóa nhóm quyền “{name}”?",
@@ -1136,6 +1142,8 @@ const en: Record<keyof typeof vi, string> = {
   "auth.accountBlocked": "Account blocked",
   "auth.accountBlockedBody": "This account no longer has access. Contact an administrator.",
   "auth.oauthDenied": "Google sign-in was cancelled.",
+  "auth.oauthLocalRedirectBlocked":
+    "Google sign-in on local is blocked: the API only allows redirects to production (crm-dny-ui-sepia.vercel.app). Sign in on Vercel, or add http://localhost:3001 to OAUTH_REDIRECT_ALLOW_PREFIX on Railway.",
   "auth.sessionExpired": "Your session expired or this account is no longer valid.",
   "auth.serverError": "The server is having trouble. Try again later.",
   "auth.networkError": "Could not reach the server. Check your network and try again.",
@@ -2012,6 +2020,10 @@ const en: Record<keyof typeof vi, string> = {
     "Orders stay visible because {perm} still comes from: {groups}. Uncheck every one of those groups, save, then sign the admin account in again.",
   "user.roleGroupsUnknown":
     "GET /roles/:id did not return permissionGroups. You can still save, but it may overwrite existing groups — the API should return permissionGroupCodes or permissionGroups.",
+  "user.roleGroupsNotPersisted":
+    "The API returned success, but reloading the role still shows different groups. Check that PUT /roles/:id/permission-groups writes to the database.",
+  "user.roleGroupsUnknownAfterSave":
+    "Save was sent, but GET /roles/:id still omits groups — reload may look empty. The API should return permissionGroupCodes.",
   "user.createGroup": "Create permission group",
   "user.editGroup": "Edit permission group",
   "user.deleteGroupTitle": "Delete permission group “{name}”?",
@@ -2239,6 +2251,8 @@ const zh: Record<keyof typeof vi, string> = {
   "auth.accountBlocked": "账号已停用",
   "auth.accountBlockedBody": "该账号已无法访问。请联系管理员。",
   "auth.oauthDenied": "已取消 Google 登录。",
+  "auth.oauthLocalRedirectBlocked":
+    "本地 Google 登录被拦截：后端只允许跳转到生产环境 (crm-dny-ui-sepia.vercel.app)。请在 Vercel 登录，或在 Railway 的 OAUTH_REDIRECT_ALLOW_PREFIX 中加入 http://localhost:3001。",
   "auth.sessionExpired": "登录已过期或账号已失效。",
   "auth.serverError": "服务器出现问题，请稍后重试。",
   "auth.networkError": "无法连接服务器。请检查网络后重试。",
@@ -3112,6 +3126,10 @@ const zh: Record<keyof typeof vi, string> = {
   "user.roleGroupsStillHas": "仍能看到订单，因为 {perm} 仍来自：{groups}。取消这些组并保存，然后让管理员账号重新登录。",
   "user.roleGroupsUnknown":
     "GET /roles/:id 未返回 permissionGroups。仍可保存，但可能覆盖现有组 — 接口应返回 permissionGroupCodes 或 permissionGroups。",
+  "user.roleGroupsNotPersisted":
+    "接口返回成功，但重新读取角色后权限组未变化。请检查 PUT /roles/:id/permission-groups 是否写入数据库。",
+  "user.roleGroupsUnknownAfterSave":
+    "已提交保存，但 GET /roles/:id 仍未返回权限组 — 刷新后可能显示为空。接口应返回 permissionGroupCodes。",
   "user.createGroup": "创建权限组",
   "user.editGroup": "编辑权限组",
   "user.deleteGroupTitle": "删除权限组“{name}”？",

@@ -70,10 +70,36 @@ export const authApi = {
     });
   },
 
-  /** Redirect browser to Nest Google OAuth — do not fetch this URL. */
-  loginWithGoogle() {
+  /**
+   * Start Nest Google OAuth. Preflights redirect allowlist so localhost
+   * gets a clear error instead of a raw 400 JSON page when BE only
+   * allows the Vercel origin.
+   */
+  async loginWithGoogle(): Promise<void> {
     const API = getApiBaseUrl();
     const redirectTo = `${window.location.origin}/auth/callback`;
-    window.location.href = `${API}/auth/oauth/google?redirectTo=${encodeURIComponent(redirectTo)}`;
+    const url = `${API}/auth/oauth/google?redirectTo=${encodeURIComponent(redirectTo)}`;
+    try {
+      const preflight = await fetch(url, { method: "GET", redirect: "manual", credentials: "include" });
+      if (preflight.status === 400) {
+        let detail = "";
+        try {
+          const body = (await preflight.json()) as { error?: string[] | string };
+          detail = Array.isArray(body.error) ? body.error.join(" ") : String(body.error ?? "");
+        } catch {
+          /* ignore */
+        }
+        if (/redirectTo not allowed|OAUTH_REDIRECT_ALLOW_PREFIX/i.test(detail)) {
+          throw new Error("OAUTH_REDIRECT_NOT_ALLOWED");
+        }
+        throw new Error(detail || "OAUTH_START_FAILED");
+      }
+      // Opaque/0 or 3xx means browser may follow; navigate for real cookie + 302.
+    } catch (err) {
+      if (err instanceof Error && err.message === "OAUTH_REDIRECT_NOT_ALLOWED") throw err;
+      if (err instanceof Error && err.message === "OAUTH_START_FAILED") throw err;
+      // Network/CORS quirks — still attempt full navigation.
+    }
+    window.location.href = url;
   },
 };

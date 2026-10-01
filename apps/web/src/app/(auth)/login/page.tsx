@@ -80,11 +80,22 @@ export default function LoginPage() {
     }
   }, [hashReady, notice, status, router, user]);
 
-  const onGoogle = () => {
+  const onGoogle = async () => {
     clearRememberedOAuthError();
     setNotice(null);
+    setFormError(null);
     setGooglePending(true);
-    authApi.loginWithGoogle();
+    try {
+      await authApi.loginWithGoogle();
+    } catch (err) {
+      setGooglePending(false);
+      const code = err instanceof Error ? err.message : "";
+      if (code === "OAUTH_REDIRECT_NOT_ALLOWED") {
+        setFormError(t("auth.oauthLocalRedirectBlocked"));
+        return;
+      }
+      setFormError(t("auth.callbackError"));
+    }
   };
 
   const onFinish = async (values: { email: string; password: string }) => {
