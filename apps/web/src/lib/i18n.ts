@@ -827,6 +827,8 @@ const vi = {
   "user.editHint": "Xem và chỉnh sửa thông tin. Có thể bật phân quyền tùy chỉnh cho case đặc biệt.",
   "user.createHint": "Điền thông tin để tạo người dùng mới.",
   "user.updated": "Đã cập nhật người dùng",
+  "user.roleNotPersisted":
+    "API báo thành công nhưng đọc lại user thì vai trò chưa đổi. Kiểm tra BE PUT /users/:id/roles có ghi DB không.",
   "user.created": "Đã tạo người dùng",
   "user.rolePerms": "Phân quyền theo vai trò",
   "user.saveMatrix": "Lưu ma trận",
@@ -1934,6 +1936,8 @@ const en: Record<keyof typeof vi, string> = {
   "user.editHint": "View and edit the profile. Custom permissions can override the role for special cases.",
   "user.createHint": "Fill in the details to create a user.",
   "user.updated": "User updated",
+  "user.roleNotPersisted":
+    "The API returned success, but reloading the user still shows a different role. Check that PUT /users/:id/roles writes to the database.",
   "user.created": "User created",
   "user.rolePerms": "Role permissions",
   "user.saveMatrix": "Save matrix",
@@ -3043,6 +3047,8 @@ const zh: Record<keyof typeof vi, string> = {
   "user.editHint": "查看并编辑资料。可为特殊情况开启自定义权限。",
   "user.createHint": "填写信息以创建新用户。",
   "user.updated": "用户已更新",
+  "user.roleNotPersisted":
+    "接口返回成功，但重新读取用户后角色未变化。请检查 PUT /users/:id/roles 是否写入数据库。",
   "user.created": "用户已创建",
   "user.rolePerms": "按角色授权",
   "user.saveMatrix": "保存矩阵",

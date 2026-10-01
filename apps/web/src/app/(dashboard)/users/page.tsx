@@ -293,6 +293,13 @@ export default function UsersPage() {
                 const prevRoleCodes = editUser.roleCodes ?? uiRoleToApiCodes(editUser.role);
                 if (!roleCodesEqual(prevRoleCodes, nextRoleCodes)) {
                   await identityAdminApi.setUserRoles(editUser.id, nextRoleCodes);
+                  const rawDetail = await identityAdminApi.getUser(editUser.id);
+                  const detail = unwrapIdentityEntity<IdentityUser>(rawDetail) ?? rawDetail;
+                  const confirmed = detail.roleCodes ?? [];
+                  if (!roleCodesEqual(confirmed, nextRoleCodes)) {
+                    message.error(t("user.roleNotPersisted"));
+                    return;
+                  }
                   if (apiUser?.id === editUser.id) await refreshMe();
                   else message.info(t("user.refreshSessionHint"));
                 }

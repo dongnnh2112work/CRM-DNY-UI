@@ -202,58 +202,61 @@ export function RolePermissionGroupsAdmin({
     if (!selected) return;
     setSaving(true);
     try {
-      const savedRaw = await identityAdminApi.setRolePermissionGroups(selected.id, draftCodes);
-      const saved = unwrapIdentityEntity<IdentityRole>(savedRaw);
-      // Confirm persistence — list endpoints often omit groups, and some BE builds
-      // return 200 without writing. Re-read detail before celebrating.
-      let confirmed = roleGroupCodes(saved);
-      let known = roleDeclaresGroups(saved);
+      await identityAdminApi.setRolePermissionGroups(selected.id, draftCodes);
+
+      // Only trust GET /roles/:id — PUT often echoes the body with 200 without DB write.
+      let detail: IdentityRole | undefined;
       try {
         const detailRaw = await identityAdminApi.getRole(selected.id);
-        const detail = unwrapIdentityEntity<IdentityRole>(detailRaw);
-        if (detail) {
-          confirmed = roleGroupCodes(detail);
-          known = roleDeclaresGroups(detail) || roleHasGroupField(detail);
-          setRoles((prev) =>
-            prev.map((item) =>
-              item.id === selected.id
-                ? {
-                    ...item,
-                    ...detail,
-                    permissionGroupCodes: detail.permissionGroupCodes ?? confirmed,
-                    permissionGroups: detail.permissionGroups,
-                  }
-                : item,
-            ),
-          );
-        }
+        detail = unwrapIdentityEntity<IdentityRole>(detailRaw);
       } catch {
-        // Keep PUT response if detail re-fetch fails.
+        message.error(t("user.roleGroupsNotPersisted"));
+        return;
       }
 
+      if (!detail || !roleDeclaresGroups(detail)) {
+        message.error(t("user.roleGroupsUnknownAfterSave"));
+        return;
+      }
+
+      const confirmed = roleGroupCodes(detail);
       const want = [...draftCodes].map((c) => c.toUpperCase()).sort();
       const got = [...confirmed].map((c) => c.toUpperCase()).sort();
       const persisted =
         want.length === got.length && want.every((code, i) => code === got[i]);
 
-      if (!persisted && known) {
+      if (!persisted) {
         setDraftCodes(confirmed);
         setLoadedCodes(confirmed);
         setGroupsKnown(true);
+        setRoles((prev) =>
+          prev.map((item) =>
+            item.id === selected.id
+              ? {
+                  ...item,
+                  ...detail,
+                  permissionGroupCodes: detail.permissionGroupCodes ?? confirmed,
+                  permissionGroups: detail.permissionGroups,
+                }
+              : item,
+          ),
+        );
         message.error(t("user.roleGroupsNotPersisted"));
         return;
       }
-      if (!persisted && !known) {
-        message.warning(t("user.roleGroupsUnknownAfterSave"));
-      }
 
-      setDraftCodes(draftCodes);
-      setLoadedCodes(draftCodes);
+      setDraftCodes(confirmed);
+      setLoadedCodes(confirmed);
       setGroupsKnown(true);
       setRoles((prev) =>
         prev.map((item) =>
           item.id === selected.id
-            ? { ...item, ...(saved ?? {}), permissionGroupCodes: draftCodes }
+            ? {
+                ...item,
+                ...detail,
+                permissionGroupCodes: detail.permissionGroupCodes ?? confirmed,
+                permissionGroups: detail.permissionGroups,
+              }
             : item,
         ),
       );
