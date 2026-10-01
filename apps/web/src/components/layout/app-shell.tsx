@@ -25,7 +25,7 @@ import {
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Space, Typography, theme, type MenuProps } from "antd";
+import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -45,6 +45,25 @@ import { useUsers } from "@/lib/users-store";
 const { Header, Sider, Content } = Layout;
 
 type MenuItems = NonNullable<MenuProps["items"]>;
+
+const ROUTE_PAGE: Array<{ prefix: string; page: Parameters<typeof canSeeMenuPage>[0]["page"] }> = [
+  { prefix: "/users", page: "users" },
+  { prefix: "/orders", page: "orders" },
+  { prefix: "/customers", page: "customers" },
+  { prefix: "/payments", page: "payments" },
+  { prefix: "/expense-approvals", page: "expense_approvals" },
+  { prefix: "/payroll", page: "payroll" },
+  { prefix: "/vat", page: "vat" },
+  { prefix: "/services", page: "services" },
+  { prefix: "/emails", page: "emails" },
+  { prefix: "/config", page: "config" },
+  { prefix: "/dashboard", page: "dashboard" },
+];
+
+function pageForPath(pathname: string): Parameters<typeof canSeeMenuPage>[0]["page"] | null {
+  const hit = ROUTE_PAGE.find((r) => pathname === r.prefix || pathname.startsWith(r.prefix + "/"));
+  return hit?.page ?? null;
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -223,6 +242,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const displayName = apiUser?.displayName ?? currentUser?.name ?? t("shell.guest");
+
+  const routeAllowed = useMemo(() => {
+    if (pathname.startsWith("/users/permissions")) {
+      return can(PERMISSION.roleManage) || can(PERMISSION.permissionManage);
+    }
+    const page = pageForPath(pathname);
+    if (!page) return true;
+    return canSeeMenuPage({ page, apiUser, matrix: pageMatrix });
+  }, [pathname, can, apiUser, pageMatrix]);
 
   return (
     <Layout className="crm-layout" style={{ height: "100dvh", overflow: "hidden", background: token.colorBgLayout }}>
@@ -472,7 +500,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="crm-content"
           style={{ margin: 16, flex: 1, minHeight: 0, minWidth: 0, display: "flex", overflow: "hidden" }}
         >
-          <div className="nt-page-shell">{children}</div>
+          <div className="nt-page-shell">
+            {routeAllowed ? (
+              children
+            ) : (
+              <Result
+                status="403"
+                title="403"
+                subTitle={t("shell.noPageAccess")}
+                extra={
+                  <Button type="primary" onClick={() => router.push("/dashboard")}>
+                    {t("nav.dashboard")}
+                  </Button>
+                }
+              />
+            )}
+          </div>
         </Content>
       </Layout>
     </Layout>

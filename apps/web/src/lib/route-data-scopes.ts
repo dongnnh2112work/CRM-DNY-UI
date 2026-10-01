@@ -1,3 +1,5 @@
+import { PERMISSION } from "@/lib/rbac";
+
 export type RefreshScope =
   | "all"
   | "core"
@@ -12,57 +14,67 @@ export type RefreshScope =
   | "vat"
   | "notifications";
 
-/** Catalogs needed in the shell (dropdowns, names, config). Not list pages. */
-export const SHELL_SCOPES: RefreshScope[] = ["users", "services", "notifications"];
-
-const STALE_MS: Partial<Record<RefreshScope, number>> = {
-  notifications: 30_000,
-  orders: 60_000,
-  customers: 60_000,
-  expenses: 60_000,
-  payments: 60_000,
-  contracts: 60_000,
-  vat: 120_000,
-  services: 5 * 60_000,
-  users: 5 * 60_000,
+/** Capability required to call each list scope. Missing = no API call. */
+export const SCOPE_PERMISSION: Partial<Record<RefreshScope, string>> = {
+  orders: PERMISSION.orderView,
+  payments: PERMISSION.paymentView,
+  customers: PERMISSION.customerView,
+  expenses: PERMISSION.expenseView,
+  vat: PERMISSION.vatView,
+  services: PERMISSION.serviceView,
+  users: PERMISSION.userManage,
+  notifications: PERMISSION.notificationViewOwn,
+  /** Contracts / CTV names on order rows — gated by order.view */
+  contracts: PERMISSION.orderView,
 };
 
-export function staleMsFor(scope: RefreshScope) {
-  return STALE_MS[scope] ?? 60_000;
+/** In-memory rows older than this must not be shown; refetch instead. */
+export const FRESHNESS_MS = 30_000;
+
+export function staleMsFor(_scope: RefreshScope) {
+  return FRESHNESS_MS;
 }
 
-/** APIs this route actually renders. Nested paths share the parent list.
- * Dashboard lists are not here: boot loads totals, then a small preview, so this effect does not pull full pages. */
+export function permissionForScope(scope: RefreshScope): string | null {
+  return SCOPE_PERMISSION[scope] ?? null;
+}
+
+export function canLoadScope(
+  scope: RefreshScope,
+  permissions: string[] | undefined | null,
+): boolean {
+  const need = permissionForScope(scope);
+  if (!need) return true;
+  return Boolean(permissions?.includes(need));
+}
+
+/**
+ * Primary list scopes for a route. Dashboard is special-cased in ApiHydrator
+ * (orders+payments preview, customers count-only).
+ */
 export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/dashboard")) return [];
-  if (pathname.startsWith("/customers")) return ["customers", "orders"];
-  if (pathname.startsWith("/orders")) return ["orders", "customers"];
-  if (pathname.startsWith("/payments")) return ["orders", "payments"];
-  if (pathname.startsWith("/expense")) return ["expenses", "orders"];
-  if (pathname.startsWith("/vat")) return ["vat", "orders"];
+  if (pathname.startsWith("/customers")) return ["customers"];
+  if (pathname.startsWith("/orders")) return ["orders"];
+  if (pathname.startsWith("/payments")) return ["payments"];
+  if (pathname.startsWith("/expense")) return ["expenses"];
+  if (pathname.startsWith("/vat")) return ["vat"];
   if (pathname.startsWith("/services")) return ["services"];
   if (pathname.startsWith("/users")) return ["users"];
-  if (pathname.startsWith("/payroll")) return ["orders", "expenses", "payments"];
+  if (pathname.startsWith("/payroll")) return ["orders", "payments", "expenses"];
   if (pathname.startsWith("/notifications")) return ["notifications"];
   return [];
 }
 
-/** Heavy catalogs loaded after first paint on list routes that need Số HĐ / CTV / cashflow. */
-export function deferredScopesForPath(pathname: string): RefreshScope[] {
-  if (pathname.startsWith("/dashboard")) return [];
-  if (pathname.startsWith("/orders")) return ["contracts", "payments", "services", "users"];
-  if (pathname.startsWith("/customers")) return ["contracts", "services", "users"];
-  if (pathname.startsWith("/payments")) return ["services", "users"];
-  if (pathname.startsWith("/expense")) return ["users"];
-  if (pathname.startsWith("/vat")) return ["users"];
-  if (pathname.startsWith("/payroll")) return ["users", "services"];
+/** No deferred full catalogs — names resolve via GET /:id lookups. */
+export function deferredScopesForPath(_pathname: string): RefreshScope[] {
   return [];
 }
 
 export function primaryScopeForPath(pathname: string): RefreshScope | null {
   if (pathname.startsWith("/customers")) return "customers";
   if (pathname.startsWith("/orders")) return "orders";
-  if (pathname.startsWith("/payments")) return "orders";
+  if (pathname.startsWith("/payments")) return "payments";
   if (pathname.startsWith("/expense")) return "expenses";
   if (pathname.startsWith("/vat")) return "vat";
   if (pathname.startsWith("/services")) return "services";

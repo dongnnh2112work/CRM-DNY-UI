@@ -19,12 +19,16 @@ export const CUSTOMER_OWNER_OPTIONS = MOCK_USERS.filter(
 export function customerOwnerLabel(
   ownerId: string | undefined | null,
   users: { id: string; name: string }[],
+  /** Optional session lookup when the users list is empty (no user.manage). */
+  fallbackName?: string | null,
 ): string {
   const id = ownerId?.trim();
   if (!id) return "—";
   const user = users.find((u) => u.id === id || u.id.toLowerCase() === id.toLowerCase());
   if (user?.name?.trim()) return user.name.trim();
-  return id;
+  if (fallbackName?.trim()) return fallbackName.trim();
+  // Never show raw UUIDs / ids when the name is unresolved.
+  return "—";
 }
 
 export function getCustomerOrders(customerId: string, orders: Order[]) {

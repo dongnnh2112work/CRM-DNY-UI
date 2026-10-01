@@ -12,7 +12,6 @@ import {
 } from "react";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { CustomerStatusContext } from "@/lib/customer-status-store";
-import { loadJson, saveJson } from "@/lib/demo-storage";
 import { ds } from "@/lib/design-tokens";
 import { tt, translateStatusLabel } from "@/lib/i18n";
 import { STATUS_CONFIG, type DisplayStatusMeta, type StatusMeta, type StatusModule, type StatusTone } from "@/lib/status-config";
@@ -29,8 +28,6 @@ import { ORDER_STAGES } from "@/lib/types";
 import { ORDER_STAGES_CONFIG_KEY, patchConfigDebounced } from "@/modules/config/api";
 
 export { STAGE_COLOR_PALETTE, nextFreeStageColor };
-
-const KEY = "dny-crm-order-stage-meta";
 
 export type OrderStageDefinition = {
   key: OrderStage;
@@ -141,15 +138,12 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
   const persistEnabled = useRef(false);
 
   useEffect(() => {
-    const stored = loadJson<unknown>(KEY);
-    const parsed = parseStored(stored);
-    if (parsed) setStages(parsed);
+    // Defaults only — never hydrate from localStorage (stale server config).
     setReady(true);
   }, []);
 
   useEffect(() => {
     if (!ready || !persistEnabled.current) return;
-    saveJson(KEY, { stages } satisfies PersistedV2);
     patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages });
   }, [stages, ready]);
 

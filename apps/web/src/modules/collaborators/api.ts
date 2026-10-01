@@ -32,4 +32,8 @@ export const collaboratorsApi = {
   deactivate(id: string) {
     return apiRequest<ApiCollaborator>(`/collaborators/${id}/deactivate`, { method: "POST" });
   },
+
+  get(id: string) {
+    return apiRequest<ApiCollaborator>(`/collaborators/${id}`);
+  },
 };

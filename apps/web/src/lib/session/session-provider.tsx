@@ -6,16 +6,32 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { accessGate, isAwaitingAccess } from "@/lib/access-gate";
-import { classifyApiError, isBlockedAccountError, isPendingMeError, placeholderPendingUser } from "@/lib/http/error-kind";
+import {
+  classifyApiError,
+  isBlockedAccountError,
+  isPendingMeError,
+  placeholderPendingUser,
+} from "@/lib/http/error-kind";
 import { writeAuthNotice } from "@/lib/http/auth-notice";
-import { consumeOAuthLoginInProgress, hasOAuthTokensInLocation, isOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
+import {
+  consumeOAuthLoginInProgress,
+  hasOAuthTokensInLocation,
+  isOAuthLoginInProgress,
+} from "@/lib/http/oauth-redirect";
 import { ApiError } from "@/lib/http/errors";
-import { readCachedAuthUser, writeCachedAuthUser } from "@/lib/hydrate-cache";
-import { clearStoredSession, readStoredSession, SESSION_SAVED_EVENT, writeStoredSession } from "@/lib/http/tokens";
+import { clearClientCaches, purgePersistedServerCaches, setLastKnownAuthUser } from "@/lib/hydrate-cache";
+import { rememberUserName } from "@/lib/entity-lookups";
+import {
+  clearStoredSession,
+  readStoredSession,
+  SESSION_SAVED_EVENT,
+  writeStoredSession,
+} from "@/lib/http/tokens";
 import { authApi, type AuthUser, type SessionResponse } from "@/modules/auth/api";
 
 type SessionStatus = "loading" | "authenticated" | "anonymous";
@@ -33,6 +49,13 @@ type SessionContextValue = {
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
+
+/** Skip SESSION_SAVED → restore right after password/OAuth applySession. */
+let skipRestoreUntil = 0;
+
+export function markSessionJustApplied(ms = 2500) {
+  skipRestoreUntil = Date.now() + ms;
+}
 
 function peekJwtEmail(accessToken: string) {
   try {
@@ -60,7 +83,7 @@ async function loadMeOrPending(): Promise<AuthUser> {
         err.isUnauthorized &&
         stored &&
         !isBlockedAccountError(err) &&
-        (consumeOAuthLoginInProgress() || isAwaitingAccess(readCachedAuthUser())));
+        (consumeOAuthLoginInProgress() || isOAuthLoginInProgress()));
     if (pendingLike) {
       const email = stored?.accessToken ? peekJwtEmail(stored.accessToken) : "";
       return placeholderPendingUser(email);
@@ -72,40 +95,47 @@ async function loadMeOrPending(): Promise<AuthUser> {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
+  const userIdRef = useRef<string | null>(null);
 
   const applyProfile = useCallback((next: AuthUser) => {
-    writeCachedAuthUser(next);
+    setLastKnownAuthUser(next);
+    userIdRef.current = next.id;
+    if (next.id && (next.displayName || next.email)) {
+      rememberUserName(next.id, next.displayName || next.email);
+    }
     setUser(next);
     setStatus("authenticated");
   }, []);
 
-  const applySession = useCallback((session: SessionResponse) => {
-    writeStoredSession({
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-      expiresIn: session.expiresIn,
-    });
-    applyProfile(session.user);
-  }, [applyProfile]);
+  const applySession = useCallback(
+    (session: SessionResponse) => {
+      markSessionJustApplied();
+      writeStoredSession({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
+      });
+      applyProfile(session.user);
+    },
+    [applyProfile],
+  );
 
   const restoreFromStorage = useCallback(async () => {
-    // OAuth callback page owns token write + /auth/me — avoid a parallel me() with stale tokens.
     if (hasOAuthTokensInLocation() || isOAuthLoginInProgress()) {
       return;
     }
 
     const stored = readStoredSession();
     if (!stored) {
+      setLastKnownAuthUser(null);
+      userIdRef.current = null;
       setUser(null);
       setStatus("anonymous");
       return;
     }
 
-    const cached = readCachedAuthUser();
-    if (cached) {
-      setUser(cached);
-      setStatus("authenticated");
-    }
+    // Stay on loading until /auth/me resolves — never paint a cached user.
+    setStatus("loading");
 
     try {
       const me = await loadMeOrPending();
@@ -115,18 +145,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (kind === "blocked" || kind === "unauthorized") {
         writeAuthNotice(kind === "blocked" ? "blocked" : "unauthorized");
         clearStoredSession();
+        setLastKnownAuthUser(null);
+        userIdRef.current = null;
         setUser(null);
         setStatus("anonymous");
-        return;
-      }
-      if (cached) {
-        setUser(cached);
-        setStatus("authenticated");
         return;
       }
       if (kind === "network" || kind === "server") {
         writeAuthNotice(kind);
       }
+      setLastKnownAuthUser(null);
+      userIdRef.current = null;
       setUser(null);
       setStatus("anonymous");
     }
@@ -141,6 +170,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
         clearStoredSession();
+        setLastKnownAuthUser(null);
+        userIdRef.current = null;
         setUser(null);
         setStatus("anonymous");
       }
@@ -155,18 +186,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       /* still clear local session */
     }
     clearStoredSession();
+    setLastKnownAuthUser(null);
+    userIdRef.current = null;
     setUser(null);
     setStatus("anonymous");
   }, []);
 
   useEffect(() => {
+    // One-time: drop leftover server snapshots from older builds (tokens stay).
+    purgePersistedServerCaches();
     void restoreFromStorage();
   }, [restoreFromStorage]);
 
   useEffect(() => {
     const onSaved = () => {
-      // OAuth callback owns /auth/me — skip duplicate restore while in progress.
       if (isOAuthLoginInProgress()) return;
+      // Password login / applySession already set the user — do not re-hydrate.
+      if (Date.now() < skipRestoreUntil) return;
       void restoreFromStorage();
     };
     window.addEventListener(SESSION_SAVED_EVENT, onSaved);
@@ -175,6 +211,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onLogout = () => {
+      clearClientCaches();
+      setLastKnownAuthUser(null);
+      userIdRef.current = null;
       setUser(null);
       setStatus("anonymous");
     };

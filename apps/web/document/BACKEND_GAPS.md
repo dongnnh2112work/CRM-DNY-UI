@@ -174,6 +174,21 @@ UI nhập `commissionPercent` (0–100) lúc tạo/sửa đơn. `POST`/`PATCH /o
 
 ---
 
+## 12. Dashboard summary (Bearer + RBAC)
+
+**Hiện tượng FE:** Tổng quan chỉ tải 20 đơn / 20 thanh toán. Doanh thu tháng và biểu đồ chỉ hiện khi `loaded >= total`. Dataset lớn → UI báo cần summary từ BE, không tính sai từ preview.
+
+**BE cần:**
+
+1. `GET /api/v1/dashboard/summary` (Bearer JWT, **không** shared secret như `/widgeto/summary`).
+2. Tôn trọng RBAC + data scope của user đang login (OWN / TEAM / ALL).
+3. Trả tối thiểu: `{ orderTotal, customerTotal, paymentTotal, revenueByMonth: [{ month, value }], ordersByStage: [{ stage, count }] }`.
+4. Optional: `from` / `to` ISO trên `/payments` để FE lọc doanh thu theo tháng mà không kéo full list.
+
+Khi có endpoint, FE dashboard chuyển sang gọi summary; preview 20 dòng chỉ cho “gần đây”.
+
+---
+
 ## Checklist BE (thứ tự)
 
 1. Google user: pending + không role; admin `PUT roles` + `ACTIVE`.

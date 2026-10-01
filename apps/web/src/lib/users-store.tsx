@@ -1,11 +1,9 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppConfig } from "@/components/providers/antd-provider";
-import { loadJson, saveJson } from "@/lib/demo-storage";
 import { translateRoleLabel, tt } from "@/lib/i18n";
 import { PAGE_PERMISSIONS_CONFIG_KEY, parseConfigValue, persistAndVerifyConfig } from "@/modules/config/api";
-import { MOCK_USERS } from "@/lib/mock-users";
 import {
   BUILT_IN_ROLES,
   DEFAULT_ROLE_PAGE_PERMISSIONS,
@@ -20,13 +18,6 @@ import {
   type UserRole,
   type UserStatus,
 } from "@/lib/types";
-
-const USERS_KEY = "dny-crm-users";
-const ROLE_PERMS_KEY = "dny-crm-role-page-permissions";
-const ROLES_KEY = "dny-crm-role-definitions";
-const SESSION_KEY = "dny-crm-current-user-id";
-
-const DEFAULT_SESSION_ID = "u2"; // Tran Admin
 
 type UsersContextValue = {
   users: AppUser[];
@@ -46,8 +37,11 @@ type UsersContextValue = {
   loginAs: (userId: string) => void;
   logout: () => void;
   replaceUsers: (items: AppUser[], currentUserId?: string) => void;
+  /** Seed the auth/me user when /users is not loaded (no user.manage). */
+  ensureSessionUser: (sessionUser: AppUser) => void;
   mergeRemoteRoles: (items: RoleDefinition[]) => void;
   hydratePagePermissions: (raw: unknown | null) => void;
+  resetServerData: () => void;
 };
 
 const UsersContext = createContext<UsersContextValue | null>(null);
@@ -56,7 +50,6 @@ function cloneDefaultRolePerms(): Record<string, RolePagePermissions> {
   return structuredClone(DEFAULT_ROLE_PAGE_PERMISSIONS);
 }
 
-/** Merge stored matrix; missing page keys fall back to role defaults (not all-false). */
 function mergeStoredRoleMatrix(
   role: string,
   stored: Partial<RolePagePermissions>,
@@ -72,62 +65,18 @@ function mergeStoredRoleMatrix(
 
 export function UsersProvider({ children }: { children: ReactNode }) {
   const { locale } = useAppConfig();
-  const [users, setUsers] = useState<AppUser[]>(MOCK_USERS);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<RoleDefinition[]>(BUILT_IN_ROLES);
   const [rolePermissions, setRolePermissions] =
     useState<Record<string, RolePagePermissions>>(cloneDefaultRolePerms);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(DEFAULT_SESSION_ID);
-  const [ready, setReady] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const rolePermissionsRef = useRef(rolePermissions);
   rolePermissionsRef.current = rolePermissions;
-
-  useEffect(() => {
-    const storedUsers = loadJson<AppUser[]>(USERS_KEY);
-    const storedPerms = loadJson<Record<string, RolePagePermissions>>(ROLE_PERMS_KEY);
-    const storedRoles = loadJson<RoleDefinition[]>(ROLES_KEY);
-    const storedSession = loadJson<string>(SESSION_KEY);
-    if (storedUsers?.length) setUsers(storedUsers);
-    if (storedPerms) {
-      const merged: Record<string, RolePagePermissions> = { ...cloneDefaultRolePerms() };
-      for (const [role, matrix] of Object.entries(storedPerms)) {
-        merged[role] = mergeStoredRoleMatrix(role, matrix);
-      }
-      setRolePermissions(merged);
-    }
-    if (storedRoles?.length) {
-      const builtinKeys = new Set(BUILT_IN_ROLES.map((r) => r.key));
-      const custom = storedRoles.filter((r) => !builtinKeys.has(r.key));
-      setRoles([...BUILT_IN_ROLES, ...custom]);
-    }
-    if (storedSession) setCurrentUserId(storedSession);
-    else setCurrentUserId(DEFAULT_SESSION_ID);
-    setReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(USERS_KEY, users);
-  }, [users, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(ROLE_PERMS_KEY, rolePermissions);
-  }, [rolePermissions, ready]);
 
   const persistRolePermissions = useCallback(async (next: Record<string, RolePagePermissions>) => {
     await persistAndVerifyConfig(PAGE_PERMISSIONS_CONFIG_KEY, next);
     setRolePermissions(next);
   }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(ROLES_KEY, roles);
-  }, [roles, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveJson(SESSION_KEY, currentUserId);
-  }, [currentUserId, ready]);
 
   const currentUser = useMemo(
     () => (currentUserId ? users.find((u) => u.id === currentUserId) ?? null : null),
@@ -237,9 +186,18 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     setCurrentUserId(null);
   }, []);
 
-  const replaceUsers = useCallback((items: AppUser[], currentUserId?: string) => {
+  const replaceUsers = useCallback((items: AppUser[], nextCurrentUserId?: string) => {
     setUsers(items);
-    if (currentUserId) setCurrentUserId(currentUserId);
+    if (nextCurrentUserId) setCurrentUserId(nextCurrentUserId);
+  }, []);
+
+  /** Ensure the logged-in auth user exists in-store without loading /users. */
+  const ensureSessionUser = useCallback((sessionUser: AppUser) => {
+    setUsers((prev) => {
+      if (prev.some((u) => u.id === sessionUser.id)) return prev;
+      return [sessionUser, ...prev];
+    });
+    setCurrentUserId((prev) => prev ?? sessionUser.id);
   }, []);
 
   const mergeRemoteRoles = useCallback((items: RoleDefinition[]) => {
@@ -269,11 +227,18 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const resetServerData = useCallback(() => {
+    setUsers([]);
+    setRoles(BUILT_IN_ROLES);
+    setRolePermissions(cloneDefaultRolePerms());
+    setCurrentUserId(null);
+  }, []);
+
   const value = useMemo(
     () => ({
       users,
       roles,
-      ready,
+      ready: true,
       currentUser,
       rolePermissions,
       getById,
@@ -288,13 +253,14 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       loginAs,
       logout,
       replaceUsers,
+      ensureSessionUser,
       mergeRemoteRoles,
       hydratePagePermissions,
+      resetServerData,
     }),
     [
       users,
       roles,
-      ready,
       currentUser,
       rolePermissions,
       getById,
@@ -309,8 +275,10 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       loginAs,
       logout,
       replaceUsers,
+      ensureSessionUser,
       mergeRemoteRoles,
       hydratePagePermissions,
+      resetServerData,
     ],
   );
 

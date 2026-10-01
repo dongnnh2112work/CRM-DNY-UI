@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname } from "next/navigation";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useCustomers } from "@/lib/customers-store";
@@ -9,6 +18,7 @@ import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import { useExpenses } from "@/lib/expenses-store";
 import {
   applyRemoteData,
+  clearEntityLookupCache,
   reloadOrderFinance,
   type ApplyRemoteOptions,
   type ListSliceMeta,
@@ -19,12 +29,13 @@ import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import {
-  deferredScopesForPath,
+  canLoadScope,
+  FRESHNESS_MS,
   primaryScopeForPath,
   scopesForPath,
   staleMsFor,
 } from "@/lib/route-data-scopes";
-import { NOTIFICATION_PAGE_SIZE, PREVIEW_PAGE_SIZE, LIST_PAGE_SIZE } from "@/lib/http/paging";
+import { NOTIFICATION_PAGE_SIZE, ROUTE_PAGE_SIZE } from "@/lib/http/paging";
 import { useServices } from "@/lib/services-store";
 import { isAwaitingAccess } from "@/lib/access-gate";
 import { useSession } from "@/lib/session/session-provider";
@@ -55,9 +66,12 @@ type ApiRefreshContextValue = {
   refresh: (scope?: RefreshScope | RefreshScope[]) => Promise<void>;
   refreshCurrent: () => Promise<void>;
   loadMore: (scope?: RefreshScope) => Promise<void>;
+  invalidate: (scope?: RefreshScope | RefreshScope[]) => void;
   reloadOrderFinance: (orderId: string) => Promise<void>;
   ready: boolean;
   refreshing: boolean;
+  /** True when in-memory rows for the primary route scope are within FRESHNESS_MS. */
+  dataFresh: boolean;
   lastSyncedAt: number | null;
   listMeta: Partial<Record<RefreshScope, ListSliceMeta>>;
 };
@@ -83,15 +97,17 @@ export function useApiHydrate() {
   return {
     ready: ctx.ready,
     refreshing: ctx.refreshing,
+    dataFresh: ctx.dataFresh,
     lastSyncedAt: ctx.lastSyncedAt,
     listMeta: ctx.listMeta,
     refreshCurrent: ctx.refreshCurrent,
     loadMore: ctx.loadMore,
+    invalidate: ctx.invalidate,
   };
 }
 
 export function useRemoteList(scope: RefreshScope) {
-  const { listMeta, loadMore, refreshing } = useApiHydrate();
+  const { listMeta, loadMore, refreshing, dataFresh } = useApiHydrate();
   const meta = listMeta[scope];
   if (!meta) return undefined;
   return {
@@ -100,7 +116,7 @@ export function useRemoteList(scope: RefreshScope) {
     onLoadMore: () => {
       void loadMore(scope);
     },
-    loading: refreshing,
+    loading: refreshing || !dataFresh,
   };
 }
 
@@ -115,24 +131,29 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const { invoices, replaceInvoices } = useVat();
   const { payments, replacePayments, upsertPayment } = usePayments();
   const { replaceNotifications } = useNotifications();
-  const { users, replaceUsers, mergeRemoteRoles, hydratePagePermissions } = useUsers();
-  const { hydrateConfig } = useAppReminderConfig();
+  const { users, replaceUsers, mergeRemoteRoles, hydratePagePermissions, resetServerData, ensureSessionUser } =
+    useUsers();
+  const { hydrateConfig, resetServerData: resetReminders } = useAppReminderConfig();
   const { hydrateFromRemote: hydrateOrderStages } = useOrderStatusConfig();
   const { hydrateFromRemote: hydrateCustomerStatuses } = useCustomerStatusConfig();
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [listMeta, setListMetaState] = useState<Partial<Record<RefreshScope, ListSliceMeta>>>({});
+  const [tick, setTick] = useState(0);
 
   const snapshotRef = useRef({ users, customers, services, ctvs, orders, payments, expenses, invoices });
   snapshotRef.current = { users, customers, services, ctvs, orders, payments, expenses, invoices };
   const fetchedAtRef = useRef<Partial<Record<RefreshScope, number>>>({});
+  const forbiddenRef = useRef<Set<RefreshScope>>(new Set());
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
   const pageRef = useRef<Partial<Record<RefreshScope, number>>>({});
   const listMetaRef = useRef(listMeta);
   listMetaRef.current = listMeta;
   const refreshingDepthRef = useRef(0);
+  const lastUserIdRef = useRef<string | undefined>(undefined);
+  const configLoadedRef = useRef(false);
 
   const beginRefreshing = useCallback(() => {
     refreshingDepthRef.current += 1;
@@ -148,6 +169,37 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     setListMetaState((prev) => ({ ...prev, [scope]: meta }));
     pageRef.current[scope] = meta.page;
   }, []);
+
+  const resetAllStores = useCallback(() => {
+    replaceOrders([]);
+    replaceCustomers([]);
+    replacePayments([]);
+    replaceExpenses([]);
+    replaceInvoices([]);
+    replaceServices([]);
+    replaceCtvs([]);
+    replaceNotifications([]);
+    resetServerData();
+    resetReminders();
+    clearEntityLookupCache();
+    setListMetaState({});
+    fetchedAtRef.current = {};
+    forbiddenRef.current = new Set();
+    pageRef.current = {};
+    configLoadedRef.current = false;
+    setLastSyncedAt(null);
+  }, [
+    replaceOrders,
+    replaceCustomers,
+    replacePayments,
+    replaceExpenses,
+    replaceInvoices,
+    replaceServices,
+    replaceCtvs,
+    replaceNotifications,
+    resetServerData,
+    resetReminders,
+  ]);
 
   const applier = useMemo(
     () => ({
@@ -186,10 +238,24 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     ],
   );
 
+  const filterAllowed = useCallback(
+    (scopes: RefreshScope[]) =>
+      scopes.filter(
+        (s) =>
+          !forbiddenRef.current.has(s) && canLoadScope(s, user?.permissions),
+      ),
+    [user?.permissions],
+  );
+
   const run = useCallback(
     async (scope: RefreshScope | RefreshScope[], options?: ApplyRemoteOptions) => {
       if (status !== "authenticated" || isAwaitingAccess(user)) return;
-      const key = hydrateKey(user?.id, scope, options);
+      const raw = Array.isArray(scope) ? scope : [scope];
+      const allowed = filterAllowed(raw.filter(Boolean) as RefreshScope[]);
+      if (!allowed.length && !options?.loadConfig) return;
+
+      const keyScopes = allowed.length ? allowed : (["core"] as RefreshScope[]);
+      const key = hydrateKey(user?.id, keyScopes, options);
       const existing = hydrateInflight.get(key);
       beginRefreshing();
       try {
@@ -199,23 +265,27 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         }
 
         const pending = (async () => {
-          await applyRemoteData(applier, user, scope, () => snapshotRef.current, options);
+          await applyRemoteData(
+            applier,
+            user,
+            allowed,
+            () => snapshotRef.current,
+            {
+              ...options,
+              onForbidden: (s) => {
+                forbiddenRef.current.add(s);
+                options?.onForbidden?.(s);
+              },
+            },
+          );
           if (options?.countsOnly || options?.abandonIf?.()) return;
           const now = Date.now();
           setLastSyncedAt(now);
-          const scopes = Array.isArray(scope) ? scope : [scope];
-          for (const s of scopes) {
+          for (const s of allowed) {
             if (s === "all" || s === "core" || s === "deferred") continue;
             fetchedAtRef.current[s] = now;
           }
-          if (scopes.includes("core")) {
-            fetchedAtRef.current.users = now;
-            fetchedAtRef.current.services = now;
-            fetchedAtRef.current.notifications = now;
-          }
-          if (scopes.includes("contracts")) {
-            fetchedAtRef.current.contracts = now;
-          }
+          if (options?.loadConfig) configLoadedRef.current = true;
         })().finally(() => {
           hydrateInflight.delete(key);
         });
@@ -225,45 +295,60 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         endRefreshing();
       }
     },
-    [applier, status, user, beginRefreshing, endRefreshing],
+    [applier, status, user, beginRefreshing, endRefreshing, filterAllowed],
   );
 
   const refresh = useCallback(
     async (scope: RefreshScope | RefreshScope[] = "core") => {
       const scopes = Array.isArray(scope) ? scope : [scope];
-      for (const s of scopes) pageRef.current[s] = 1;
-      await run(scope, { page: 1, append: false });
+      for (const s of scopes) {
+        pageRef.current[s] = 1;
+        delete fetchedAtRef.current[s];
+      }
+      await run(scope, { page: 1, append: false, pageSize: ROUTE_PAGE_SIZE });
     },
     [run],
   );
 
+  const invalidate = useCallback((scope?: RefreshScope | RefreshScope[]) => {
+    const scopes = scope
+      ? Array.isArray(scope)
+        ? scope
+        : [scope]
+      : (Object.keys(fetchedAtRef.current) as RefreshScope[]);
+    for (const s of scopes) delete fetchedAtRef.current[s];
+    setTick((n) => n + 1);
+  }, []);
+
   const refreshCurrent = useCallback(async () => {
     if (pathname.startsWith("/dashboard")) {
-      await run(["orders", "customers", "payments"], { countsOnly: true, pageSize: 1 });
-      await run(["orders", "payments", "customers"], {
-        pageSize: PREVIEW_PAGE_SIZE,
-        abandonIf: () => !pathnameRef.current.startsWith("/dashboard"),
-      });
+      await Promise.all([
+        run(["orders", "payments"], { pageSize: ROUTE_PAGE_SIZE }),
+        run("customers", { countsOnly: true, pageSize: 1 }),
+      ]);
       return;
     }
-    const scopes = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)];
+    const scopes = scopesForPath(pathname);
     if (scopes.length === 0) {
-      await run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE, loadConfig: true });
+      if (canLoadScope("notifications", user?.permissions)) {
+        await run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
+      }
       return;
     }
     await refresh(scopes);
-  }, [pathname, refresh, run]);
+  }, [pathname, refresh, run, user?.permissions]);
 
   const loadMore = useCallback(
     async (scope?: RefreshScope) => {
       const key = scope ?? primaryScopeForPath(pathname);
       if (!key) return;
+      if (forbiddenRef.current.has(key) || !canLoadScope(key, user?.permissions)) return;
       const meta = listMetaRef.current[key];
       if (meta && meta.loaded >= meta.total) return;
       const next = (pageRef.current[key] ?? 1) + 1;
-      await run(key, { page: next, append: true });
+      await run(key, { page: next, append: true, pageSize: ROUTE_PAGE_SIZE });
     },
-    [pathname, run],
+    [pathname, run, user?.permissions],
   );
 
   const reloadFinance = useCallback(
@@ -282,107 +367,172 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     [upsertPayment, mergeExpensesForOrder],
   );
 
+  // Account switch / logout — wipe stores so no stale rows leak.
+  useEffect(() => {
+    if (status !== "authenticated" || isAwaitingAccess(user)) {
+      if (lastUserIdRef.current) {
+        resetAllStores();
+        lastUserIdRef.current = undefined;
+      }
+      setReady(false);
+      return;
+    }
+    if (lastUserIdRef.current && lastUserIdRef.current !== user?.id) {
+      resetAllStores();
+    }
+    lastUserIdRef.current = user?.id;
+  }, [status, user?.id, user, resetAllStores]);
+
+  // Seed session user into users-store (no user.manage → no /users list).
+  useEffect(() => {
+    if (status !== "authenticated" || !user || isAwaitingAccess(user)) return;
+    let cancelled = false;
+    void import("@/modules/identity-admin/map-to-ui").then(({ mapAuthUserToUi }) => {
+      if (cancelled) return;
+      ensureSessionUser(mapAuthUserToUi(user));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, user, ensureSessionUser]);
+
+  // Boot once per authenticated user.
   useEffect(() => {
     if (status !== "authenticated" || isAwaitingAccess(user)) {
       setReady(false);
-      fetchedAtRef.current = {};
       return;
     }
     let cancelled = false;
-    setReady(false);
     const boot = async () => {
-      if (pathname.startsWith("/dashboard")) {
-        await run(["orders", "customers", "payments"], { countsOnly: true, pageSize: 1 });
-        if (cancelled) return;
+      // Config first (menu matrix / stages) — parallel with route data.
+      const configPromise = configLoadedRef.current
+        ? Promise.resolve()
+        : run([], { loadConfig: true }).catch(() => undefined);
+
+      if (pathnameRef.current.startsWith("/dashboard")) {
         setReady(true);
-        void run(["orders", "payments", "customers"], {
-          pageSize: PREVIEW_PAGE_SIZE,
-          abandonIf: () => !pathnameRef.current.startsWith("/dashboard"),
-        });
-        void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE, loadConfig: true });
+        await Promise.all([
+          configPromise,
+          run(["orders", "payments"], {
+            pageSize: ROUTE_PAGE_SIZE,
+            abandonIf: () => !pathnameRef.current.startsWith("/dashboard"),
+          }),
+          run("customers", { countsOnly: true, pageSize: 1 }),
+        ]);
+        if (cancelled) return;
+        if (canLoadScope("notifications", user?.permissions)) {
+          void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
+        }
         return;
       }
-      const pathScopes = scopesForPath(pathname);
-      if (pathScopes.length) await run(pathScopes);
+
+      const pathScopes = filterAllowed(scopesForPath(pathnameRef.current));
+      await Promise.all([
+        configPromise,
+        pathScopes.length ? run(pathScopes, { pageSize: ROUTE_PAGE_SIZE }) : Promise.resolve(),
+      ]);
       if (cancelled) return;
       setReady(true);
-      const deferred = deferredScopesForPath(pathname);
-      if (deferred.length) void run(deferred);
-      void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE, loadConfig: true });
+      if (canLoadScope("notifications", user?.permissions)) {
+        void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
+      }
     };
     void boot();
     return () => {
       cancelled = true;
     };
-    // Path scopes are read once at auth boot; later navigations use the pathname effect.
+    // Boot on auth identity only; navigation handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, user?.id, user?.status]);
+  }, [status, user?.id]);
 
+  // Route change — load primary scopes if stale or never loaded.
   useEffect(() => {
-    if (status !== "authenticated" || !ready) return;
-    const now = Date.now();
-    const due = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)].filter((scope) => {
-      const at = fetchedAtRef.current[scope];
-      const stale = at == null || now - at > staleMsFor(scope);
-      const meta = listMetaRef.current[scope];
-      const listScope =
-        scope === "orders" ||
-        scope === "customers" ||
-        scope === "payments" ||
-        scope === "expenses" ||
-        scope === "vat";
-      const undersized =
-        listScope &&
-        Boolean(meta) &&
-        meta!.page > 0 &&
-        meta!.loaded < meta!.total &&
-        meta!.pageSize < LIST_PAGE_SIZE;
-      const neverLoaded = listScope && (!meta || meta.page === 0) && at == null;
-      return stale || undersized || neverLoaded;
-    });
-    // One refresh batch — avoid parallel due + deferred streams.
-    if (due.length) void refresh(due);
-  }, [pathname, status, ready, refresh]);
-
-  useEffect(() => {
-    if (status !== "authenticated" || !ready) return;
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      const scopes = [...scopesForPath(pathname), ...deferredScopesForPath(pathname)];
-      const now = Date.now();
-      const due = (scopes.length ? scopes : (["notifications"] as RefreshScope[])).filter((s) => {
-        const at = fetchedAtRef.current[s];
-        return at == null || now - at > staleMsFor(s);
+    if (status !== "authenticated" || !ready || isAwaitingAccess(user)) return;
+    if (pathname.startsWith("/dashboard")) {
+      const due = filterAllowed(["orders", "payments", "customers"]).filter((scope) => {
+        const at = fetchedAtRef.current[scope];
+        return at == null || Date.now() - at > staleMsFor(scope);
       });
-      if (due.length) void refresh(due);
-    };
-    window.addEventListener("focus", onVisible);
-    document.addEventListener("visibilitychange", onVisible);
+      if (!due.length) return;
+      if (due.includes("customers") && due.length === 1) {
+        void run("customers", { countsOnly: true, pageSize: 1 });
+        return;
+      }
+      void Promise.all([
+        due.some((s) => s === "orders" || s === "payments")
+          ? run(
+              due.filter((s) => s === "orders" || s === "payments"),
+              { pageSize: ROUTE_PAGE_SIZE },
+            )
+          : Promise.resolve(),
+        due.includes("customers")
+          ? run("customers", { countsOnly: true, pageSize: 1 })
+          : Promise.resolve(),
+      ]);
+      return;
+    }
+    const due = filterAllowed(scopesForPath(pathname)).filter((scope) => {
+      const at = fetchedAtRef.current[scope];
+      return at == null || Date.now() - at > staleMsFor(scope);
+    });
+    if (due.length) void refresh(due);
+  }, [pathname, status, ready, refresh, run, filterAllowed, user, tick]);
+
+  // Notifications poll — only if permitted and not forbidden.
+  useEffect(() => {
+    if (status !== "authenticated" || !ready) return;
+    if (!canLoadScope("notifications", user?.permissions)) return;
+    if (forbiddenRef.current.has("notifications")) return;
     const id = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
+      if (forbiddenRef.current.has("notifications")) return;
       const at = fetchedAtRef.current.notifications;
       if (at && Date.now() - at < staleMsFor("notifications")) return;
       void run("notifications", { page: 1, append: false, pageSize: NOTIFICATION_PAGE_SIZE });
     }, 30_000);
-    return () => {
-      window.removeEventListener("focus", onVisible);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.clearInterval(id);
-    };
-  }, [status, ready, pathname, refresh, run]);
+    return () => window.clearInterval(id);
+  }, [status, ready, run, user?.permissions]);
+
+  const dataFresh = useMemo(() => {
+    const scopes = pathname.startsWith("/dashboard")
+      ? (["orders", "payments"] as RefreshScope[])
+      : scopesForPath(pathname);
+    if (!scopes.length) return true;
+    const now = Date.now();
+    return scopes.every((s) => {
+      if (forbiddenRef.current.has(s) || !canLoadScope(s, user?.permissions)) return true;
+      const at = fetchedAtRef.current[s];
+      return at != null && now - at <= FRESHNESS_MS;
+    });
+    // tick forces recompute after invalidate
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, user?.permissions, lastSyncedAt, tick, refreshing]);
 
   const ctx = useMemo(
     () => ({
       refresh,
       refreshCurrent,
       loadMore,
+      invalidate,
       reloadOrderFinance: reloadFinance,
       ready,
       refreshing,
+      dataFresh,
       lastSyncedAt,
       listMeta,
     }),
-    [refresh, refreshCurrent, loadMore, reloadFinance, ready, refreshing, lastSyncedAt, listMeta],
+    [
+      refresh,
+      refreshCurrent,
+      loadMore,
+      invalidate,
+      reloadFinance,
+      ready,
+      refreshing,
+      dataFresh,
+      lastSyncedAt,
+      listMeta,
+    ],
   );
 
   return <ApiRefreshContext.Provider value={ctx}>{children}</ApiRefreshContext.Provider>;

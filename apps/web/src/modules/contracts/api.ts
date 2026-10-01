@@ -30,4 +30,8 @@ export const contractsApi = {
   update(id: string, body: Partial<{ contractNumber: string; customerId: string; title: string; description: string }>) {
     return apiRequest<ApiContract>(`/contracts/${id}`, { method: "PATCH", body: JSON.stringify(body) });
   },
+
+  get(id: string) {
+    return apiRequest<ApiContract>(`/contracts/${id}`);
+  },
 };

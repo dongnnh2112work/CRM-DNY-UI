@@ -19,6 +19,7 @@ import {
   customerOwnerLabel,
 } from "@/lib/customer-helpers";
 import { CUSTOMER_LOCKED_FIELD_KEYS, useCustomers } from "@/lib/customers-store";
+import { lookupUserName } from "@/lib/entity-lookups";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
@@ -284,7 +285,12 @@ function CustomersPageContent() {
         linkField={{ key: "name", onClick: (record) => router.push(`/customers/${record.id}`) }}
         columnOverrides={{
           owner: {
-            render: (value) => customerOwnerLabel(value != null ? String(value) : "", users),
+            render: (value) =>
+              customerOwnerLabel(
+                value != null ? String(value) : "",
+                users,
+                lookupUserName(value != null ? String(value) : ""),
+              ),
           },
           channel: {
             render: (value) => {

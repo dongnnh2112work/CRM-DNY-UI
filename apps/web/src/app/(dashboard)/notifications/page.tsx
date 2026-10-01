@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ds } from "@/lib/design-tokens";
 import { useNotifications } from "@/lib/notifications-store";
 import { formatDisplayDateTime } from "@/lib/format-date";
+import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { useUsers } from "@/lib/users-store";
 
@@ -15,9 +16,11 @@ export default function NotificationsPage() {
   const router = useRouter();
   const { token } = theme.useToken();
   const { currentUser } = useUsers();
+  const { user: apiUser } = useSession();
   const { forUser, markRead, markAllRead } = useNotifications();
+  const userId = currentUser?.id ?? apiUser?.id ?? null;
 
-  if (!currentUser) {
+  if (!userId) {
     return (
       <EmptyState
         description={t("common.notLoggedIn")}
@@ -26,12 +29,12 @@ export default function NotificationsPage() {
     );
   }
 
-  const items = forUser(currentUser.id);
+  const items = forUser(userId);
 
   return (
     <>
       <PageHeader breadcrumbs={[{ title: t("shell.notifications") }]}>
-        <Button onClick={() => markAllRead(currentUser.id)}>{t("shell.markAllRead")}</Button>
+        <Button onClick={() => markAllRead(userId)}>{t("shell.markAllRead")}</Button>
       </PageHeader>
       <div style={{ padding: 16 }}>
         <List

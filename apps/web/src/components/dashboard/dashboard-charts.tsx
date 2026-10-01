@@ -40,12 +40,17 @@ function formatBarLabel(value: unknown) {
 
 export function DashboardCharts({
   ready,
+  incomplete = false,
+  incompleteHint,
   revenueData,
   orderStatusData,
   highlightMonth,
   totalOrders,
 }: {
   ready: boolean;
+  /** Slice is loaded but not complete — show honest empty instead of skeleton forever. */
+  incomplete?: boolean;
+  incompleteHint?: string;
   revenueData: RevenueChartPoint[];
   orderStatusData: StatusChartPoint[];
   /** YYYY-MM — current month bar uses full accent */
@@ -59,6 +64,24 @@ export function DashboardCharts({
   /** Prefer BE total so center matches StatCard; fall back to segment sum */
   const centerTotal = totalOrders ?? segmentSum;
   const mutedBar = "rgba(0, 117, 222, 0.28)";
+  const placeholder = incomplete ? (
+    <div
+      style={{
+        height: 280,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        textAlign: "center",
+        color: token.colorTextSecondary,
+        fontSize: 13,
+      }}
+    >
+      {incompleteHint ?? t("dash.summaryNeeded")}
+    </div>
+  ) : (
+    <Skeleton active paragraph={{ rows: 8 }} title={false} style={{ padding: 16 }} />
+  );
 
   return (
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
@@ -139,7 +162,7 @@ export function DashboardCharts({
                 </ul>
               </>
             ) : (
-              <Skeleton active paragraph={{ rows: 8 }} title={false} style={{ padding: 16 }} />
+              placeholder
             )}
           </div>
         </Card>
@@ -255,7 +278,7 @@ export function DashboardCharts({
                 </ul>
               </>
             ) : (
-              <Skeleton active paragraph={{ rows: 8 }} title={false} style={{ padding: 16 }} />
+              placeholder
             )}
           </div>
         </Card>

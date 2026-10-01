@@ -83,7 +83,7 @@ export function mapPaymentsToRecords(
     byOrder.set(p.orderId, list);
   }
 
-  return groupOrdersByContract(orders).map((group) => {
+  const fromOrders = groupOrdersByContract(orders).map((group) => {
     const primary = pickPrimaryOrder(group);
     const installments = installmentsForOrders(group, byOrder, schedules);
     return recalcPayment({
@@ -100,4 +100,54 @@ export function mapPaymentsToRecords(
       groupedOrderIds: group.map((o) => o.id),
     });
   });
+
+  // Payments route may load payments without the related orders in memory.
+  // Still show one PaymentRecord per unpaid/paid order id from the API page.
+  const covered = new Set(
+    fromOrders.flatMap((r) => (r.groupedOrderIds?.length ? r.groupedOrderIds : [r.orderId])),
+  );
+  const orphans: PaymentRecord[] = [];
+  for (const [orderId, rows] of byOrder) {
+    if (!orderId || covered.has(orderId)) continue;
+    const stub = {
+      id: orderId,
+      orderNumber: orderId.slice(0, 8).toUpperCase(),
+      customerId: "",
+      customerName: "",
+      serviceId: "",
+      serviceName: "",
+      stage: "unknown",
+      channel: "direct" as const,
+      value: rows.reduce((s, p) => s + num(p.amount), 0),
+      assignedUserId: "",
+      assignedUserName: "",
+      submitterId: "",
+      submitterName: "",
+      attachments: [],
+      licenseAttachments: [],
+      approvalStatus: "none" as const,
+      approvalHistory: [],
+      createdAt: rows[0]?.recordedAt?.slice(0, 10) ?? "",
+      month: (rows[0]?.recordedAt ?? "").slice(0, 7),
+      needsVat: false,
+    } satisfies Order;
+    const installments = installmentsForOrders([stub], byOrder, schedules);
+    orphans.push(
+      recalcPayment({
+        id: `pay-${orderId}`,
+        orderId,
+        orderNumber: stub.orderNumber,
+        customerId: "",
+        customerName: "",
+        totalAmount: stub.value,
+        paidAmount: 0,
+        remaining: 0,
+        status: "unpaid",
+        installments,
+        groupedOrderIds: [orderId],
+      }),
+    );
+  }
+
+  return [...fromOrders, ...orphans];
 }

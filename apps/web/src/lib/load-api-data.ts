@@ -1,9 +1,24 @@
-import { CATALOG_PAGE_SIZE, LIST_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
+import { CATALOG_PAGE_SIZE, ROUTE_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
+import { ApiError } from "@/lib/http/errors";
+import {
+  clearEntityLookupCache,
+  lookupContractNumber,
+  lookupCustomerName,
+  lookupCtvName,
+  lookupOrderNumber,
+  lookupServiceName,
+  lookupUserName,
+  rememberCustomerName,
+  rememberCtvName,
+  rememberOrderNumber,
+  rememberServiceName,
+  rememberUserName,
+  resolveEntityLookups,
+} from "@/lib/entity-lookups";
+import { canLoadScope } from "@/lib/route-data-scopes";
 import { orderGroupKey, pickPrimaryOrder, siblingOrders } from "@/lib/order-group";
 import type { AppUser, Customer, Ctv, Order, OrderExpense, PaymentRecord, Service, VatInvoice } from "@/lib/types";
 import type { AuthUser } from "@/modules/auth/api";
-import { collaboratorsApi } from "@/modules/collaborators/api";
-import { mapApiCollaboratorToUi } from "@/modules/collaborators/map-to-ui";
 import {
   configApi,
   CUSTOMER_STATUS_CATALOG_KEY,
@@ -12,7 +27,6 @@ import {
   parseConfigValue,
   REMINDER_CONFIG_KEY,
 } from "@/modules/config/api";
-import { contractsApi } from "@/modules/contracts/api";
 import { customersApi } from "@/modules/customers/api";
 import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
 import { expensesApi } from "@/modules/expenses/api";
@@ -35,6 +49,7 @@ import { mapApiVatToUi } from "@/modules/vat/map-to-ui";
 import type { RefreshScope } from "@/lib/route-data-scopes";
 
 export type { RefreshScope } from "@/lib/route-data-scopes";
+export { clearEntityLookupCache };
 export type ListSliceMeta = {
   total: number;
   page: number;
@@ -45,7 +60,7 @@ export type ListSliceMeta = {
 export type ApplyRemoteOptions = {
   page?: number;
   append?: boolean;
-  /** `pageSize` for list endpoints in this batch. Catalogs stay on CATALOG_PAGE_SIZE unless this is smaller. */
+  /** `pageSize` for list endpoints in this batch. Default ROUTE_PAGE_SIZE. */
   pageSize?: number;
   /** Record `total` only. Do not write rows into the stores. */
   countsOnly?: boolean;
@@ -53,6 +68,8 @@ export type ApplyRemoteOptions = {
   loadConfig?: boolean;
   /** Skip writing this batch (preview started on dashboard, user already left). */
   abandonIf?: () => boolean;
+  /** Called when a scope returns 403 — hydrator marks it forbidden for the session. */
+  onForbidden?: (scope: RefreshScope) => void;
 };
 
 
@@ -174,17 +191,39 @@ export async function applyRemoteData(
   const core = wantsCore(scopes);
   const page = Math.max(1, options.page ?? 1);
   const append = Boolean(options.append) && page > 1;
-  const listSize = options.pageSize ?? LIST_PAGE_SIZE;
-  const catalogSize = Math.min(CATALOG_PAGE_SIZE, options.pageSize ?? CATALOG_PAGE_SIZE);
-  const loadUsers = !options.countsOnly && (core || wants(scopes, "users"));
-  const loadCustomers = wants(scopes, "customers");
-  const loadServices = core || wants(scopes, "services");
-  const loadOrders = wants(scopes, "orders");
-  const loadPayments = wants(scopes, "payments");
-  const loadContracts = wants(scopes, "contracts");
-  const loadExpenses = wants(scopes, "expenses") || wantsDeferred(scopes);
-  const loadVat = wants(scopes, "vat") || wantsDeferred(scopes);
-  const loadNotifs = !options.countsOnly && (core || wants(scopes, "notifications") || wantsDeferred(scopes));
+  const listSize = options.pageSize ?? ROUTE_PAGE_SIZE;
+  const perms = sessionUser?.permissions;
+  const noteForbidden = (scope: RefreshScope) => options.onForbidden?.(scope);
+
+  async function settledScope<T>(
+    scope: RefreshScope,
+    promise: Promise<T>,
+    fallback: T,
+  ): Promise<T> {
+    try {
+      return await promise;
+    } catch (err) {
+      if (err instanceof ApiError && err.isForbidden) {
+        noteForbidden(scope);
+        return fallback;
+      }
+      return fallback;
+    }
+  }
+
+  const may = (scope: RefreshScope) => canLoadScope(scope, perms);
+
+  const loadUsers = !options.countsOnly && (core || wants(scopes, "users")) && may("users");
+  const loadCustomers = wants(scopes, "customers") && may("customers");
+  const loadServices = wants(scopes, "services") && may("services");
+  const loadOrders = wants(scopes, "orders") && may("orders");
+  const loadPayments = wants(scopes, "payments") && may("payments");
+  const loadExpenses = wants(scopes, "expenses") && may("expenses");
+  const loadVat = wants(scopes, "vat") && may("vat");
+  const loadNotifs =
+    !options.countsOnly &&
+    (core || wants(scopes, "notifications") || wantsDeferred(scopes)) &&
+    may("notifications");
   const loadConfig = !options.countsOnly && (Boolean(options.loadConfig) || core);
 
   const [
@@ -192,8 +231,6 @@ export async function applyRemoteData(
     apiCustomers,
     apiServices,
     apiOrders,
-    apiContracts,
-    apiCollaborators,
     apiPayments,
     apiExpenses,
     apiVat,
@@ -202,34 +239,60 @@ export async function applyRemoteData(
     apiRoles,
   ] = await Promise.all([
     loadUsers
-      ? settled(fetchPage((p, s) => identityAdminApi.listUsers({ page: p, pageSize: s }), page, catalogSize), null)
+      ? settledScope(
+          "users",
+          fetchPage((p, s) => identityAdminApi.listUsers({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadCustomers
-      ? settled(fetchPage((p, s) => customersApi.list({ page: p, pageSize: s }), page, listSize), null)
+      ? settledScope(
+          "customers",
+          fetchPage((p, s) => customersApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadServices
-      ? settled(fetchPage((p, s) => servicesApi.list({ page: p, pageSize: s }), page, catalogSize), null)
+      ? settledScope(
+          "services",
+          fetchPage((p, s) => servicesApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadOrders
-      ? settled(fetchPage((p, s) => ordersApi.list({ page: p, pageSize: s }), page, listSize), null)
-      : Promise.resolve(null),
-    loadContracts
-      ? settled(fetchPage((p, s) => contractsApi.list({ page: p, pageSize: s }), page, listSize), null)
-      : Promise.resolve(null),
-    loadContracts
-      ? settled(fetchPage((p, s) => collaboratorsApi.list({ page: p, pageSize: s }), 1, catalogSize), null)
+      ? settledScope(
+          "orders",
+          fetchPage((p, s) => ordersApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadPayments
-      ? settled(fetchPage((p, s) => paymentsApi.list({ page: p, pageSize: s }), page, listSize), null)
+      ? settledScope(
+          "payments",
+          fetchPage((p, s) => paymentsApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadExpenses
-      ? settled(fetchPage((p, s) => expensesApi.list({ page: p, pageSize: s }), page, listSize), null)
+      ? settledScope(
+          "expenses",
+          fetchPage((p, s) => expensesApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadVat
-      ? settled(fetchPage((p, s) => vatApi.list({ page: p, pageSize: s }), page, listSize), null)
+      ? settledScope(
+          "vat",
+          fetchPage((p, s) => vatApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadNotifs
-      ? settled(fetchPage((p, s) => notificationsApi.list({ page: p, pageSize: s }), page, listSize), null)
+      ? settledScope(
+          "notifications",
+          fetchPage((p, s) => notificationsApi.list({ page: p, pageSize: s }), page, listSize),
+          null,
+        )
       : Promise.resolve(null),
     loadConfig
       ? settled(
@@ -248,7 +311,7 @@ export async function applyRemoteData(
         )
       : Promise.resolve(null),
     loadUsers
-      ? settled(identityAdminApi.listRoles().then(unwrapList), [])
+      ? settledScope("users", identityAdminApi.listRoles().then(unwrapList), [])
       : Promise.resolve(null),
   ]);
 
@@ -257,11 +320,11 @@ export async function applyRemoteData(
   if (options.countsOnly) {
     const publishCount = (
       scope: RefreshScope,
-      page: { total: number } | null,
+      pageResult: { total: number } | null,
     ) => {
-      if (!page) return;
+      if (!pageResult) return;
       applier.setListMeta(scope, {
-        total: page.total,
+        total: pageResult.total,
         page: 0,
         pageSize: 1,
         loaded: 0,
@@ -285,6 +348,7 @@ export async function applyRemoteData(
     if (sessionUser && !uiUsers.some((u) => u.id === sessionUser.id)) {
       uiUsers.unshift(mapAuthUserToUi(sessionUser));
     }
+    for (const u of uiUsers) rememberUserName(u.id, u.name);
     applier.replaceUsers(uiUsers, sessionUser?.id);
     applier.setListMeta("users", {
       total: apiUsers.total,
@@ -302,6 +366,7 @@ export async function applyRemoteData(
     const localById = new Map(current.customers.map((c) => [c.id, c]));
     const mapped = apiCustomers.items.map((c) => mergeCustomerLocal(mapApiCustomerToUi(c), localById.get(c.id)));
     customers = append ? mergeById(current.customers, mapped) : mapped;
+    for (const c of mapped) rememberCustomerName(c.id, c.name);
     applier.replaceCustomers(customers);
     applier.setListMeta("customers", {
       total: apiCustomers.total,
@@ -309,12 +374,18 @@ export async function applyRemoteData(
       pageSize: apiCustomers.pageSize,
       loaded: customers.length,
     });
+    // Owner names resolve in the background — do not block the list.
+    const ownerIds = mapped.map((c) => c.owner).filter(Boolean);
+    if (ownerIds.length) {
+      void resolveEntityLookups({ userIds: ownerIds }, perms);
+    }
   }
 
   let services = current.services;
   if (apiServices) {
     const mapped = apiServices.items.map(mapApiServiceToUi);
     services = append ? mergeById(current.services, mapped) : mapped;
+    for (const s of mapped) rememberServiceName(s.id, s.name);
     applier.replaceServices(services);
     applier.setListMeta("services", {
       total: apiServices.total,
@@ -324,46 +395,48 @@ export async function applyRemoteData(
     });
   }
 
-  let ctvs = current.ctvs;
-  if (apiCollaborators) {
-    const mapped = apiCollaborators.items.map(mapApiCollaboratorToUi);
-    ctvs = append ? mergeById(current.ctvs, mapped) : mapped;
-    applier.replaceCtvs(ctvs);
-  }
-
-  if (apiContracts) {
-    applier.setListMeta("contracts", {
-      total: apiContracts.total,
-      page: apiContracts.page,
-      pageSize: apiContracts.pageSize,
-      loaded: apiContracts.items.length,
-    });
-  }
-
   const userName = new Map(uiUsers.map((u) => [u.id, u.name]));
   const customerName = new Map(customers.map((c) => [c.id, c.name]));
   const serviceName = new Map(services.map((s) => [s.id, s.name]));
-  const ctvName = new Map(ctvs.map((c) => [c.id, c.name]));
+  const ctvName = new Map(current.ctvs.map((c) => [c.id, c.name]));
 
   let orders = current.orders;
   if (apiOrders) {
-    const contractById = new Map((apiContracts?.items ?? []).map((c) => [c.id, c]));
     const localById = new Map(current.orders.map((o) => [o.id, o]));
     const mapped = apiOrders.items.map((o) => {
-      const contract = contractById.get(o.contractId);
-      const contractNumber = contract ? Number(contract.contractNumber) : undefined;
       const existing = localById.get(o.id);
-      const mappedOrder = mapApiOrderToUi(o, {
-        customerName: customerName.get(o.customerId),
-        serviceName: serviceName.get(o.serviceId),
-        assignedUserName: userName.get(o.assignedUserId),
-        submitterName: userName.get(o.submitterUserId),
-        reviewerName: o.reviewerUserId ? userName.get(o.reviewerUserId) : undefined,
-        ctvName: o.collaboratorId ? ctvName.get(o.collaboratorId) : undefined,
-        contractNumber: Number.isFinite(contractNumber)
-          ? contractNumber
-          : existing?.contractNumber,
+          const mappedOrder = mapApiOrderToUi(o, {
+        customerName:
+          customerName.get(o.customerId) ||
+          lookupCustomerName(o.customerId) ||
+          existing?.customerName,
+        serviceName:
+          serviceName.get(o.serviceId) || lookupServiceName(o.serviceId) || existing?.serviceName,
+        assignedUserName:
+          userName.get(o.assignedUserId) ||
+          lookupUserName(o.assignedUserId) ||
+          existing?.assignedUserName,
+        submitterName:
+          userName.get(o.submitterUserId) ||
+          lookupUserName(o.submitterUserId) ||
+          existing?.submitterName,
+        reviewerName: o.reviewerUserId
+          ? userName.get(o.reviewerUserId) ||
+            lookupUserName(o.reviewerUserId) ||
+            existing?.reviewerName
+          : undefined,
+        ctvName: o.collaboratorId
+          ? ctvName.get(o.collaboratorId) ||
+            lookupCtvName(o.collaboratorId) ||
+            existing?.ctvName
+          : undefined,
+        contractNumber: (() => {
+          const fromLookup = lookupContractNumber(o.contractId);
+          const n = fromLookup != null ? Number(fromLookup) : undefined;
+          return Number.isFinite(n) ? n : existing?.contractNumber;
+        })(),
       });
+      rememberOrderNumber(o.id, mappedOrder.orderNumber);
       return mergeOrderLocal(mappedOrder, existing);
     });
     orders = append ? mergeById(current.orders, mapped) : mapped;
@@ -374,50 +447,85 @@ export async function applyRemoteData(
       pageSize: apiOrders.pageSize,
       loaded: orders.length,
     });
-  } else if (apiContracts?.items.length || apiCollaborators) {
-    const contractById = new Map((apiContracts?.items ?? []).map((c) => [c.id, c]));
-    let changed = false;
-    orders = current.orders.map((o) => {
-      let next = o;
-      if (o.contractId && contractById.size) {
-        const contract = contractById.get(o.contractId);
-        const contractNumber = contract ? Number(contract.contractNumber) : undefined;
-        if (Number.isFinite(contractNumber) && next.contractNumber !== contractNumber) {
-          next = { ...next, contractNumber };
-          changed = true;
-        }
-      }
-      if (o.ctvId) {
-        const name = ctvName.get(o.ctvId);
-        if (name && next.ctvName !== name) {
-          next = { ...next, ctvName: name };
-          changed = true;
-        }
-      }
-      return next;
-    });
-    if (changed) applier.replaceOrders(orders);
+
+    // Name cells fill in after first paint (plan: rows render immediately).
+    void (async () => {
+      await resolveEntityLookups(
+        {
+          customerIds: mapped.map((o) => o.customerId).filter(Boolean),
+          serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
+          userIds: mapped
+            .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
+            .filter(Boolean) as string[],
+          contractIds: mapped.map((o) => o.contractId).filter(Boolean) as string[],
+          ctvIds: mapped.map((o) => o.ctvId).filter(Boolean) as string[],
+        },
+        perms,
+      );
+      if (options.abandonIf?.()) return;
+      applier.replaceOrders(
+        orders.map((o) => ({
+          ...o,
+          customerName: lookupCustomerName(o.customerId) || o.customerName,
+          serviceName: lookupServiceName(o.serviceId) || o.serviceName,
+          assignedUserName: lookupUserName(o.assignedUserId) || o.assignedUserName,
+          submitterName: lookupUserName(o.submitterId) || o.submitterName,
+          reviewerName: o.reviewerId ? lookupUserName(o.reviewerId) || o.reviewerName : o.reviewerName,
+          ctvName: o.ctvId ? lookupCtvName(o.ctvId) || o.ctvName : o.ctvName,
+          contractNumber: (() => {
+            const raw = o.contractId ? lookupContractNumber(o.contractId) : undefined;
+            const n = raw != null ? Number(raw) : undefined;
+            return Number.isFinite(n) ? n : o.contractNumber;
+          })(),
+        })),
+      );
+    })();
   }
 
   if (apiPayments) {
     const paymentRecords = mapPaymentsToRecords(orders, apiPayments.items);
-    applier.replacePayments(
-      append ? mergePaymentRecords(current.payments, paymentRecords) : paymentRecords,
-    );
+    for (const p of paymentRecords) {
+      if (p.orderId) rememberOrderNumber(p.orderId, p.orderNumber);
+    }
+    const paymentRows = append ? mergePaymentRecords(current.payments, paymentRecords) : paymentRecords;
+    applier.replacePayments(paymentRows);
     applier.setListMeta("payments", {
       total: apiPayments.total,
       page: apiPayments.page,
       pageSize: apiPayments.pageSize,
-      loaded: paymentRecords.length,
+      loaded: Math.min(
+        apiPayments.total,
+        append
+          ? listSize * (apiPayments.page - 1) + apiPayments.items.length
+          : apiPayments.items.length,
+      ),
     });
+    const orderIds = [...new Set(apiPayments.items.map((p) => p.orderId).filter(Boolean))];
+    if (orderIds.length) {
+      void (async () => {
+        await resolveEntityLookups({ orderIds }, perms);
+        if (options.abandonIf?.()) return;
+        const withNames = paymentRows.map((p) => ({
+          ...p,
+          orderNumber: lookupOrderNumber(p.orderId) || p.orderNumber,
+          customerName:
+            p.customerName ||
+            lookupCustomerName(orders.find((o) => o.id === p.orderId)?.customerId) ||
+            "",
+        }));
+        applier.replacePayments(withNames);
+      })();
+    }
   }
 
   const orderNumber = new Map(orders.map((o) => [o.id, o.orderNumber]));
   if (apiExpenses) {
     const mapped = apiExpenses.items.map((e) =>
-      mapApiExpenseToUi(e, orderNumber.get(e.orderId), {
-        requestedByName: userName.get(e.requestedByUserId),
-        reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
+      mapApiExpenseToUi(e, orderNumber.get(e.orderId) || lookupOrderNumber(e.orderId), {
+        requestedByName: userName.get(e.requestedByUserId) || lookupUserName(e.requestedByUserId),
+        reviewedByName: e.reviewedByUserId
+          ? userName.get(e.reviewedByUserId) || lookupUserName(e.reviewedByUserId)
+          : undefined,
       }),
     );
     const expenses = append ? mergeById(current.expenses, mapped) : mapped;
@@ -428,19 +536,56 @@ export async function applyRemoteData(
       pageSize: apiExpenses.pageSize,
       loaded: expenses.length,
     });
+    void (async () => {
+      await resolveEntityLookups(
+        {
+          orderIds: mapped.map((e) => e.orderId).filter(Boolean) as string[],
+          userIds: mapped
+            .flatMap((e) => [e.requestedById, e.reviewedById])
+            .filter(Boolean) as string[],
+        },
+        perms,
+      );
+      if (options.abandonIf?.()) return;
+      applier.replaceExpenses(
+        expenses.map((e) => ({
+          ...e,
+          orderNumber: lookupOrderNumber(e.orderId) || e.orderNumber,
+          requestedByName: lookupUserName(e.requestedById) || e.requestedByName,
+          reviewedByName: e.reviewedById
+            ? lookupUserName(e.reviewedById) || e.reviewedByName
+            : e.reviewedByName,
+        })),
+      );
+    })();
   }
   if (apiVat) {
     const mapped = apiVat.items.map((v) => {
       const order = orders.find((o) => o.id === v.orderId);
-      return mapApiVatToUi(v, order?.orderNumber, order?.contractNumber);
+      return mapApiVatToUi(
+        v,
+        order?.orderNumber || lookupOrderNumber(v.orderId),
+        order?.contractNumber,
+      );
     });
-    applier.replaceInvoices(append ? mergeById(current.invoices, mapped) : mapped);
+    const invoices = append ? mergeById(current.invoices, mapped) : mapped;
+    applier.replaceInvoices(invoices);
     applier.setListMeta("vat", {
       total: apiVat.total,
       page: apiVat.page,
       pageSize: apiVat.pageSize,
       loaded: mapped.length,
     });
+    void (async () => {
+      await resolveEntityLookups({ orderIds: mapped.map((v) => v.orderId).filter(Boolean) }, perms);
+      if (options.abandonIf?.()) return;
+      applier.replaceInvoices(
+        invoices.map((v) => ({
+          ...v,
+          orderNumber: lookupOrderNumber(v.orderId) || v.orderNumber,
+        })),
+      );
+    })();
   }
   if (apiNotifs) {
     const mapped = apiNotifs.items.map(mapApiNotificationToUi);

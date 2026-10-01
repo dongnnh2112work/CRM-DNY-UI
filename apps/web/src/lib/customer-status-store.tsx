@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import { useAppConfig } from "@/components/providers/antd-provider";
-import { loadJson, saveJson } from "@/lib/demo-storage";
 import { tt, translateStatusLabel } from "@/lib/i18n";
 import { STATUS_CONFIG, type DisplayStatusMeta, type StatusTone } from "@/lib/status-config";
 import {
@@ -23,8 +22,6 @@ import {
   uniqueKey,
 } from "@/lib/status-palette";
 import { CUSTOMER_STATUS_CATALOG_KEY, patchConfigDebounced } from "@/modules/config/api";
-
-const KEY = "dny-crm-customer-status-meta";
 
 export type CustomerStatusDefinition = {
   key: string;
@@ -95,15 +92,11 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   const persistEnabled = useRef(false);
 
   useEffect(() => {
-    const stored = loadJson<unknown>(KEY);
-    const parsed = parseStored(stored);
-    if (parsed) setStatuses(parsed);
     setReady(true);
   }, []);
 
   useEffect(() => {
     if (!ready || !persistEnabled.current) return;
-    saveJson(KEY, { statuses });
     patchConfigDebounced(CUSTOMER_STATUS_CATALOG_KEY, { statuses });
   }, [statuses, ready]);
 

@@ -6,7 +6,7 @@ import {
   TeamOutlined,
   TrophyOutlined,
 } from "@ant-design/icons";
-import { Card, Col, Row, Skeleton, Space, Typography, theme } from "antd";
+import { Card, Col, Empty, Row, Skeleton, Space, Typography, theme } from "antd";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useMemo } from "react";
@@ -17,14 +17,13 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { useCustomers } from "@/lib/customers-store";
 import { buildPaidRevenueByMonth } from "@/lib/dashboard-metrics";
 import { ds } from "@/lib/design-tokens";
-import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { currentYearMonth } from "@/lib/order-cashflow";
 import { looksLikeUuid } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
-import { buildPayroll, getPayrollScope } from "@/lib/payroll";
+import { getPayrollScope } from "@/lib/payroll";
 import { useSession } from "@/lib/session/session-provider";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
 import { useT } from "@/lib/use-t";
@@ -76,7 +75,6 @@ function buildOrderStatusChart(
     }))
     .filter((item) => item.value > 0);
 
-  /** Đơn có stage không còn trong cấu hình — vẫn đếm để khớp tổng BE */
   const orphans = Object.entries(counts)
     .filter(([key]) => !known.has(key))
     .map(([key, value]) => ({
@@ -96,24 +94,29 @@ export default function DashboardPage() {
   const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
-  const { expenses } = useExpenses();
   const { customers } = useCustomers();
-  const { listMeta } = useApiHydrate();
+  const { listMeta, refreshing, dataFresh } = useApiHydrate();
   const { stageOptions } = useOrderStatusConfig();
+
   const countsReady = Boolean(listMeta.orders && listMeta.customers && listMeta.payments);
-  const ordersFull =
-    Boolean(listMeta.orders) && listMeta.orders!.loaded >= listMeta.orders!.total;
-  const paymentsFull =
-    Boolean(listMeta.payments) && listMeta.payments!.loaded >= listMeta.payments!.total;
-  const chartsReady = ordersFull && paymentsFull;
-  const previewReady = orders.length > 0 || payments.length > 0;
-  const expensesReady = Boolean(listMeta.expenses) && listMeta.expenses!.loaded > 0;
+  const sliceComplete = (meta?: { total: number; loaded: number; page: number; pageSize: number }) => {
+    if (!meta) return false;
+    if (meta.total === 0) return true;
+    return meta.loaded >= meta.total || meta.page * meta.pageSize >= meta.total;
+  };
+  /** Only compute revenue/charts when the in-memory slice covers every row (or total is 0). */
+  const aggregatesReady = sliceComplete(listMeta.orders) && sliceComplete(listMeta.payments);
+  const previewReady =
+    (listMeta.orders != null || listMeta.payments != null) && !refreshing;
   const recentOrders = orders.slice(0, 5);
   const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
-  const orderStatusData = buildOrderStatusChart(orders, stageOptions);
-  const totalOrders = listMeta.orders?.total ?? orders.length;
-  const totalCustomers = listMeta.customers?.total ?? customers.length;
-  const revenueByMonth = useMemo(() => buildPaidRevenueByMonth(payments), [payments]);
+  const orderStatusData = aggregatesReady ? buildOrderStatusChart(orders, stageOptions) : [];
+  const totalOrders = listMeta.orders?.total ?? 0;
+  const totalCustomers = listMeta.customers?.total ?? 0;
+  const revenueByMonth = useMemo(
+    () => (aggregatesReady ? buildPaidRevenueByMonth(payments) : []),
+    [payments, aggregatesReady],
+  );
   const thisMonthKey = currentYearMonth();
   const revenueThisMonth = revenueByMonth.find((item) => item.month === thisMonthKey)?.value ?? 0;
   const payrollScope = getPayrollScope(
@@ -121,15 +124,6 @@ export default function DashboardPage() {
     currentUser ? getEffectivePermissions(currentUser) : null,
     apiUser?.permissions,
   );
-  const payrollThisMonth = useMemo(() => {
-    if (payrollScope === "none") return 0;
-    const rows = buildPayroll(orders, payments, expenses, currentYearMonth());
-    const visible =
-      payrollScope === "self" && currentUser
-        ? rows.filter((s) => s.userId === currentUser.id)
-        : rows;
-    return visible.reduce((sum, s) => sum + s.total, 0);
-  }, [orders, payments, expenses, payrollScope, currentUser]);
 
   const displayName = (value?: string) => {
     const text = value?.trim();
@@ -150,13 +144,15 @@ export default function DashboardPage() {
     [t, revenueByMonth],
   );
 
+  const showStaleLoading = !dataFresh && refreshing;
+
   return (
     <>
       <PageHeader breadcrumbs={[{ title: t("nav.dashboard") }]} />
       <div style={{ padding: 16 }}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
-            {chartsReady ? (
+            {aggregatesReady ? (
               <StatCard
                 title={t("dash.revenueMonth")}
                 value={revenueThisMonth}
@@ -164,9 +160,15 @@ export default function DashboardPage() {
                 suffix="₫"
                 accent={ds.primary}
               />
-            ) : (
+            ) : showStaleLoading || !countsReady ? (
               <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
                 <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
+              </Card>
+            ) : (
+              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
+                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                  {t("dash.summaryNeeded")}
+                </Typography.Text>
               </Card>
             )}
           </Col>
@@ -199,36 +201,34 @@ export default function DashboardPage() {
             )}
           </Col>
           <Col xs={24} sm={12} lg={6}>
-            {expensesReady && chartsReady ? (
-              payrollScope === "none" ? (
+            {payrollScope === "none" ? (
+              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
+                <Typography.Text type="secondary">{t("dash.payrollNoAccess")}</Typography.Text>
+              </Card>
+            ) : (
+              <Link href="/payroll" style={{ color: "inherit", display: "block" }}>
                 <StatCard
-                  title={t("dash.commissionPaid")}
-                  value={payrollThisMonth}
+                  title={payrollScope === "self" ? t("dash.myPayroll") : t("dash.commissionPaid")}
+                  value={0}
                   prefix={<TrophyOutlined />}
-                  suffix="₫"
+                  suffix=""
                   accent={ds.accentOrange}
                 />
-              ) : (
-                <Link href="/payroll" style={{ color: "inherit", display: "block" }}>
-                  <StatCard
-                    title={payrollScope === "self" ? t("dash.myPayroll") : t("dash.commissionPaid")}
-                    value={payrollThisMonth}
-                    prefix={<TrophyOutlined />}
-                    suffix="₫"
-                    accent={ds.accentOrange}
-                  />
-                </Link>
-              )
-            ) : (
-              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
-                <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
-              </Card>
+                <Typography.Text
+                  type="secondary"
+                  style={{ display: "block", marginTop: -8, padding: "0 16px 12px", fontSize: 12 }}
+                >
+                  {t("dash.openPayroll")}
+                </Typography.Text>
+              </Link>
             )}
           </Col>
         </Row>
 
         <DashboardCharts
-          ready={chartsReady}
+          ready={aggregatesReady}
+          incomplete={!aggregatesReady && countsReady}
+          incompleteHint={t("dash.summaryNeeded")}
           revenueData={revenueData}
           orderStatusData={orderStatusData}
           highlightMonth={thisMonthKey}
@@ -244,31 +244,35 @@ export default function DashboardPage() {
               extra={<Link href="/orders">{t("common.viewAll")}</Link>}
             >
               {previewReady ? (
-                <Space orientation="vertical" style={{ width: "100%" }} size={0}>
-                  {recentOrders.map((o) => (
-                    <div key={o.id} className="crm-dash-list-row">
-                      <div style={{ minWidth: 0 }}>
-                        <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
-                        <div
-                          style={{
-                            fontSize: ds.fontSize.caption,
-                            color: token.colorTextSecondary,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {displayName(o.customerName)} · {displayName(o.serviceName)}
+                recentOrders.length ? (
+                  <Space orientation="vertical" style={{ width: "100%" }} size={0}>
+                    {recentOrders.map((o) => (
+                      <div key={o.id} className="crm-dash-list-row">
+                        <div style={{ minWidth: 0 }}>
+                          <Link href={`/orders/${o.id}`}>{o.orderNumber}</Link>
+                          <div
+                            style={{
+                              fontSize: ds.fontSize.caption,
+                              color: token.colorTextSecondary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {displayName(o.customerName)} · {displayName(o.serviceName)}
+                          </div>
                         </div>
+                        <Typography.Text
+                          style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0 }}
+                        >
+                          {formatVndDisplay(o.value)}
+                        </Typography.Text>
                       </div>
-                      <Typography.Text
-                        style={{ fontVariantNumeric: "tabular-nums", flexShrink: 0 }}
-                      >
-                        {formatVndDisplay(o.value)}
-                      </Typography.Text>
-                    </div>
-                  ))}
-                </Space>
+                    ))}
+                  </Space>
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("dash.noRecentOrders")} />
+                )
               ) : (
                 <Skeleton active paragraph={{ rows: 4 }} title={false} />
               )}
@@ -282,28 +286,35 @@ export default function DashboardPage() {
               extra={<Link href="/payments">{t("common.viewAll")}</Link>}
             >
               {previewReady ? (
-                <Space orientation="vertical" style={{ width: "100%" }} size={0}>
-                  {upcomingPayments.map((p) => (
-                    <div key={p.id} className="crm-dash-list-row">
-                      <div style={{ minWidth: 0 }}>
-                        <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
-                        <div
-                          style={{
-                            fontSize: ds.fontSize.caption,
-                            color: token.colorTextSecondary,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {displayName(p.customerName)} ·{" "}
-                          {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
+                upcomingPayments.length ? (
+                  <Space orientation="vertical" style={{ width: "100%" }} size={0}>
+                    {upcomingPayments.map((p) => (
+                      <div key={p.id} className="crm-dash-list-row">
+                        <div style={{ minWidth: 0 }}>
+                          <Link href={`/payments/${p.id}`}>{p.orderNumber}</Link>
+                          <div
+                            style={{
+                              fontSize: ds.fontSize.caption,
+                              color: token.colorTextSecondary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {displayName(p.customerName)} ·{" "}
+                            {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
+                          </div>
                         </div>
+                        <StatusBadge module="payment" status={p.status} />
                       </div>
-                      <StatusBadge module="payment" status={p.status} />
-                    </div>
-                  ))}
-                </Space>
+                    ))}
+                  </Space>
+                ) : (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={t("dash.noUpcomingPayments")}
+                  />
+                )
               ) : (
                 <Skeleton active paragraph={{ rows: 4 }} title={false} />
               )}

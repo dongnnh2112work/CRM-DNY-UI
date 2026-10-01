@@ -3,7 +3,7 @@ import { reportApiError } from "@/lib/dev-debug";
 import { classifyApiError, isBlockedAccountError, isPendingMeError } from "@/lib/http/error-kind";
 import { ApiError, parseApiError, parseApiErrorText } from "@/lib/http/errors";
 import { isOAuthLoginInProgress } from "@/lib/http/oauth-redirect";
-import { readCachedAuthUser } from "@/lib/hydrate-cache";
+import { getLastKnownAuthUser } from "@/lib/hydrate-cache";
 import {
   clearStoredSession,
   getApiBaseUrl,
@@ -30,8 +30,8 @@ function isAuthEndpoint(path: string) {
 
 function keepPendingSessionOnFailure(path: string) {
   if (isAuthEndpoint(path)) return false;
-  const cached = readCachedAuthUser();
-  return Boolean(cached && isAwaitingAccess(cached));
+  const known = getLastKnownAuthUser();
+  return Boolean(known && isAwaitingAccess(known));
 }
 
 async function refreshAccessToken(): Promise<boolean> {
