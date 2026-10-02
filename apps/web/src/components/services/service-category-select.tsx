@@ -2,7 +2,7 @@
 
 import { CheckOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { App, Button, Divider, Input, Select, Space, theme } from "antd";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import { ds } from "@/lib/design-tokens";
 import { useServiceCategoryConfig } from "@/lib/service-category-store";
 import { useT } from "@/lib/use-t";
@@ -28,6 +28,7 @@ export function ServiceCategorySelect({
   const { categories, categoryOptions, addCategory, removeCategory, ensureCategoryLabel } =
     useServiceCategoryConfig();
   const [draft, setDraft] = useState("");
+  const [open, setOpen] = useState(false);
 
   const options = useMemo(() => {
     const base = categories.map((c) => ({ key: c.key, value: c.label, label: c.label }));
@@ -37,6 +38,10 @@ export function ServiceCategorySelect({
     }
     return base;
   }, [categories, value]);
+
+  const stop = (e: MouseEvent) => {
+    e.stopPropagation();
+  };
 
   const onAdd = () => {
     const label = draft.trim();
@@ -68,6 +73,12 @@ export function ServiceCategorySelect({
     message.success(t("service.categoryDeleted", { label }));
   };
 
+  const pick = (next: string) => {
+    ensureCategoryLabel(next);
+    onChange?.(next);
+    setOpen(false);
+  };
+
   if (!allowManage) {
     return (
       <Select
@@ -85,14 +96,14 @@ export function ServiceCategorySelect({
   return (
     <Select
       value={value || undefined}
+      open={open}
+      onOpenChange={setOpen}
       onChange={(next) => {
-        if (next) ensureCategoryLabel(next);
-        onChange?.(next);
+        if (next) pick(next);
       }}
       disabled={disabled}
       options={options.map((o) => ({ value: o.value, label: o.label }))}
       placeholder={t("common.selectCategory")}
-      showSearch
       optionFilterProp="label"
       popupRender={() => (
         <div
@@ -101,22 +112,21 @@ export function ServiceCategorySelect({
             background: token.colorBgElevated,
             borderRadius: token.borderRadiusLG,
           }}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseDown={(e) => {
+            // Keep Select open when clicking list chrome; allow inputs to take focus.
+            const el = e.target as HTMLElement | null;
+            if (el?.closest?.("input, textarea, button")) return;
+            e.preventDefault();
+          }}
         >
           {options.map((opt) => (
             <div
               key={opt.key}
               role="button"
               tabIndex={0}
-              onClick={() => {
-                ensureCategoryLabel(opt.value);
-                onChange?.(opt.value);
-              }}
+              onClick={() => pick(opt.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  ensureCategoryLabel(opt.value);
-                  onChange?.(opt.value);
-                }
+                if (e.key === "Enter" || e.key === " ") pick(opt.value);
               }}
               style={{
                 display: "flex",
@@ -154,6 +164,9 @@ export function ServiceCategorySelect({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onPressEnter={onAdd}
+              onClick={stop}
+              onMouseDown={stop}
+              onKeyDown={(e) => e.stopPropagation()}
             />
             <Button
               size="small"
@@ -161,6 +174,7 @@ export function ServiceCategorySelect({
               icon={<PlusOutlined />}
               aria-label={t("service.categoryAddAria")}
               onClick={onAdd}
+              onMouseDown={stop}
             />
           </Space.Compact>
         </div>
