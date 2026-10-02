@@ -1,4 +1,4 @@
-import { CATALOG_PAGE_SIZE, ROUTE_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
+import { ROUTE_PAGE_SIZE, fetchPage, unwrapList } from "@/lib/http/paging";
 import { ApiError } from "@/lib/http/errors";
 import {
   clearEntityLookupCache,
@@ -616,7 +616,7 @@ export async function applyRemoteData(
 
 const FINANCE_CACHE_TTL_MS = 45_000;
 /** Shared-contract payment/schedule cache — skip N+1 when hopping siblings. */
-const financePaymentCache = new Map<string, { at: number }>();
+const financePaymentCache = new Map<string, { at: number; hasSchedule: boolean }>();
 const financeInflight = new Map<string, Promise<void>>();
 
 /** Shared payment lives on the contract primary; do not fan out to every sibling. */
@@ -627,41 +627,59 @@ export async function reloadOrderFinance(args: {
   upsertPayment: (record: PaymentRecord) => void;
   mergeExpensesForOrder: (orderId: string, items: OrderExpense[]) => void;
   force?: boolean;
+  /**
+   * Fetch payment-schedule (often 404/~3s when empty). Default false on order detail;
+   * true on payment detail / after schedule edits.
+   */
+  includeSchedule?: boolean;
 }): Promise<void> {
-  const { order, users, upsertPayment, mergeExpensesForOrder, force = false } = args;
+  const {
+    order,
+    users,
+    upsertPayment,
+    mergeExpensesForOrder,
+    force = false,
+    includeSchedule = false,
+  } = args;
   const group = siblingOrders(args.groupOrders?.length ? args.groupOrders : [order], order);
   const primary = pickPrimaryOrder(group.length ? group : [order]);
   const cacheKey = orderGroupKey(primary);
   const cached = financePaymentCache.get(cacheKey);
   const paymentsFresh = !force && Boolean(cached && Date.now() - cached.at < FINANCE_CACHE_TTL_MS);
-  const inflightKey = `${cacheKey}:${order.id}:${paymentsFresh ? "exp" : "full"}`;
+  const scheduleFresh =
+    !includeSchedule ||
+    (!force && Boolean(cached?.hasSchedule && Date.now() - (cached?.at ?? 0) < FINANCE_CACHE_TTL_MS));
+  const needSchedule = includeSchedule && !scheduleFresh;
+  // Remap installments needs payment rows whenever we (re)load schedule.
+  const needPayments = !paymentsFresh || needSchedule;
+  const inflightKey = `${cacheKey}:${order.id}:${needPayments ? "pay" : "nopay"}:${needSchedule ? "sch" : "nosch"}`;
   const existing = financeInflight.get(inflightKey);
   if (existing) return existing;
 
   const userName = new Map(users.map((u) => [u.id, u.name]));
 
   const run = async () => {
-    const paymentPromise: Promise<ApiPayment[] | null> = paymentsFresh
-      ? Promise.resolve(null)
-      : settled(
+    const paymentPromise: Promise<ApiPayment[] | null> = needPayments
+      ? settled(
           fetchPage(
             (page, pageSize) => paymentsApi.list({ page, pageSize, orderId: primary.id }),
             1,
-            CATALOG_PAGE_SIZE,
+            ROUTE_PAGE_SIZE,
           ).then((r) => r.items),
           [],
-        );
+        )
+      : Promise.resolve(null);
 
     // 404 "Payment schedule not found" → empty via settled; only primary (not × siblings).
-    const schedulePromise: Promise<ApiScheduleLine[]> = paymentsFresh
-      ? Promise.resolve([])
-      : settled(ordersApi.listSchedule(primary.id).then(unwrapSchedule), []);
+    const schedulePromise: Promise<ApiScheduleLine[] | null> = needSchedule
+      ? settled(ordersApi.listSchedule(primary.id).then(unwrapSchedule), [])
+      : Promise.resolve(null);
 
     const expensesPromise = settled(
       fetchPage(
         (page, pageSize) => expensesApi.list({ page, pageSize, orderId: order.id }),
         1,
-        CATALOG_PAGE_SIZE,
+        ROUTE_PAGE_SIZE,
       ).then((r) => r.items),
       [],
     );
@@ -673,10 +691,14 @@ export async function reloadOrderFinance(args: {
     ]);
 
     if (paymentRows) {
-      const schedules = new Map<string, ApiScheduleLine[]>([[primary.id, scheduleLines]]);
+      const schedules = new Map<string, ApiScheduleLine[]>();
+      if (scheduleLines) schedules.set(primary.id, scheduleLines);
       const [record] = mapPaymentsToRecords(group, paymentRows, schedules);
       if (record) upsertPayment(record);
-      financePaymentCache.set(cacheKey, { at: Date.now() });
+      financePaymentCache.set(cacheKey, {
+        at: Date.now(),
+        hasSchedule: Boolean(cached?.hasSchedule || scheduleLines != null),
+      });
     }
 
     mergeExpensesForOrder(

@@ -62,22 +62,30 @@ type ScreenBoot =
   | { status: "missing" }
   | { status: "error"; message: string };
 
-/** Dedupe Strict Mode double-mount so order+docs hit the network once. */
-const orderDetailBootInflight = new Map<
+/** Dedupe Strict Mode double-mount so order/docs each hit the network once. */
+const orderGetInflight = new Map<string, Promise<Awaited<ReturnType<typeof ordersApi.get>>>>();
+const orderDocsInflight = new Map<
   string,
-  Promise<[Awaited<ReturnType<typeof ordersApi.get>>, Awaited<ReturnType<typeof documentsApi.list>>]>
+  Promise<Awaited<ReturnType<typeof documentsApi.list>>>
 >();
 
-function loadOrderDetailBoot(orderId: string) {
-  const hit = orderDetailBootInflight.get(orderId);
+function loadOrderGet(orderId: string) {
+  const hit = orderGetInflight.get(orderId);
   if (hit) return hit;
-  const pending = Promise.all([
-    ordersApi.get(orderId),
-    documentsApi.list({ orderId, pageSize: 100 }),
-  ]).finally(() => {
-    orderDetailBootInflight.delete(orderId);
+  const pending = ordersApi.get(orderId).finally(() => {
+    orderGetInflight.delete(orderId);
   });
-  orderDetailBootInflight.set(orderId, pending);
+  orderGetInflight.set(orderId, pending);
+  return pending;
+}
+
+function loadOrderDocs(orderId: string) {
+  const hit = orderDocsInflight.get(orderId);
+  if (hit) return hit;
+  const pending = documentsApi.list({ orderId, pageSize: 50 }).finally(() => {
+    orderDocsInflight.delete(orderId);
+  });
+  orderDocsInflight.set(orderId, pending);
   return pending;
 }
 
@@ -166,9 +174,28 @@ export default function OrderDetailPage() {
       setOrder(null);
     }
 
+    const kickFinance = (mapped: Order, catalogUsers: typeof users) => {
+      void reloadOrderFinance({
+        order: mapped,
+        groupOrders: ordersRef.current,
+        users: catalogUsers,
+        upsertPayment,
+        mergeExpensesForOrder,
+        includeSchedule: false,
+      }).finally(() => {
+        if (!cancelled) setFinanceReady(true);
+      });
+    };
+
+    if (cached) {
+      kickFinance(cached, catalogsRef.current.users);
+    }
+
     const load = async () => {
       try {
-        const [apiOrder, docsResult] = await loadOrderDetailBoot(id);
+        // Docs + finance start as soon as order maps — not after docs finish.
+        const docsPromise = loadOrderDocs(id);
+        const apiOrder = await loadOrderGet(id);
         if (cancelled) return;
         if (!apiOrder?.id) {
           setBoot({ status: "missing" });
@@ -181,7 +208,7 @@ export default function OrderDetailPage() {
         const customerName = new Map(catalogCustomers.map((c) => [c.id, c.name]));
         const serviceName = new Map(catalogServices.map((s) => [s.id, s.name]));
 
-        let mapped = mapApiOrderToUi(apiOrder, {
+        const mapped = mapApiOrderToUi(apiOrder, {
           customerName: customerName.get(apiOrder.customerId),
           serviceName: serviceName.get(apiOrder.serviceId),
           assignedUserName: userName.get(apiOrder.assignedUserId),
@@ -189,39 +216,47 @@ export default function OrderDetailPage() {
           reviewerName: apiOrder.reviewerUserId ? userName.get(apiOrder.reviewerUserId) : undefined,
         });
 
-        if (mapped.customerName === mapped.customerId) {
-          try {
-            const customer = mapApiCustomerToUi(await customersApi.get(mapped.customerId));
-            mapped = { ...mapped, customerName: customer.name };
-          } catch {
-            /* keep id until catalog arrives */
-          }
-        }
-
-        const docs = unwrapList(docsResult).filter((d) => d?.id);
-        const { work, licenses } = attachmentsFromDocs(docs, userName);
-        mapped = {
-          ...mapped,
-          attachments: work,
-          licenseAttachments: licenses,
-        };
-
         if (cancelled) return;
-        setOrder(mapped);
+        setOrder((prev) => ({
+          ...mapped,
+          attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
+          licenseAttachments:
+            prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
+        }));
         upsertOrder(mapped);
         setBoot({ status: "ready" });
 
-        try {
-          await reloadOrderFinance({
-            order: mapped,
-            groupOrders: ordersRef.current,
-            users: catalogUsers,
-            upsertPayment,
-            mergeExpensesForOrder,
-          });
-        } finally {
-          if (!cancelled) setFinanceReady(true);
+        if (!cached) {
+          kickFinance(mapped, catalogUsers);
         }
+
+        // Customer display name — do not block first paint.
+        if (mapped.customerName === mapped.customerId) {
+          void customersApi
+            .get(mapped.customerId)
+            .then((raw) => {
+              if (cancelled) return;
+              const name = mapApiCustomerToUi(raw).name;
+              setOrder((prev) => {
+                if (!prev || prev.id !== mapped.id) return prev;
+                const next = { ...prev, customerName: name };
+                upsertOrder(next);
+                return next;
+              });
+            })
+            .catch(() => undefined);
+        }
+
+        const docsResult = await docsPromise;
+        if (cancelled) return;
+        const docs = unwrapList(docsResult).filter((d) => d?.id);
+        const { work, licenses } = attachmentsFromDocs(docs, userName);
+        setOrder((prev) => {
+          if (!prev || prev.id !== mapped.id) return prev;
+          const next = { ...prev, attachments: work, licenseAttachments: licenses };
+          upsertOrder(next);
+          return next;
+        });
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && (err.statusCode === 404 || err.statusCode === 403)) {

@@ -68,7 +68,10 @@ type ApiRefreshContextValue = {
   refreshCurrent: () => Promise<void>;
   loadMore: (scope?: RefreshScope) => Promise<void>;
   invalidate: (scope?: RefreshScope | RefreshScope[]) => void;
-  reloadOrderFinance: (orderId: string) => Promise<void>;
+  reloadOrderFinance: (
+    orderId: string,
+    opts?: { includeSchedule?: boolean; force?: boolean },
+  ) => Promise<void>;
   ready: boolean;
   refreshing: boolean;
   /** True when in-memory rows for the primary route scope are within FRESHNESS_MS. */
@@ -356,7 +359,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   );
 
   const reloadFinance = useCallback(
-    async (orderId: string) => {
+    async (orderId: string, opts?: { includeSchedule?: boolean; force?: boolean }) => {
       const order = snapshotRef.current.orders.find((o) => o.id === orderId);
       if (!order) return;
       await reloadOrderFinance({
@@ -365,6 +368,8 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         users: snapshotRef.current.users,
         upsertPayment,
         mergeExpensesForOrder,
+        includeSchedule: opts?.includeSchedule ?? true,
+        force: opts?.force,
       });
       setLastSyncedAt(Date.now());
     },
