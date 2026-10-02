@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -46,6 +45,10 @@ function parseStored(raw: unknown): ServiceCategoryDefinition[] | null {
   return list.length > 0 ? list : null;
 }
 
+function persistCategories(categories: ServiceCategoryDefinition[]) {
+  patchConfigDebounced(SERVICE_CATEGORIES_CONFIG_KEY, { categories });
+}
+
 type Ctx = {
   categories: ServiceCategoryDefinition[];
   ready: boolean;
@@ -64,24 +67,14 @@ const ServiceCategoryContext = createContext<Ctx | null>(null);
 export function ServiceCategoryProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<ServiceCategoryDefinition[]>(DEFAULT_CATEGORIES);
   const [ready, setReady] = useState(false);
-  const persistEnabled = useRef(false);
 
   useEffect(() => {
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready || !persistEnabled.current) return;
-    patchConfigDebounced(SERVICE_CATEGORIES_CONFIG_KEY, { categories });
-  }, [categories, ready]);
-
   const hydrateFromRemote = useCallback((raw: unknown | null) => {
-    persistEnabled.current = false;
     const parsed = parseStored(raw);
     if (parsed) setCategories(parsed);
-    window.setTimeout(() => {
-      persistEnabled.current = true;
-    }, 0);
   }, []);
 
   const addCategory = useCallback((label: string) => {
@@ -95,7 +88,9 @@ export function ServiceCategoryProvider({ children }: { children: ReactNode }) {
       const existing = new Set(prev.map((c) => c.key));
       const key = uniqueKey(slugifyKey(trimmed), existing);
       created = { key, label: trimmed };
-      return [...prev, created];
+      const next = [...prev, created];
+      persistCategories(next);
+      return next;
     });
     return created;
   }, []);
@@ -103,9 +98,13 @@ export function ServiceCategoryProvider({ children }: { children: ReactNode }) {
   const updateCategory = useCallback((key: string, patch: { label: string }) => {
     const trimmed = patch.label.trim();
     if (!trimmed) return;
-    setCategories((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, label: trimmed } : c)),
-    );
+    setCategories((prev) => {
+      const idx = prev.findIndex((c) => c.key === key);
+      if (idx < 0 || prev[idx].label === trimmed) return prev;
+      const next = prev.map((c) => (c.key === key ? { ...c, label: trimmed } : c));
+      persistCategories(next);
+      return next;
+    });
   }, []);
 
   const removeCategory = useCallback((key: string) => {
@@ -120,7 +119,9 @@ export function ServiceCategoryProvider({ children }: { children: ReactNode }) {
       }
       if (!prev.some((c) => c.key === key)) return prev;
       result = { ok: true };
-      return prev.filter((c) => c.key !== key);
+      const next = prev.filter((c) => c.key !== key);
+      persistCategories(next);
+      return next;
     });
     return result;
   }, []);
@@ -132,7 +133,9 @@ export function ServiceCategoryProvider({ children }: { children: ReactNode }) {
       if (prev.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())) return prev;
       const existing = new Set(prev.map((c) => c.key));
       const key = uniqueKey(slugifyKey(trimmed), existing);
-      return [...prev, { key, label: trimmed }];
+      const next = [...prev, { key, label: trimmed }];
+      persistCategories(next);
+      return next;
     });
   }, []);
 

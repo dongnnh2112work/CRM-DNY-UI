@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -135,25 +134,15 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
   const { locale } = useAppConfig();
   const [stages, setStages] = useState<OrderStageDefinition[]>(defaultStages);
   const [ready, setReady] = useState(false);
-  const persistEnabled = useRef(false);
 
   useEffect(() => {
     // Defaults only — never hydrate from localStorage (stale server config).
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready || !persistEnabled.current) return;
-    patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages });
-  }, [stages, ready]);
-
   const hydrateFromRemote = useCallback((raw: unknown | null) => {
-    persistEnabled.current = false;
     const parsed = parseStored(raw);
     if (parsed) setStages(parsed);
-    window.setTimeout(() => {
-      persistEnabled.current = true;
-    }, 0);
   }, []);
 
   const getMeta = useCallback(
@@ -185,7 +174,7 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
         );
         if (taken) return prev;
       }
-      return prev.map((s) =>
+      const next = prev.map((s) =>
         s.key === key
           ? {
               ...s,
@@ -194,6 +183,13 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
             }
           : s,
       );
+      if (next === prev) return prev;
+      const changed = next.some(
+        (s, i) => s.label !== prev[i]?.label || s.color !== prev[i]?.color,
+      );
+      if (!changed) return prev;
+      patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages: next });
+      return next;
     });
   }, []);
 
@@ -210,7 +206,9 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
       const label = input?.label?.trim() || tt("stage.defaultName", { n: prev.length + 1 });
       const key = uniqueKey(slugifyKey(label), existing);
       created = { key, label, color: free };
-      return [...prev, created];
+      const next = [...prev, created];
+      patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages: next });
+      return next;
     });
     return created;
   }, []);
@@ -229,18 +227,24 @@ export function OrderStatusProvider({ children }: { children: ReactNode }) {
         return prev;
       }
       result = { ok: true };
-      return prev.filter((s) => s.key !== key);
+      const next = prev.filter((s) => s.key !== key);
+      patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages: next });
+      return next;
     });
     return result;
   }, []);
 
   const replaceStages = useCallback((next: OrderStageDefinition[]) => {
     if (next.length === 0) return;
-    setStages(next.map((s) => ({ ...s, label: s.label.trim() || s.key })));
+    const normalized = next.map((s) => ({ ...s, label: s.label.trim() || s.key }));
+    setStages(normalized);
+    patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages: normalized });
   }, []);
 
   const resetDefaults = useCallback(() => {
-    setStages(defaultStages());
+    const next = defaultStages();
+    setStages(next);
+    patchConfigDebounced(ORDER_STAGES_CONFIG_KEY, { stages: next });
   }, []);
 
   const stageOptions = useMemo(

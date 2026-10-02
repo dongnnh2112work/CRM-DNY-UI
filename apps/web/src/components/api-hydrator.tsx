@@ -60,6 +60,7 @@ function hydrateKey(
     `c${options?.countsOnly ? 1 : 0}`,
     `s${options?.pageSize ?? ""}`,
     `g${options?.loadConfig ? 1 : 0}`,
+    `n${options?.nameResolve ?? "full"}`,
   ].join(":");
 }
 
@@ -330,7 +331,10 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const refreshCurrent = useCallback(async () => {
     if (pathname.startsWith("/dashboard")) {
       await Promise.all([
-        run(["orders", "payments"], { pageSize: ROUTE_PAGE_SIZE }),
+        run(["orders", "payments"], {
+          pageSize: ROUTE_PAGE_SIZE,
+          nameResolve: "dashboardPreview",
+        }),
         run("customers", { countsOnly: true, pageSize: 1 }),
       ]);
       return;
@@ -424,6 +428,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
           configPromise,
           run(["orders", "payments"], {
             pageSize: ROUTE_PAGE_SIZE,
+            nameResolve: "dashboardPreview",
             abandonIf: () => !pathnameRef.current.startsWith("/dashboard"),
           }),
           run("customers", { countsOnly: true, pageSize: 1 }),
@@ -471,7 +476,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         due.some((s) => s === "orders" || s === "payments")
           ? run(
               due.filter((s) => s === "orders" || s === "payments"),
-              { pageSize: ROUTE_PAGE_SIZE },
+              { pageSize: ROUTE_PAGE_SIZE, nameResolve: "dashboardPreview" },
             )
           : Promise.resolve(),
         due.includes("customers")

@@ -71,6 +71,13 @@ export type ApplyRemoteOptions = {
   abandonIf?: () => boolean;
   /** Called when a scope returns 403 — hydrator marks it forbidden for the session. */
   onForbidden?: (scope: RefreshScope) => void;
+  /**
+   * How aggressively to resolve display names via GET /:id after list hydrate.
+   * - full: all ids on the page (default)
+   * - dashboardPreview: only customer+service for first 5 orders
+   * - off: skip lookups
+   */
+  nameResolve?: "full" | "dashboardPreview" | "off";
 };
 
 
@@ -451,37 +458,46 @@ export async function applyRemoteData(
     });
 
     // Name cells fill in after first paint (plan: rows render immediately).
-    void (async () => {
-      await resolveEntityLookups(
-        {
-          customerIds: mapped.map((o) => o.customerId).filter(Boolean),
-          serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
-          userIds: mapped
-            .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
-            .filter(Boolean) as string[],
-          contractIds: mapped.map((o) => o.contractId).filter(Boolean) as string[],
-          ctvIds: mapped.map((o) => o.ctvId).filter(Boolean) as string[],
-        },
-        perms,
-      );
-      if (options.abandonIf?.()) return;
-      applier.replaceOrders(
-        orders.map((o) => ({
-          ...o,
-          customerName: lookupCustomerName(o.customerId) || o.customerName,
-          serviceName: lookupServiceName(o.serviceId) || o.serviceName,
-          assignedUserName: lookupUserName(o.assignedUserId) || o.assignedUserName,
-          submitterName: lookupUserName(o.submitterId) || o.submitterName,
-          reviewerName: o.reviewerId ? lookupUserName(o.reviewerId) || o.reviewerName : o.reviewerName,
-          ctvName: o.ctvId ? lookupCtvName(o.ctvId) || o.ctvName : o.ctvName,
-          contractNumber: (() => {
-            const raw = o.contractId ? lookupContractNumber(o.contractId) : undefined;
-            const n = raw != null ? Number(raw) : undefined;
-            return Number.isFinite(n) ? n : o.contractNumber;
-          })(),
-        })),
-      );
-    })();
+    const nameResolve = options.nameResolve ?? "full";
+    if (nameResolve !== "off") {
+      void (async () => {
+        const preview = nameResolve === "dashboardPreview" ? mapped.slice(0, 5) : mapped;
+        await resolveEntityLookups(
+          nameResolve === "dashboardPreview"
+            ? {
+                customerIds: preview.map((o) => o.customerId).filter(Boolean),
+                serviceIds: preview.map((o) => o.serviceId).filter(Boolean),
+              }
+            : {
+                customerIds: mapped.map((o) => o.customerId).filter(Boolean),
+                serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
+                userIds: mapped
+                  .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
+                  .filter(Boolean) as string[],
+                contractIds: mapped.map((o) => o.contractId).filter(Boolean) as string[],
+                ctvIds: mapped.map((o) => o.ctvId).filter(Boolean) as string[],
+              },
+          perms,
+        );
+        if (options.abandonIf?.()) return;
+        applier.replaceOrders(
+          orders.map((o) => ({
+            ...o,
+            customerName: lookupCustomerName(o.customerId) || o.customerName,
+            serviceName: lookupServiceName(o.serviceId) || o.serviceName,
+            assignedUserName: lookupUserName(o.assignedUserId) || o.assignedUserName,
+            submitterName: lookupUserName(o.submitterId) || o.submitterName,
+            reviewerName: o.reviewerId ? lookupUserName(o.reviewerId) || o.reviewerName : o.reviewerName,
+            ctvName: o.ctvId ? lookupCtvName(o.ctvId) || o.ctvName : o.ctvName,
+            contractNumber: (() => {
+              const raw = o.contractId ? lookupContractNumber(o.contractId) : undefined;
+              const n = raw != null ? Number(raw) : undefined;
+              return Number.isFinite(n) ? n : o.contractNumber;
+            })(),
+          })),
+        );
+      })();
+    }
   }
 
   if (apiPayments) {
@@ -502,8 +518,10 @@ export async function applyRemoteData(
           : apiPayments.items.length,
       ),
     });
+    const nameResolve = options.nameResolve ?? "full";
     const orderIds = [...new Set(apiPayments.items.map((p) => p.orderId).filter(Boolean))];
-    if (orderIds.length) {
+    // Dashboard already resolves names from the orders preview; skip payment orphan lookups.
+    if (orderIds.length && nameResolve === "full") {
       void (async () => {
         await resolveEntityLookups({ orderIds }, perms);
         if (options.abandonIf?.()) return;

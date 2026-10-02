@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -89,24 +88,14 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
   const { locale } = useAppConfig();
   const [statuses, setStatuses] = useState<CustomerStatusDefinition[]>(defaultStatuses);
   const [ready, setReady] = useState(false);
-  const persistEnabled = useRef(false);
 
   useEffect(() => {
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready || !persistEnabled.current) return;
-    patchConfigDebounced(CUSTOMER_STATUS_CATALOG_KEY, { statuses });
-  }, [statuses, ready]);
-
   const hydrateFromRemote = useCallback((raw: unknown | null) => {
-    persistEnabled.current = false;
     const parsed = parseStored(raw);
     if (parsed) setStatuses(parsed);
-    window.setTimeout(() => {
-      persistEnabled.current = true;
-    }, 0);
   }, []);
 
   const getMeta = useCallback((status: string): DisplayStatusMeta => {
@@ -129,7 +118,7 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
           );
           if (taken) return prev;
         }
-        return prev.map((s) =>
+        const next = prev.map((s) =>
           s.key === key
             ? {
                 ...s,
@@ -138,6 +127,12 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
               }
             : s,
         );
+        const changed = next.some(
+          (s, i) => s.label !== prev[i]?.label || s.color !== prev[i]?.color,
+        );
+        if (!changed) return prev;
+        patchConfigDebounced(CUSTOMER_STATUS_CATALOG_KEY, { statuses: next });
+        return next;
       });
     },
     [],
@@ -153,7 +148,9 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
       const existing = new Set(prev.map((s) => s.key));
       const key = uniqueKey(slugifyKey(trimmed), existing);
       created = { key, label: trimmed, color: free };
-      return [...prev, created];
+      const next = [...prev, created];
+      patchConfigDebounced(CUSTOMER_STATUS_CATALOG_KEY, { statuses: next });
+      return next;
     });
     return created;
   }, []);
@@ -170,7 +167,9 @@ export function CustomerStatusProvider({ children }: { children: ReactNode }) {
       }
       if (!prev.some((s) => s.key === key)) return prev;
       result = { ok: true };
-      return prev.filter((s) => s.key !== key);
+      const next = prev.filter((s) => s.key !== key);
+      patchConfigDebounced(CUSTOMER_STATUS_CATALOG_KEY, { statuses: next });
+      return next;
     });
     return result;
   }, []);
