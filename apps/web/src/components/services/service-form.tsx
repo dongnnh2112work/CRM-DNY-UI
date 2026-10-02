@@ -2,6 +2,7 @@
 
 import { App, Button, Divider, Form, Input, InputNumber, Select, Space, Typography } from "antd";
 import { useEffect } from "react";
+import { ServiceCategorySelect } from "@/components/services/service-category-select";
 import { ServiceExtraFormFields } from "@/components/services/service-extra-form-fields";
 import { ds } from "@/lib/design-tokens";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
@@ -9,8 +10,6 @@ import { DEFAULT_LICENSE_WARN_MONTHS, MAX_LICENSE_WARN_MONTHS, licenseWarnMonths
 import { getServiceFormExtraFields, splitServiceFormValues } from "@/lib/service-fields";
 import type { FieldDefinition, Service, ServiceStatus } from "@/lib/types";
 import { useT } from "@/lib/use-t";
-
-const CATEGORIES = ["Work Permit", "Visa", "License", "Legal", "Other"];
 
 export function ServiceForm({
   service,
@@ -74,8 +73,9 @@ export function ServiceForm({
         name="category"
         label={t("common.category")}
         rules={[{ required: true, message: t("common.selectCategory") }]}
+        extra={t("service.categoryManageHint")}
       >
-        <Select options={CATEGORIES.map((c) => ({ value: c, label: c }))} />
+        <ServiceCategorySelect />
       </Form.Item>
       <Form.Item
         name="processingDays"

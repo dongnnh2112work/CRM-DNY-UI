@@ -36,6 +36,7 @@ import {
   staleMsFor,
 } from "@/lib/route-data-scopes";
 import { NOTIFICATION_PAGE_SIZE, ROUTE_PAGE_SIZE } from "@/lib/http/paging";
+import { useServiceCategoryConfig } from "@/lib/service-category-store";
 import { useServices } from "@/lib/services-store";
 import { isAwaitingAccess } from "@/lib/access-gate";
 import { useSession } from "@/lib/session/session-provider";
@@ -136,6 +137,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const { hydrateConfig, resetServerData: resetReminders } = useAppReminderConfig();
   const { hydrateFromRemote: hydrateOrderStages } = useOrderStatusConfig();
   const { hydrateFromRemote: hydrateCustomerStatuses } = useCustomerStatusConfig();
+  const { hydrateFromRemote: hydrateServiceCategories } = useServiceCategoryConfig();
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
@@ -216,6 +218,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       hydrateConfig,
       hydrateOrderStages,
       hydrateCustomerStatuses,
+      hydrateServiceCategories,
       hydratePagePermissions,
       setListMeta,
     }),
@@ -233,6 +236,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       hydrateConfig,
       hydrateOrderStages,
       hydrateCustomerStatuses,
+      hydrateServiceCategories,
       hydratePagePermissions,
       setListMeta,
     ],

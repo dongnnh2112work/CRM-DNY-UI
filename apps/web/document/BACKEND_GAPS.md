@@ -34,6 +34,7 @@ UI gọi đúng Swagger (`UpdateConfigDto`): `PATCH /api/v1/config/{key}` body `
 |-----|-------------|
 | `crm.orderStages` | `{ stages: [{ key, label, color }] }` |
 | `crm.customerStatusCatalog` | `{ statuses: [{ key, label, color }] }` |
+| `crm.serviceCategories` | `{ categories: [{ key, label }] }` |
 | `crm.pagePermissions` | `{ [roleKey]: { [pageKey]: { view, edit } } }` |
 
 `pageKey`: `dashboard` `orders` `customers` `payments` `expense_approvals` `payroll` `vat` `services` `emails` `users` `config` `order_statuses`.  

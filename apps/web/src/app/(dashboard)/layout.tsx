@@ -8,6 +8,7 @@ import { NotificationsProvider } from "@/lib/notifications-store";
 import { OrderStatusProvider } from "@/lib/order-status-store";
 import { OrdersProvider } from "@/lib/orders-store";
 import { PaymentsProvider } from "@/lib/payments-store";
+import { ServiceCategoryProvider } from "@/lib/service-category-store";
 import { ServicesProvider } from "@/lib/services-store";
 import { VatProvider } from "@/lib/vat-store";
 import { AuthGate } from "@/components/auth-gate";
@@ -22,6 +23,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <AppConfigProvider>
         <OrderStatusProvider>
           <CustomerStatusProvider>
+          <ServiceCategoryProvider>
           <ServicesProvider>
             <CustomersProvider>
               <CtvsProvider>
@@ -43,6 +45,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </CtvsProvider>
             </CustomersProvider>
           </ServicesProvider>
+          </ServiceCategoryProvider>
           </CustomerStatusProvider>
         </OrderStatusProvider>
       </AppConfigProvider>

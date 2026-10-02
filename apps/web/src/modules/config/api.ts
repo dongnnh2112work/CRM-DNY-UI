@@ -107,6 +107,7 @@ export async function persistAndVerifyConfig(key: string, valueJson: unknown) {
 export const REMINDER_CONFIG_KEY = "crm.reminders";
 export const ORDER_STAGES_CONFIG_KEY = "crm.orderStages";
 export const CUSTOMER_STATUS_CATALOG_KEY = "crm.customerStatusCatalog";
+export const SERVICE_CATEGORIES_CONFIG_KEY = "crm.serviceCategories";
 export const PAGE_PERMISSIONS_CONFIG_KEY = "crm.pagePermissions";
 
 /** BE sometimes stores JSON as a string; hydrate must parse before merge. */

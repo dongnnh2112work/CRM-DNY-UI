@@ -26,6 +26,7 @@ import {
   PAGE_PERMISSIONS_CONFIG_KEY,
   parseConfigValue,
   REMINDER_CONFIG_KEY,
+  SERVICE_CATEGORIES_CONFIG_KEY,
 } from "@/modules/config/api";
 import { customersApi } from "@/modules/customers/api";
 import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
@@ -98,6 +99,7 @@ export type ApiDataApplier = {
   hydrateConfig: (next: { vatIssueWarnDays: number }) => void;
   hydrateOrderStages: (raw: unknown | null) => void;
   hydrateCustomerStatuses: (raw: unknown | null) => void;
+  hydrateServiceCategories: (raw: unknown | null) => void;
   hydratePagePermissions: (raw: unknown | null) => void;
   setListMeta: (scope: RefreshScope, meta: ListSliceMeta) => void;
 };
@@ -607,6 +609,7 @@ export async function applyRemoteData(
     }
     applier.hydrateOrderStages(byKey.get(ORDER_STAGES_CONFIG_KEY) ?? null);
     applier.hydrateCustomerStatuses(byKey.get(CUSTOMER_STATUS_CATALOG_KEY) ?? null);
+    applier.hydrateServiceCategories(byKey.get(SERVICE_CATEGORIES_CONFIG_KEY) ?? null);
     applier.hydratePagePermissions(byKey.get(PAGE_PERMISSIONS_CONFIG_KEY) ?? null);
   }
 }

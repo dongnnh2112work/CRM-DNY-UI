@@ -3,7 +3,7 @@ import type { FieldDefinition, Service } from "./types";
 export const SERVICE_FIELD_DEFS: FieldDefinition[] = [
   { key: "name", label: "Tên dịch vụ", type: "text", required: true, order: 1, visible: true },
   { key: "code", label: "Mã", type: "text", required: false, order: 2, visible: false },
-  { key: "category", label: "Danh mục", type: "select", options: ["Work Permit", "Visa", "License", "Legal", "Other"], required: true, order: 3, visible: true },
+  { key: "category", label: "Danh mục", type: "select", required: true, order: 3, visible: true },
   { key: "unitPrice", label: "Đơn giá (VND)", type: "number", required: false, order: 4, visible: false },
   { key: "processingDays", label: "Thời gian xử lý (ngày)", type: "number", required: true, order: 5, visible: true },
   { key: "licenseExpiryWarnMonths", label: "Cảnh báo GP (tháng)", type: "number", required: true, order: 6, visible: true },
