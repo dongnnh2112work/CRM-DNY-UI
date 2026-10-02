@@ -26,7 +26,7 @@ function compareText(a: string, b: string) {
 export default function PaymentsPage() {
   const t = useT();
   const { message } = App.useApp();
-  const paymentsRemote = useRemoteList("orders");
+  const paymentsRemote = useRemoteList("payments");
   const { payments } = usePayments();
   const { orders } = useOrders();
   const [query, setQuery] = useState("");

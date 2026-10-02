@@ -1,6 +1,6 @@
 "use client";
 
-import { Select, Typography, type TableColumnsType } from "antd";
+import { Alert, Select, Typography, type TableColumnsType } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useApiHydrate } from "@/components/api-hydrator";
@@ -20,9 +20,16 @@ import { matchesTableQuery } from "@/lib/table-search";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useT } from "@/lib/use-t";
+import type { ListSliceMeta } from "@/lib/load-api-data";
 
 function isYearMonth(v: string | null): v is string {
   return !!v && /^\d{4}-\d{2}$/.test(v);
+}
+
+function sliceComplete(meta?: ListSliceMeta) {
+  if (!meta) return false;
+  if (meta.total === 0) return true;
+  return meta.loaded >= meta.total;
 }
 
 function MoneyCell({ value }: { value: number }) {
@@ -51,7 +58,6 @@ function PayrollPageContent() {
   const { payments } = usePayments();
   const { expenses } = useExpenses();
   const { listMeta } = useApiHydrate();
-  const payrollReady = Boolean(listMeta.orders && listMeta.payments && listMeta.expenses);
   const [query, setQuery] = useState("");
   const applyUrlQuery = useCallback((q: string) => setQuery(q), []);
 
@@ -84,6 +90,16 @@ function PayrollPageContent() {
   }, [rows, query]);
 
   const grandTotal = useMemo(() => filtered.reduce((sum, r) => sum + r.total, 0), [filtered]);
+
+  const ordersComplete = sliceComplete(listMeta.orders);
+  const paymentsComplete = sliceComplete(listMeta.payments);
+  const expensesComplete = sliceComplete(listMeta.expenses);
+  const anyMeta = Boolean(listMeta.orders || listMeta.payments || listMeta.expenses);
+  const allComplete = ordersComplete && paymentsComplete && expensesComplete;
+  const hitCap =
+    ([listMeta.orders, listMeta.payments, listMeta.expenses] as (ListSliceMeta | undefined)[]).some(
+      (m) => m != null && m.loaded < m.total && m.loaded >= 200,
+    );
 
   const setMonth = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -124,9 +140,15 @@ function PayrollPageContent() {
     );
   }
 
-  if (scope === "self" || !payrollReady) {
+  if (scope === "self") {
     return <PageLoading />;
   }
+
+  const loadedHint = t("payroll.partialLoaded", {
+    orders: listMeta.orders?.loaded ?? 0,
+    payments: listMeta.payments?.loaded ?? 0,
+    expenses: listMeta.expenses?.loaded ?? 0,
+  });
 
   return (
     <>
@@ -148,6 +170,20 @@ function PayrollPageContent() {
           {t("payroll.formula")}
         </Typography.Text>
       </PageHeader>
+      {!anyMeta ? (
+        <div style={{ padding: "0 16px 12px" }}>
+          <Alert type="info" showIcon message={t("payroll.loadingData")} />
+        </div>
+      ) : !allComplete ? (
+        <div style={{ padding: "0 16px 12px" }}>
+          <Alert
+            type={hitCap ? "warning" : "info"}
+            showIcon
+            message={hitCap ? t("payroll.capReached") : t("payroll.loadingMore")}
+            description={loadedHint}
+          />
+        </div>
+      ) : null}
       <DataTable<StaffPayroll>
         rowKey="userId"
         columns={columns}
@@ -158,7 +194,11 @@ function PayrollPageContent() {
           style: { cursor: "pointer" },
         })}
         emptyDescription={
-          query.trim() && rows.length > 0 ? t("common.noResults") : t("payroll.empty")
+          query.trim() && rows.length > 0
+            ? t("common.noResults")
+            : !anyMeta
+              ? t("payroll.loadingData")
+              : t("payroll.empty")
         }
       />
       {filtered.length > 0 ? (

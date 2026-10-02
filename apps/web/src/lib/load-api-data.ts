@@ -75,9 +75,10 @@ export type ApplyRemoteOptions = {
    * How aggressively to resolve display names via GET /:id after list hydrate.
    * - full: all ids on the page (default)
    * - dashboardPreview: only customer+service for first 5 orders
+   * - listLean: ids shown on list tables (skip contract/ctv noise)
    * - off: skip lookups
    */
-  nameResolve?: "full" | "dashboardPreview" | "off";
+  nameResolve?: "full" | "dashboardPreview" | "listLean" | "off";
 };
 
 
@@ -305,14 +306,16 @@ export async function applyRemoteData(
       : Promise.resolve(null),
     loadConfig
       ? settled(
-          configApi.list().then(async (list) => {
+          Promise.all([
+            configApi.list(),
+            configApi.get(PAGE_PERMISSIONS_CONFIG_KEY, { silent: true }).catch(() => undefined),
+          ]).then(([list, pagePerms]) => {
             const items = [...(list.items ?? [])];
-            const hasPagePerms = items.some((row) => row.key === PAGE_PERMISSIONS_CONFIG_KEY);
-            if (!hasPagePerms) {
-              const pagePerms = await configApi
-                .get(PAGE_PERMISSIONS_CONFIG_KEY, { silent: true })
-                .catch(() => undefined);
-              if (pagePerms?.key) items.push(pagePerms);
+            if (
+              pagePerms?.key &&
+              !items.some((row) => row.key === PAGE_PERMISSIONS_CONFIG_KEY)
+            ) {
+              items.push(pagePerms);
             }
             return { items };
           }),
@@ -462,23 +465,30 @@ export async function applyRemoteData(
     if (nameResolve !== "off") {
       void (async () => {
         const preview = nameResolve === "dashboardPreview" ? mapped.slice(0, 5) : mapped;
-        await resolveEntityLookups(
+        const lookupReq =
           nameResolve === "dashboardPreview"
             ? {
                 customerIds: preview.map((o) => o.customerId).filter(Boolean),
                 serviceIds: preview.map((o) => o.serviceId).filter(Boolean),
               }
-            : {
-                customerIds: mapped.map((o) => o.customerId).filter(Boolean),
-                serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
-                userIds: mapped
-                  .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
-                  .filter(Boolean) as string[],
-                contractIds: mapped.map((o) => o.contractId).filter(Boolean) as string[],
-                ctvIds: mapped.map((o) => o.ctvId).filter(Boolean) as string[],
-              },
-          perms,
-        );
+            : nameResolve === "listLean"
+              ? {
+                  customerIds: mapped.map((o) => o.customerId).filter(Boolean),
+                  serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
+                  userIds: mapped
+                    .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
+                    .filter(Boolean) as string[],
+                }
+              : {
+                  customerIds: mapped.map((o) => o.customerId).filter(Boolean),
+                  serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
+                  userIds: mapped
+                    .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
+                    .filter(Boolean) as string[],
+                  contractIds: mapped.map((o) => o.contractId).filter(Boolean) as string[],
+                  ctvIds: mapped.map((o) => o.ctvId).filter(Boolean) as string[],
+                };
+        await resolveEntityLookups(lookupReq, perms);
         if (options.abandonIf?.()) return;
         applier.replaceOrders(
           orders.map((o) => ({
@@ -520,8 +530,8 @@ export async function applyRemoteData(
     });
     const nameResolve = options.nameResolve ?? "full";
     const orderIds = [...new Set(apiPayments.items.map((p) => p.orderId).filter(Boolean))];
-    // Dashboard already resolves names from the orders preview; skip payment orphan lookups.
-    if (orderIds.length && nameResolve === "full") {
+    // Dashboard preview skips payment orphan lookups; listLean still resolves order numbers.
+    if (orderIds.length && (nameResolve === "full" || nameResolve === "listLean")) {
       void (async () => {
         await resolveEntityLookups({ orderIds }, perms);
         if (options.abandonIf?.()) return;
@@ -557,6 +567,8 @@ export async function applyRemoteData(
       loaded: expenses.length,
     });
     void (async () => {
+      const nameResolve = options.nameResolve ?? "full";
+      if (nameResolve === "off" || nameResolve === "dashboardPreview") return;
       await resolveEntityLookups(
         {
           orderIds: mapped.map((e) => e.orderId).filter(Boolean) as string[],
@@ -597,6 +609,8 @@ export async function applyRemoteData(
       loaded: mapped.length,
     });
     void (async () => {
+      const nameResolve = options.nameResolve ?? "full";
+      if (nameResolve === "off" || nameResolve === "dashboardPreview") return;
       await resolveEntityLookups({ orderIds: mapped.map((v) => v.orderId).filter(Boolean) }, perms);
       if (options.abandonIf?.()) return;
       applier.replaceInvoices(

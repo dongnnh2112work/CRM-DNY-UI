@@ -399,8 +399,9 @@ export default function OrdersPage() {
         cashflowForMonth(cashflowByOrder.get(a.id) ?? emptyFlow, cashflowMonth).thu -
         cashflowForMonth(cashflowByOrder.get(b.id) ?? emptyFlow, cashflowMonth).thu,
       render: (_, r) => {
+        if (!cashflowReady) return "—";
         const m = cashflowForMonth(cashflowByOrder.get(r.id) ?? emptyFlow, cashflowMonth);
-        return <CashflowAmounts thu={m.thu} chi={m.chi} loading={!cashflowReady} />;
+        return <CashflowAmounts thu={m.thu} chi={m.chi} />;
       },
     },
     {
@@ -409,8 +410,9 @@ export default function OrdersPage() {
       align: "right",
       sorter: (a, b) => (cashflowByOrder.get(a.id)?.thu ?? 0) - (cashflowByOrder.get(b.id)?.thu ?? 0),
       render: (_, r) => {
+        if (!cashflowReady) return "—";
         const f = cashflowByOrder.get(r.id) ?? emptyFlow;
-        return <CashflowAmounts thu={f.thu} chi={f.chi} loading={!cashflowReady} />;
+        return <CashflowAmounts thu={f.thu} chi={f.chi} />;
       },
     },
     {

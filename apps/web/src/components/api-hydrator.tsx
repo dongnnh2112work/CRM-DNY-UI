@@ -46,6 +46,33 @@ import { useVat } from "@/lib/vat-store";
 /** Share in-flight hydrate so React Strict Mode does not double-hit the API. */
 const hydrateInflight = new Map<string, Promise<void>>();
 
+const PAYROLL_AUTO_LOAD_MAX_PAGES = 10;
+
+function nameResolveForPath(pathname: string): ApplyRemoteOptions["nameResolve"] {
+  if (pathname.startsWith("/dashboard")) return "dashboardPreview";
+  if (
+    pathname.startsWith("/orders") ||
+    pathname.startsWith("/payments") ||
+    pathname.startsWith("/expense") ||
+    pathname.startsWith("/vat") ||
+    pathname.startsWith("/payroll")
+  ) {
+    return "listLean";
+  }
+  return "full";
+}
+
+function deferIdle(fn: () => void) {
+  const w = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  };
+  if (typeof w.requestIdleCallback === "function") {
+    w.requestIdleCallback(() => fn(), { timeout: 2000 });
+  } else {
+    window.setTimeout(fn, 0);
+  }
+}
+
 function hydrateKey(
   userId: string | undefined,
   scope: RefreshScope | RefreshScope[],
@@ -313,7 +340,12 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         pageRef.current[s] = 1;
         delete fetchedAtRef.current[s];
       }
-      await run(scope, { page: 1, append: false, pageSize: ROUTE_PAGE_SIZE });
+      await run(scope, {
+        page: 1,
+        append: false,
+        pageSize: ROUTE_PAGE_SIZE,
+        nameResolve: nameResolveForPath(pathnameRef.current),
+      });
     },
     [run],
   );
@@ -357,7 +389,12 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       const meta = listMetaRef.current[key];
       if (meta && meta.loaded >= meta.total) return;
       const next = (pageRef.current[key] ?? 1) + 1;
-      await run(key, { page: next, append: true, pageSize: ROUTE_PAGE_SIZE });
+      await run(key, {
+        page: next,
+        append: true,
+        pageSize: ROUTE_PAGE_SIZE,
+        nameResolve: nameResolveForPath(pathnameRef.current),
+      });
     },
     [pathname, run, user?.permissions],
   );
@@ -422,8 +459,18 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         ? Promise.resolve()
         : run([], { loadConfig: true }).catch(() => undefined);
 
+      const scheduleNotifs = () => {
+        if (!canLoadScope("notifications", user?.permissions)) return;
+        deferIdle(() => {
+          if (cancelled) return;
+          void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
+        });
+      };
+
+      // Paint shell immediately; lists hydrate in background.
+      setReady(true);
+
       if (pathnameRef.current.startsWith("/dashboard")) {
-        setReady(true);
         await Promise.all([
           configPromise,
           run(["orders", "payments"], {
@@ -434,22 +481,22 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
           run("customers", { countsOnly: true, pageSize: 1 }),
         ]);
         if (cancelled) return;
-        if (canLoadScope("notifications", user?.permissions)) {
-          void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
-        }
+        scheduleNotifs();
         return;
       }
 
       const pathScopes = filterAllowed(scopesForPath(pathnameRef.current));
       await Promise.all([
         configPromise,
-        pathScopes.length ? run(pathScopes, { pageSize: ROUTE_PAGE_SIZE }) : Promise.resolve(),
+        pathScopes.length
+          ? run(pathScopes, {
+              pageSize: ROUTE_PAGE_SIZE,
+              nameResolve: nameResolveForPath(pathnameRef.current),
+            })
+          : Promise.resolve(),
       ]);
       if (cancelled) return;
-      setReady(true);
-      if (canLoadScope("notifications", user?.permissions)) {
-        void run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
-      }
+      scheduleNotifs();
     };
     void boot();
     return () => {
@@ -491,6 +538,29 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     });
     if (due.length) void refresh(due);
   }, [pathname, status, ready, refresh, run, filterAllowed, user, tick]);
+
+  // Payroll: progressively load more pages (capped) so month calc can improve without dumping full catalog.
+  useEffect(() => {
+    if (status !== "authenticated" || !ready || isAwaitingAccess(user)) return;
+    if (!pathname.startsWith("/payroll")) return;
+    let cancelled = false;
+    const scopes = (["orders", "payments", "expenses"] as RefreshScope[]).filter((s) =>
+      canLoadScope(s, user?.permissions),
+    );
+    void (async () => {
+      for (const scope of scopes) {
+        for (let i = 0; i < PAYROLL_AUTO_LOAD_MAX_PAGES; i++) {
+          if (cancelled) return;
+          const meta = listMetaRef.current[scope];
+          if (meta && meta.loaded >= meta.total) break;
+          await loadMore(scope);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, status, ready, loadMore, user]);
 
   // Notifications poll — only if permitted and not forbidden.
   useEffect(() => {

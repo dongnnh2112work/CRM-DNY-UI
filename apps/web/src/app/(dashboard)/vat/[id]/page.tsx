@@ -4,7 +4,6 @@ import { App, Button, Descriptions, Popconfirm, Space, Typography } from "antd";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useApiHydrate } from "@/components/api-hydrator";
 import { EntityDocuments } from "@/components/documents/entity-documents";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -53,7 +52,6 @@ export default function VatDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message } = App.useApp();
-  const { ready: hydrateReady } = useApiHydrate();
   const { getById, updateInvoice, upsertInvoice } = useVat();
   const { orders } = useOrders();
   const { users, currentUser } = useUsers();
@@ -68,7 +66,7 @@ export default function VatDetailPage() {
   }, [cached]);
 
   useEffect(() => {
-    if (!id || !hydrateReady) return;
+    if (!id) return;
     let cancelled = false;
 
     const load = async () => {
@@ -84,7 +82,7 @@ export default function VatDetailPage() {
         setInvoice(mapped);
         upsertInvoice(mapped);
 
-        const docsResult = await documentsApi.list({ orderId: apiInvoice.orderId, pageSize: 100 });
+        const docsResult = await documentsApi.list({ orderId: apiInvoice.orderId, pageSize: 50 });
         if (cancelled) return;
         const userName = new Map(users.map((u) => [u.id, u.name]));
         setAttachments((prev) =>
@@ -104,9 +102,9 @@ export default function VatDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, hydrateReady]);
+  }, [id, message, t, upsertInvoice, cached, orders, users]);
 
-  if (!hydrateReady || (loading && !invoice)) return <PageLoading />;
+  if (loading && !invoice) return <PageLoading />;
   if (!invoice) {
     return (
       <EmptyState

@@ -16,6 +16,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { UserProfileForm } from "@/components/users/user-profile-form";
@@ -27,7 +28,7 @@ import { formatDisplayDate } from "@/lib/format-date";
 import { matchesTableQuery } from "@/lib/table-search";
 import { apiErrorMessage } from "@/lib/http/message";
 import { PERMISSION } from "@/lib/rbac";
-import { useRemoteList } from "@/components/api-hydrator";
+import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
@@ -57,7 +58,10 @@ export default function UsersPage() {
     rolePermissions,
     getRoleLabel,
   } = useUsers();
+  const { listMeta } = useApiHydrate();
   const usersRemote = useRemoteList("users");
+  /** Role must be resolved before rendering role-dependent UI. */
+  const usersRolesReady = Boolean(listMeta.users);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
   const [query, setQuery] = useState("");
@@ -197,6 +201,10 @@ export default function UsersPage() {
       render: (s: string) => <StatusBadge module="user" status={s} />,
     },
   ];
+
+  if (!usersRolesReady) {
+    return <PageLoading />;
+  }
 
   return (
     <>

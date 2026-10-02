@@ -1109,6 +1109,11 @@ const vi = {
 
   "payroll.title": "Tính lương",
   "payroll.formula": "Lương = % hoa hồng × (thu − chi) trong tháng. Số âm được giữ nguyên.",
+  "payroll.loadingData": "Đang tải dữ liệu lương…",
+  "payroll.loadingMore": "Đang tải thêm đơn / thanh toán / chi phí để tính lương chính xác hơn.",
+  "payroll.capReached":
+    "Đã tải tối đa ~200 dòng mỗi nguồn. Số liệu có thể chưa đủ — cần API payroll/summary theo tháng.",
+  "payroll.partialLoaded": "Đã load: {orders} đơn · {payments} TT · {expenses} chi.",
   "payroll.empty": "Không có phát sinh thu/chi trong tháng này.",
   "payroll.emptyStaff": "Nhân viên này không có hồ sơ phát sinh trong tháng đã chọn.",
   "payroll.staff": "Nhân viên",
@@ -2237,6 +2242,11 @@ const en: Record<keyof typeof vi, string> = {
 
   "payroll.title": "Payroll",
   "payroll.formula": "Pay = commission % × (in − out) that month. Negatives are kept.",
+  "payroll.loadingData": "Loading payroll data…",
+  "payroll.loadingMore": "Loading more orders / payments / expenses for a fuller payroll.",
+  "payroll.capReached":
+    "Loaded up to ~200 rows per source. Totals may be incomplete — need a monthly payroll/summary API.",
+  "payroll.partialLoaded": "Loaded: {orders} orders · {payments} payments · {expenses} expenses.",
   "payroll.empty": "No income or expenses this month.",
   "payroll.emptyStaff": "This staff member has no activity in the selected month.",
   "payroll.staff": "Staff",
@@ -3360,6 +3370,11 @@ const zh: Record<keyof typeof vi, string> = {
 
   "payroll.title": "工资",
   "payroll.formula": "工资 = 提成% × 当月（收入 − 支出）。负数保留。",
+  "payroll.loadingData": "正在加载工资数据…",
+  "payroll.loadingMore": "正在加载更多订单/收款/支出以完善工资计算。",
+  "payroll.capReached":
+    "每个数据源最多约 200 条。合计可能不完整 — 需要按月 payroll/summary API。",
+  "payroll.partialLoaded": "已加载：{orders} 订单 · {payments} 收款 · {expenses} 支出。",
   "payroll.empty": "本月无收入或支出。",
   "payroll.emptyStaff": "该员工在所选月份没有发生额。",
   "payroll.staff": "员工",
