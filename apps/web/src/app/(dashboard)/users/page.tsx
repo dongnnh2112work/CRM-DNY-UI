@@ -18,7 +18,6 @@ import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
-import { RolePermissionGroupsAdmin } from "@/components/users/role-permission-groups-modal";
 import { UserProfileForm } from "@/components/users/user-profile-form";
 import { ds } from "@/lib/design-tokens";
 import { type AppUser, type UserRole } from "@/lib/types";
@@ -61,7 +60,6 @@ export default function UsersPage() {
   const usersRemote = useRemoteList("users");
   const [profileOpen, setProfileOpen] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
-  const [permRole, setPermRole] = useState<UserRole | null>(null);
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const applyUrlQuery = useCallback((q: string) => {
@@ -126,10 +124,6 @@ export default function UsersPage() {
     setEditUser(null);
   };
 
-  const openRolePerms = (roleKey: UserRole) => {
-    setPermRole(roleKey);
-  };
-
   const columns: TableColumnsType<AppUser> = [
     {
       title: "",
@@ -187,9 +181,7 @@ export default function UsersPage() {
       sorter: (a, b) => compareText(getRoleLabel(a.role), getRoleLabel(b.role)),
       render: (r: UserRole, record) => (
         <Space size={4}>
-          <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openRolePerms(r)}>
-            <Tag color="blue">{getRoleLabel(r)}</Tag>
-          </Button>
+          <Tag color="blue">{getRoleLabel(r)}</Tag>
           {record.useCustomPermissions ? (
             <Tooltip title={t("user.customPermHint")}>
               <Tag color="orange">Custom</Tag>
@@ -349,19 +341,6 @@ export default function UsersPage() {
             }
           }}
         />
-      </Modal>
-
-      <Modal
-        title={t("user.roleGroups")}
-        open={!!permRole}
-        onCancel={() => setPermRole(null)}
-        footer={null}
-        width={720}
-        centered
-        destroyOnHidden
-        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
-      >
-        {permRole ? <RolePermissionGroupsAdmin embedded initialUiRole={permRole} /> : null}
       </Modal>
     </>
   );
