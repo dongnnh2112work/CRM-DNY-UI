@@ -74,11 +74,23 @@ export function collectPayrollMonths(
   return [...months].sort();
 }
 
+function staffDisplayName(
+  userId: string,
+  fallback?: string,
+  nameById?: Map<string, string>,
+): string {
+  const fromMap = nameById?.get(userId);
+  if (fromMap && fromMap !== userId) return fromMap;
+  if (fallback && fallback !== userId) return fallback;
+  return fromMap || fallback || userId;
+}
+
 export function buildPayroll(
   orders: Order[],
   payments: PaymentRecord[],
   expenses: OrderExpense[],
   month: string,
+  nameById?: Map<string, string>,
 ): StaffPayroll[] {
   const expByOrder = new Map<string, OrderExpense[]>();
   for (const e of expenses) {
@@ -117,13 +129,18 @@ export function buildPayroll(
       salary: orderSalary(commissionPercent, net),
     };
 
+    const displayName = staffDisplayName(order.assignedUserId, order.assignedUserName, nameById);
     const current = byStaff.get(order.assignedUserId) ?? {
       userId: order.assignedUserId,
-      userName: order.assignedUserName,
+      userName: displayName,
       orderCount: 0,
       total: 0,
       lines: [],
     };
+    // Upgrade UUID placeholder when a real name arrives later in the loop / map.
+    if (current.userName === current.userId && displayName !== current.userId) {
+      current.userName = displayName;
+    }
     current.lines.push(line);
     current.total += line.salary;
     current.orderCount = current.lines.length;

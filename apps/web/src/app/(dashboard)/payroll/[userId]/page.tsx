@@ -3,13 +3,14 @@
 import { Button, Select, Typography, type TableColumnsType } from "antd";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useApiHydrate } from "@/components/api-hydrator";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { ds } from "@/lib/design-tokens";
+import { lookupUserName, rememberUserName, resolveEntityLookups } from "@/lib/entity-lookups";
 import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { currentYearMonth, formatYearMonth } from "@/lib/order-cashflow";
@@ -45,18 +46,53 @@ function PayrollStaffPageContent() {
   const router = useRouter();
   const { userId } = useParams<{ userId: string }>();
   const searchParams = useSearchParams();
-  const { currentUser, getEffectivePermissions, getById } = useUsers();
+  const { currentUser, getEffectivePermissions, getById, users } = useUsers();
   const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
   const { listMeta } = useApiHydrate();
+  const [nameTick, setNameTick] = useState(0);
   const payrollBooting = !listMeta.orders && !listMeta.payments && !listMeta.expenses;
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
+  const lookupPerms = apiUser?.permissions;
 
   const month = isYearMonth(searchParams.get("month")) ? searchParams.get("month")! : currentYearMonth();
+
+  useEffect(() => {
+    for (const u of users) {
+      if (u.id && u.name) rememberUserName(u.id, u.name);
+    }
+    const ids = [...new Set([userId, ...orders.map((o) => o.assignedUserId)].filter(Boolean))];
+    if (!ids.length) return;
+    let cancelled = false;
+    void resolveEntityLookups({ userIds: ids }, lookupPerms).then(() => {
+      if (!cancelled) setNameTick((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orders, users, userId, lookupPerms]);
+
+  const staffNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const u of users) {
+      if (u.id && u.name && u.name !== u.id) map.set(u.id, u.name);
+    }
+    const looked = lookupUserName(userId);
+    if (looked && looked !== userId) map.set(userId, looked);
+    for (const o of orders) {
+      const n = lookupUserName(o.assignedUserId);
+      if (n && n !== o.assignedUserId) map.set(o.assignedUserId, n);
+      else if (o.assignedUserName && o.assignedUserName !== o.assignedUserId) {
+        map.set(o.assignedUserId, o.assignedUserName);
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users, orders, userId, nameTick]);
 
   const months = useMemo(
     () => collectPayrollMonths(orders, payments, expenses, [currentYearMonth(), month]),
@@ -64,13 +100,19 @@ function PayrollStaffPageContent() {
   );
 
   const payroll = useMemo(
-    () => buildPayroll(orders, payments, expenses, month),
-    [orders, payments, expenses, month],
+    () => buildPayroll(orders, payments, expenses, month, staffNameById),
+    [orders, payments, expenses, month, staffNameById],
   );
 
   const staffRow = payroll.find((s) => s.userId === userId);
   const user = getById(userId);
-  const staffName = staffRow?.userName ?? user?.name;
+  const resolvedName = staffNameById.get(userId) || lookupUserName(userId) || user?.name;
+  const staffName =
+    resolvedName && resolvedName !== userId
+      ? resolvedName
+      : staffRow?.userName && staffRow.userName !== userId
+        ? staffRow.userName
+        : undefined;
   const lines = staffRow?.lines ?? [];
   const total = staffRow?.total ?? 0;
   const listHref = `/payroll?month=${month}`;

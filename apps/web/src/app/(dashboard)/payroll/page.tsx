@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { ds } from "@/lib/design-tokens";
+import { lookupUserName, rememberUserName, resolveEntityLookups } from "@/lib/entity-lookups";
 import { useExpenses } from "@/lib/expenses-store";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { currentYearMonth, formatYearMonth } from "@/lib/order-cashflow";
@@ -52,17 +53,19 @@ function PayrollPageContent() {
   const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentUser, getEffectivePermissions } = useUsers();
+  const { currentUser, getEffectivePermissions, users } = useUsers();
   const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
   const { listMeta } = useApiHydrate();
   const [query, setQuery] = useState("");
+  const [nameTick, setNameTick] = useState(0);
   const applyUrlQuery = useCallback((q: string) => setQuery(q), []);
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
+  const lookupPerms = apiUser?.permissions;
 
   const month = isYearMonth(searchParams.get("month")) ? searchParams.get("month")! : currentYearMonth();
 
@@ -72,14 +75,46 @@ function PayrollPageContent() {
     }
   }, [scope, currentUser, month, router]);
 
+  useEffect(() => {
+    for (const u of users) {
+      if (u.id && u.name) rememberUserName(u.id, u.name);
+    }
+    const ids = [...new Set(orders.map((o) => o.assignedUserId).filter(Boolean))];
+    if (!ids.length) return;
+    let cancelled = false;
+    void resolveEntityLookups({ userIds: ids }, lookupPerms).then(() => {
+      if (!cancelled) setNameTick((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orders, users, lookupPerms]);
+
+  const staffNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const u of users) {
+      if (u.id && u.name && u.name !== u.id) map.set(u.id, u.name);
+    }
+    for (const o of orders) {
+      const looked = lookupUserName(o.assignedUserId);
+      if (looked && looked !== o.assignedUserId) map.set(o.assignedUserId, looked);
+      else if (o.assignedUserName && o.assignedUserName !== o.assignedUserId) {
+        map.set(o.assignedUserId, o.assignedUserName);
+      }
+    }
+    return map;
+    // nameTick re-reads lookup cache after resolveEntityLookups
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users, orders, nameTick]);
+
   const months = useMemo(
     () => collectPayrollMonths(orders, payments, expenses, [currentYearMonth(), month]),
     [orders, payments, expenses, month],
   );
 
   const rows = useMemo(
-    () => buildPayroll(orders, payments, expenses, month),
-    [orders, payments, expenses, month],
+    () => buildPayroll(orders, payments, expenses, month, staffNameById),
+    [orders, payments, expenses, month, staffNameById],
   );
 
   const filtered = useMemo(() => {
@@ -113,6 +148,7 @@ function PayrollPageContent() {
         title: t("payroll.staff"),
         dataIndex: "userName",
         sorter: (a, b) => a.userName.localeCompare(b.userName, "vi"),
+        render: (name: string, row) => (name && name !== row.userId ? name : "—"),
       },
       {
         title: t("payroll.orderCount"),
