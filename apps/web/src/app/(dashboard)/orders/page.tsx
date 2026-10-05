@@ -12,6 +12,7 @@ import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
@@ -483,7 +484,9 @@ export default function OrdersPage() {
         ) : null}
       </PageHeader>
       {viewMode === "kanban" ? (
-        filtered.length === 0 ? (
+        ordersRemote.bootLoading && filtered.length === 0 ? (
+          <PageLoading />
+        ) : filtered.length === 0 ? (
           <EmptyState description={listEmptyDescription} action={listEmptyAction} />
         ) : (
           <KanbanBoard orders={filtered} groupOrders={orders} onMove={handleMove} />

@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { RolePermissionGroupsAdmin } from "@/components/users/role-permission-groups-modal";
+import { PageLoading } from "@/components/shared/page-loading";
 
 function PermissionsPageInner() {
   const searchParams = useSearchParams();
@@ -11,7 +12,7 @@ function PermissionsPageInner() {
 
 export default function PermissionsPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<PageLoading />}>
       <PermissionsPageInner />
     </Suspense>
   );

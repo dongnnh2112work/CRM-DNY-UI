@@ -85,6 +85,8 @@ export interface DataTableProps<T extends object> {
     total: number;
     onLoadMore: () => void;
     loading?: boolean;
+    /** First hydrate for this scope — table shows spinner, not empty state. */
+    bootLoading?: boolean;
   };
 }
 
@@ -218,12 +220,14 @@ export function DataTable<T extends object>({
     onChange?.(pag, filters, sorter, extra);
   };
 
+  const tableLoading = loading || Boolean(remote?.bootLoading);
+
   const table = (
     <Table<T>
       rowKey={rowKey}
       columns={columnsWithIndex}
       dataSource={rangedData}
-      loading={loading}
+      loading={tableLoading}
       size={size}
       pagination={resolvedPagination}
       scroll={scroll}
@@ -233,7 +237,9 @@ export function DataTable<T extends object>({
       showSorterTooltip={showSorterTooltip}
       rowSelection={rowSelection}
       locale={{
-        emptyText: (
+        emptyText: tableLoading ? (
+          <div style={{ minHeight: 120 }} />
+        ) : (
           <EmptyState compact description={emptyDescription ?? t("common.noData")} action={emptyAction} />
         ),
       }}

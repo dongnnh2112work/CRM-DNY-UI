@@ -140,15 +140,19 @@ export function useApiHydrate() {
 
 export function useRemoteList(scope: RefreshScope) {
   const { listMeta, loadMore, refreshing, dataFresh } = useApiHydrate();
+  const { user } = useSession();
   const meta = listMeta[scope];
-  if (!meta) return undefined;
+  const allowed = canLoadScope(scope, user?.permissions);
+  /** Waiting on first slice for a permitted scope — not empty-state. */
+  const bootLoading = allowed && meta == null;
   return {
-    loaded: meta.loaded,
-    total: meta.total,
+    loaded: meta?.loaded ?? 0,
+    total: meta?.total ?? 0,
     onLoadMore: () => {
       void loadMore(scope);
     },
-    loading: refreshing || !dataFresh,
+    loading: bootLoading || refreshing || !dataFresh,
+    bootLoading,
   };
 }
 
@@ -309,6 +313,15 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
               ...options,
               onForbidden: (s) => {
                 forbiddenRef.current.add(s);
+                // End bootLoading so UI can show empty instead of spinning forever.
+                setListMetaState((prev) =>
+                  prev[s]
+                    ? prev
+                    : {
+                        ...prev,
+                        [s]: { total: 0, page: 1, pageSize: ROUTE_PAGE_SIZE, loaded: 0 },
+                      },
+                );
                 options?.onForbidden?.(s);
               },
             },

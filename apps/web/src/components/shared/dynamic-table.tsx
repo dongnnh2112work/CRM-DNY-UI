@@ -86,6 +86,7 @@ interface DynamicTableProps<T extends object> {
     total: number;
     onLoadMore: () => void;
     loading?: boolean;
+    bootLoading?: boolean;
   };
   dateFilterField?: DataTableDateFilter<T>;
   datePicker?: "date" | "month";

@@ -4,6 +4,7 @@ import { Button, Select, Typography, type TableColumnsType } from "antd";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
+import { useApiHydrate } from "@/components/api-hydrator";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -49,6 +50,8 @@ function PayrollStaffPageContent() {
   const { orders } = useOrders();
   const { payments } = usePayments();
   const { expenses } = useExpenses();
+  const { listMeta } = useApiHydrate();
+  const payrollBooting = !listMeta.orders && !listMeta.payments && !listMeta.expenses;
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
@@ -133,7 +136,11 @@ function PayrollStaffPageContent() {
     [t],
   );
 
-  if (scope === "none" || !currentUser) {
+  if (payrollBooting || !currentUser) {
+    return <PageLoading />;
+  }
+
+  if (scope === "none") {
     return (
       <EmptyState
         description={t("payroll.forbidden")}

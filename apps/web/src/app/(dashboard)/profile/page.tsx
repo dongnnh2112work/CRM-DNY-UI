@@ -23,8 +23,10 @@ import {
   theme,
 } from "antd";
 import { useState, type CSSProperties, type ReactNode } from "react";
+import { useApiHydrate } from "@/components/api-hydrator";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ProfileAvatarUpload } from "@/components/users/profile-avatar-upload";
 import { UserProfileForm } from "@/components/users/user-profile-form";
@@ -80,9 +82,11 @@ export default function ProfilePage() {
   const { message } = App.useApp();
   const { token } = theme.useToken();
   const { currentUser, updateUser, getRoleLabel } = useUsers();
+  const { ready } = useApiHydrate();
   const [saving, setSaving] = useState(false);
 
   if (!currentUser) {
+    if (!ready) return <PageLoading />;
     return (
       <EmptyState
         description={t("common.notLoggedIn")}
