@@ -3,7 +3,7 @@ import type { Customer, FieldDefinition } from "./types";
 export const CUSTOMER_FIELD_DEFS: FieldDefinition[] = [
   { key: "name", label: "Tên", type: "text", required: true, order: 1, visible: true },
   { key: "createdAt", label: "Ngày tạo", type: "date", required: false, order: 2, visible: true },
-  { key: "phone", label: "SĐT", type: "text", required: true, order: 3, visible: true },
+  { key: "phone", label: "SĐT", type: "text", required: false, order: 3, visible: true },
   { key: "email", label: "Email", type: "text", required: false, order: 4, visible: true },
   { key: "company", label: "Công ty", type: "text", required: false, order: 5, visible: true },
   { key: "taxCode", label: "Mã số thuế", type: "text", required: false, order: 6, visible: true },

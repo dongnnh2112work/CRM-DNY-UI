@@ -421,7 +421,7 @@ export default function CustomerDetailPage() {
           <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="phone" label={t("field.phone")} rules={[{ required: true }]}>
+          <Form.Item name="phone" label={t("field.phone")}>
             <Input />
           </Form.Item>
           <Form.Item name="email" label={t("field.email")} rules={[{ type: "email" }]}>
