@@ -173,7 +173,12 @@ export async function resolveEntityLookups(
     }
   }
 
-  if (permissions?.includes(PERMISSION.userManage)) {
+  // Order/list UIs need assignee labels; try GET /users/:id when user.manage or order.view.
+  // 403 → markMiss (UI keeps fallback, no retry storm).
+  if (
+    permissions?.includes(PERMISSION.userManage) ||
+    permissions?.includes(PERMISSION.orderView)
+  ) {
     for (const id of new Set(req.userIds ?? [])) {
       if (!id || userNames.has(id)) continue;
       enqueue(`user:${id}`, async () => {

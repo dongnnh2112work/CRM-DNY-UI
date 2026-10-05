@@ -17,8 +17,15 @@ export type ApiOrder = {
   totalGross: string;
   currency: string;
   assignedUserId: string;
+  /** Present when BE JOINs identity (not always on list). */
+  assignedUserName?: string | null;
   submitterUserId: string;
+  submitterName?: string | null;
   reviewerUserId: string | null;
+  reviewerName?: string | null;
+  customerName?: string | null;
+  serviceName?: string | null;
+  collaboratorName?: string | null;
   approvalStatus: string;
   notes: string | null;
   createdAt: string;

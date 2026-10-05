@@ -15,6 +15,13 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { useCustomers } from "@/lib/customers-store";
+import {
+  lookupCustomerName,
+  lookupServiceName,
+  lookupUserName,
+  rememberUserName,
+  resolveEntityLookups,
+} from "@/lib/entity-lookups";
 import { DISPLAY_DATE_FORMAT, formatDisplayDate, toStorageDate } from "@/lib/format-date";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { taskAssignedDraft } from "@/lib/notification-targets";
@@ -38,8 +45,6 @@ import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { contractsApi } from "@/modules/contracts/api";
-import { customersApi } from "@/modules/customers/api";
-import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
 import { documentsApi, type ApiDocument } from "@/modules/documents/api";
 import {
   isLicenseDocument,
@@ -55,6 +60,25 @@ import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { orderHasContractNumber } from "@/lib/vat-helpers";
 import { useT } from "@/lib/use-t";
+
+/** Prefer lookup / human name; hide raw UUID fallbacks in the UI. */
+function personLabel(name?: string | null, id?: string | null) {
+  if (name && name !== id) return name;
+  return "—";
+}
+
+function withResolvedOrderNames(order: Order): Order {
+  return {
+    ...order,
+    customerName: lookupCustomerName(order.customerId) || order.customerName,
+    serviceName: lookupServiceName(order.serviceId) || order.serviceName,
+    assignedUserName: lookupUserName(order.assignedUserId) || order.assignedUserName,
+    submitterName: lookupUserName(order.submitterId) || order.submitterName,
+    reviewerName: order.reviewerId
+      ? lookupUserName(order.reviewerId) || order.reviewerName
+      : order.reviewerName,
+  };
+}
 
 type ScreenBoot =
   | { status: "loading" }
@@ -111,7 +135,7 @@ export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const { status: sessionStatus, can } = useSession();
+  const { status: sessionStatus, can, user: sessionUser } = useSession();
   const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
   const { addNotifications } = useNotifications();
   const { currentUser, users } = useUsers();
@@ -142,6 +166,8 @@ export default function OrderDetailPage() {
   catalogsRef.current = { users, customers, services };
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
+  const permissionsRef = useRef(sessionUser?.permissions);
+  permissionsRef.current = sessionUser?.permissions;
 
   useEffect(() => {
     if (!order || !editOpen) return;
@@ -165,10 +191,41 @@ export default function OrderDetailPage() {
     let cancelled = false;
     setFinanceReady(false);
 
+    const seedUserNameCache = () => {
+      for (const u of catalogsRef.current.users) {
+        if (u.id && u.name) rememberUserName(u.id, u.name);
+      }
+    };
+
+    const resolveNames = async (base: Order) => {
+      seedUserNameCache();
+      await resolveEntityLookups(
+        {
+          customerIds: [base.customerId].filter(Boolean),
+          serviceIds: [base.serviceId].filter(Boolean),
+          userIds: [base.assignedUserId, base.submitterId, base.reviewerId].filter(
+            Boolean,
+          ) as string[],
+          contractIds: base.contractId ? [base.contractId] : [],
+          ctvIds: base.ctvId ? [base.ctvId] : [],
+        },
+        permissionsRef.current,
+      );
+      if (cancelled) return;
+      setOrder((prev) => {
+        if (!prev || prev.id !== base.id) return prev;
+        const next = withResolvedOrderNames(prev);
+        upsertOrder(next);
+        return next;
+      });
+    };
+
     const cached = ordersRef.current.find((o) => o.id === id);
     if (cached) {
-      setOrder(cached);
+      seedUserNameCache();
+      setOrder(withResolvedOrderNames(cached));
       setBoot({ status: "ready" });
+      void resolveNames(cached);
     } else {
       setBoot({ status: "loading" });
       setOrder(null);
@@ -207,13 +264,21 @@ export default function OrderDetailPage() {
         const userName = new Map(catalogUsers.map((u) => [u.id, u.name]));
         const customerName = new Map(catalogCustomers.map((c) => [c.id, c.name]));
         const serviceName = new Map(catalogServices.map((s) => [s.id, s.name]));
+        for (const u of catalogUsers) {
+          if (u.id && u.name) rememberUserName(u.id, u.name);
+        }
 
         const mapped = mapApiOrderToUi(apiOrder, {
-          customerName: customerName.get(apiOrder.customerId),
-          serviceName: serviceName.get(apiOrder.serviceId),
-          assignedUserName: userName.get(apiOrder.assignedUserId),
-          submitterName: userName.get(apiOrder.submitterUserId),
-          reviewerName: apiOrder.reviewerUserId ? userName.get(apiOrder.reviewerUserId) : undefined,
+          customerName:
+            customerName.get(apiOrder.customerId) || lookupCustomerName(apiOrder.customerId),
+          serviceName: serviceName.get(apiOrder.serviceId) || lookupServiceName(apiOrder.serviceId),
+          assignedUserName:
+            userName.get(apiOrder.assignedUserId) || lookupUserName(apiOrder.assignedUserId),
+          submitterName:
+            userName.get(apiOrder.submitterUserId) || lookupUserName(apiOrder.submitterUserId),
+          reviewerName: apiOrder.reviewerUserId
+            ? userName.get(apiOrder.reviewerUserId) || lookupUserName(apiOrder.reviewerUserId)
+            : undefined,
         });
 
         if (cancelled) return;
@@ -230,22 +295,8 @@ export default function OrderDetailPage() {
           kickFinance(mapped, catalogUsers);
         }
 
-        // Customer display name — do not block first paint.
-        if (mapped.customerName === mapped.customerId) {
-          void customersApi
-            .get(mapped.customerId)
-            .then((raw) => {
-              if (cancelled) return;
-              const name = mapApiCustomerToUi(raw).name;
-              setOrder((prev) => {
-                if (!prev || prev.id !== mapped.id) return prev;
-                const next = { ...prev, customerName: name };
-                upsertOrder(next);
-                return next;
-              });
-            })
-            .catch(() => undefined);
-        }
+        // Display names (assignee / submitter / customer / service) — do not block paint.
+        void resolveNames(mapped);
 
         const docsResult = await docsPromise;
         if (cancelled) return;
@@ -528,8 +579,12 @@ export default function OrderDetailPage() {
           <Descriptions.Item label={t("common.deadline")}>
             {formatDisplayDate(order.deadline)}
           </Descriptions.Item>
-          <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
-          <Descriptions.Item label={t("common.submitter")}>{order.submitterName}</Descriptions.Item>
+          <Descriptions.Item label={t("common.owner")}>
+            {personLabel(order.assignedUserName, order.assignedUserId)}
+          </Descriptions.Item>
+          <Descriptions.Item label={t("common.submitter")}>
+            {personLabel(order.submitterName, order.submitterId)}
+          </Descriptions.Item>
           <Descriptions.Item label={t("common.createdAt")}>
             {formatDisplayDate(order.createdAt)}
           </Descriptions.Item>
