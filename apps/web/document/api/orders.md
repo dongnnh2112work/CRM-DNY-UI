@@ -44,6 +44,8 @@ interface Order {
   reviewerUserId: string | null;
   approvalStatus: string;
   notes: string | null;
+  /** % hoa hồng NV phụ trách — number hoặc decimal string; null = chưa nhập */
+  commissionPercent?: string | number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,10 +67,11 @@ interface Order {
 | currency | no | `VND` |
 | stage | no | `new` |
 | notes | no | — |
+| commissionPercent | no | `null` — % hoa hồng NV phụ trách; xem [FRONTEND_HANDOFF_ORDER_COMMISSION.md](./FRONTEND_HANDOFF_ORDER_COMMISSION.md) |
 
 **Không gửi `reviewerUserId` trên POST** — `CreateOrderDto` forbid field này (`property reviewerUserId should not exist`). Sau khi có `id`, gán người duyệt chi bằng `PATCH /orders/:id` `{ reviewerUserId }`.
 
-**Chưa có `commissionPercent`** (% hoa hồng nhân viên, dùng tính lương). BE cần persist: [FRONTEND_HANDOFF_ORDER_COMMISSION.md](./FRONTEND_HANDOFF_ORDER_COMMISSION.md).
+**PATCH** nhận `commissionPercent` (number | null). `null` = xóa giá trị.
 
 ---
 

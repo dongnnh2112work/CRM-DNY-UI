@@ -164,10 +164,12 @@ export function daysUntil(dateIso: string, from = new Date()): number {
 }
 
 export function normalizeCommissionPercent(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  if (value < 0) return 0;
-  if (value > 100) return undefined;
-  return value;
+  if (value == null || value === "") return undefined;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  if (n < 0) return 0;
+  if (n > 100) return undefined;
+  return n;
 }
 
 export function normalizeOrder(o: Order): Order {

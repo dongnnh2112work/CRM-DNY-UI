@@ -1,4 +1,5 @@
 import { num } from "@/lib/http/message";
+import { normalizeCommissionPercent } from "@/lib/order-helpers";
 import type { ApprovalStatus, Order, OrderChannel } from "@/lib/types";
 import type { ApiOrder, CreateOrderBody, UpdateOrderBody } from "@/modules/orders/api";
 
@@ -60,6 +61,7 @@ export function mapApiOrderToUi(
     month: created.slice(0, 7),
     needsVat: vatRate > 0 && num(o.totalGross) > num(o.totalNet),
     contractNumber: names.contractNumber,
+    commissionPercent: normalizeCommissionPercent(o.commissionPercent),
   };
 }
 
@@ -75,9 +77,11 @@ export function mapUiOrderToCreateApi(input: {
   vatRate?: number;
   stage?: string;
   notes?: string;
+  commissionPercent?: number | null;
 }): CreateOrderBody {
   const vatRate = input.vatRate ?? 0;
   const value = input.value;
+  const commissionPercent = normalizeCommissionPercent(input.commissionPercent);
   return {
     orderNumber: input.orderNumber,
     contractId: input.contractId,
@@ -92,6 +96,7 @@ export function mapUiOrderToCreateApi(input: {
     vatRate,
     stage: input.stage ?? "new",
     notes: input.notes,
+    ...(commissionPercent != null ? { commissionPercent } : {}),
   };
 }
 
@@ -101,10 +106,12 @@ export function mapUiOrderToUpdateApi(input: {
   channel?: string;
   collaboratorId?: string | null;
   notes?: string | null;
+  /** `null` xóa %; `undefined` không đụng field */
+  commissionPercent?: number | null;
 }): UpdateOrderBody {
   const vatRate = input.vatRate ?? 0;
   const value = input.value;
-  return {
+  const body: UpdateOrderBody = {
     value,
     totalNet: value,
     totalGross: vatRate ? Math.round(value * (1 + vatRate / 100)) : value,
@@ -113,4 +120,11 @@ export function mapUiOrderToUpdateApi(input: {
     collaboratorId: input.collaboratorId,
     notes: input.notes,
   };
+  if (input.commissionPercent === null) {
+    body.commissionPercent = null;
+  } else if (input.commissionPercent !== undefined) {
+    const pct = normalizeCommissionPercent(input.commissionPercent);
+    if (pct != null) body.commissionPercent = pct;
+  }
+  return body;
 }
