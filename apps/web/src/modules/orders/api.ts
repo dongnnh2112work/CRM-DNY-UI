@@ -28,6 +28,8 @@ export type ApiOrder = {
   collaboratorName?: string | null;
   approvalStatus: string;
   notes: string | null;
+  /** % hoa hồng NV phụ trách — BE có thể trả number hoặc decimal string */
+  commissionPercent?: string | number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -54,6 +56,8 @@ export type CreateOrderBody = {
   currency?: string;
   stage?: string;
   notes?: string;
+  /** % hoa hồng NV phụ trách (`assignedUserId`); null = chưa nhập */
+  commissionPercent?: number | null;
 };
 
 /** Khớp UpdateOrderDto trên Swagger — không gửi field ngoài whitelist. */
@@ -67,6 +71,8 @@ export type UpdateOrderBody = {
   notes?: string | null;
   channel?: string;
   reviewerUserId?: string | null;
+  /** null = xóa % đã lưu */
+  commissionPercent?: number | null;
 };
 
 function unwrapOrder(raw: ApiOrder | { data: ApiOrder } | null | undefined): ApiOrder {

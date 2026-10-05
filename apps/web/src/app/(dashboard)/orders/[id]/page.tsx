@@ -394,6 +394,10 @@ export default function OrderDetailPage() {
 
       const orderNumber = nextSiblingDossierNumber(siblings);
       const vatRate = order.needsVat ? 10 : 0;
+      const formCommission =
+        values.commissionPercent != null && values.commissionPercent !== ""
+          ? Number(values.commissionPercent)
+          : order.commissionPercent;
       const apiOrder = await ordersApi.create(
         mapUiOrderToCreateApi({
           orderNumber,
@@ -405,21 +409,20 @@ export default function OrderDetailPage() {
           submitterUserId: submitter.id,
           vatRate,
           stage: "new",
+          commissionPercent: formCommission,
         }),
       );
+      const mapped = mapApiOrderToUi(apiOrder, {
+        customerName: order.customerName,
+        serviceName: service.name,
+        assignedUserName: assigned.name,
+        submitterName: submitter.name,
+        contractNumber: order.contractNumber,
+      });
       const created = {
-        ...mapApiOrderToUi(apiOrder, {
-          customerName: order.customerName,
-          serviceName: service.name,
-          assignedUserName: assigned.name,
-          submitterName: submitter.name,
-          contractNumber: order.contractNumber,
-        }),
+        ...mapped,
         contractId,
-        commissionPercent:
-          values.commissionPercent != null && values.commissionPercent !== ""
-            ? Number(values.commissionPercent)
-            : order.commissionPercent,
+        commissionPercent: mapped.commissionPercent ?? formCommission,
         zaloGroupUrl: order.zaloGroupUrl,
         deadline: toStorageDate(values.deadline),
         needsVat: order.needsVat,
@@ -671,12 +674,17 @@ export default function OrderDetailPage() {
 
               const value = Number(values.value);
               const vatRate = values.needsVat ? 10 : 0;
+              const formCommission =
+                values.commissionPercent != null && values.commissionPercent !== ""
+                  ? Number(values.commissionPercent)
+                  : null;
               await ordersApi.update(
                 order.id,
                 mapUiOrderToUpdateApi({
                   value,
                   vatRate,
                   notes: values.notes,
+                  commissionPercent: formCommission,
                 }),
               );
               if (assigned.id !== order.assignedUserId) {
@@ -696,10 +704,7 @@ export default function OrderDetailPage() {
                 serviceId: service.id,
                 serviceName: service.name,
                 value,
-                commissionPercent:
-                  values.commissionPercent != null && values.commissionPercent !== ""
-                    ? Number(values.commissionPercent)
-                    : undefined,
+                commissionPercent: formCommission ?? undefined,
                 assignedUserId: assigned.id,
                 assignedUserName: assigned.name,
                 submitterId: submitter.id,

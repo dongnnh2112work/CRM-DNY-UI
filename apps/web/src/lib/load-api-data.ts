@@ -147,7 +147,8 @@ function mergeOrderLocal(remote: Order, local?: Order): Order {
   if (!local) return remote;
   return {
     ...remote,
-    commissionPercent: local.commissionPercent ?? remote.commissionPercent,
+    // Prefer BE once persisted; local only fills when API still returns null/missing.
+    commissionPercent: remote.commissionPercent ?? local.commissionPercent,
     zaloGroupUrl: local.zaloGroupUrl ?? remote.zaloGroupUrl,
     deadline: local.deadline ?? remote.deadline,
     vatIssueDeadline: local.vatIssueDeadline ?? remote.vatIssueDeadline,

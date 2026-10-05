@@ -126,6 +126,10 @@ function NewOrderPageContent() {
             try {
               for (let i = 0; i < resolved.length; i++) {
                 const { service, value, line } = resolved[i];
+                const formCommission =
+                  values.commissionPercent != null && values.commissionPercent !== ""
+                    ? Number(values.commissionPercent)
+                    : undefined;
                 const apiOrder = await ordersApi.create(
                   mapUiOrderToCreateApi({
                     orderNumber: numbers[i],
@@ -138,20 +142,19 @@ function NewOrderPageContent() {
                     vatRate,
                     stage: "new",
                     notes: values.notes,
+                    commissionPercent: formCommission,
                   }),
                 );
+                const mapped = mapApiOrderToUi(apiOrder, {
+                  customerName: customer.name,
+                  serviceName: service!.name,
+                  assignedUserName: assigned.name,
+                  submitterName: submitter.name,
+                  contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
+                });
                 created.push({
-                  ...mapApiOrderToUi(apiOrder, {
-                    customerName: customer.name,
-                    serviceName: service!.name,
-                    assignedUserName: assigned.name,
-                    submitterName: submitter.name,
-                    contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
-                  }),
-                  commissionPercent:
-                    values.commissionPercent != null && values.commissionPercent !== ""
-                      ? Number(values.commissionPercent)
-                      : undefined,
+                  ...mapped,
+                  commissionPercent: mapped.commissionPercent ?? formCommission,
                   zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
                   deadline: toStorageDate(line.deadline),
                   needsVat: Boolean(values.needsVat),
