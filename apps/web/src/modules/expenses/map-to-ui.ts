@@ -1,4 +1,5 @@
 import { num } from "@/lib/http/message";
+import { entityDisplayName } from "@/lib/order-helpers";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
 import type { ApiExpense } from "@/modules/expenses/api";
 
@@ -23,23 +24,28 @@ export function mapApiExpenseToUi(
   names: { requestedByName?: string; reviewedByName?: string } = {},
 ): OrderExpense {
   const bank = splitBank(e.description);
+  const resolvedOrderNumber = orderNumber || e.orderNumber || undefined;
+  const requestedByName = entityDisplayName(names.requestedByName, e.requestedByName);
+  const reviewedByName = e.reviewedByUserId
+    ? entityDisplayName(names.reviewedByName, e.reviewedByName)
+    : undefined;
   return {
     id: e.id,
     orderId: e.orderId,
-    orderNumber,
-    projectName: orderNumber || e.title,
+    orderNumber: resolvedOrderNumber,
+    projectName: resolvedOrderNumber || e.title,
     amount: num(e.amount),
     title: e.title,
     note: e.note ?? e.description ?? undefined,
     requestedById: e.requestedByUserId,
-    requestedByName: names.requestedByName ?? e.requestedByUserId,
+    requestedByName: requestedByName === "—" ? "" : requestedByName,
     requestedAt: (e.requestedAt || e.createdAt).slice(0, 10),
     payeeName: e.payeeName ?? "",
     bankAccount: bank.bankAccount,
     bankName: bank.bankName,
     status: mapStatus(e.status, e.reviewNote),
     reviewedById: e.reviewedByUserId ?? undefined,
-    reviewedByName: names.reviewedByName,
+    reviewedByName: reviewedByName === "—" ? undefined : reviewedByName,
     reviewedAt: e.reviewedAt?.slice(0, 10),
     reviewNote: e.reviewNote ?? undefined,
   };

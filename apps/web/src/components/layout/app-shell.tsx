@@ -28,7 +28,7 @@ import { useApiHydrate } from "@/components/api-hydrator";
 import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { ds } from "@/lib/design-tokens";
 import { formatDisplayDateTime } from "@/lib/format-date";
@@ -74,7 +74,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useT();
   const { currentUser, logout, getEffectivePermissions } = useUsers();
   const { user: apiUser, can, logout: logoutApi } = useSession();
-  const { refreshing, lastSyncedAt, refreshCurrent } = useApiHydrate();
+  const { refreshing, lastSyncedAt, refreshCurrent, prefetchPath } = useApiHydrate();
+
+  const navLink = useCallback(
+    (href: string, label: ReactNode) => (
+      <Link
+        href={href}
+        onMouseEnter={() => {
+          router.prefetch(href);
+          prefetchPath(href);
+        }}
+        onFocus={() => {
+          router.prefetch(href);
+          prefetchPath(href);
+        }}
+      >
+        {label}
+      </Link>
+    ),
+    [router, prefetchPath],
+  );
   const { orders, ready: ordersReady } = useOrders();
   const { services, ready: servicesReady } = useServices();
   const { config } = useAppReminderConfig();
@@ -109,41 +128,37 @@ export function AppShell({ children }: { children: ReactNode }) {
             {
               key: "/payroll",
               icon: <CalculatorOutlined />,
-              label: (
-                <Link href="/payroll">
-                  {payrollScope === "self" ? t("payroll.myPay") : t("nav.payroll")}
-                </Link>
-              ),
+              label: navLink("/payroll", payrollScope === "self" ? t("payroll.myPay") : t("nav.payroll")),
             },
           ];
     const items: MenuItems = [
-      { key: "/dashboard", icon: <DashboardOutlined />, label: <Link href="/dashboard">{t("nav.dashboard")}</Link> },
+      { key: "/dashboard", icon: <DashboardOutlined />, label: navLink("/dashboard", t("nav.dashboard")) },
       { type: "divider" },
-      { key: "/customers", icon: <TeamOutlined />, label: <Link href="/customers">{t("nav.customers")}</Link> },
-      { key: "/orders", icon: <ProjectOutlined />, label: <Link href="/orders">{t("nav.orders")}</Link> },
+      { key: "/customers", icon: <TeamOutlined />, label: navLink("/customers", t("nav.customers")) },
+      { key: "/orders", icon: <ProjectOutlined />, label: navLink("/orders", t("nav.orders")) },
       { type: "divider" },
-      { key: "/payments", icon: <DollarOutlined />, label: <Link href="/payments">{t("nav.payments")}</Link> },
+      { key: "/payments", icon: <DollarOutlined />, label: navLink("/payments", t("nav.payments")) },
       {
         key: "/expense-approvals",
         icon: <AccountBookOutlined />,
-        label: <Link href="/expense-approvals">{t("nav.expenses")}</Link>,
+        label: navLink("/expense-approvals", t("nav.expenses")),
       },
       ...payrollItem,
-      { key: "/vat", icon: <FileTextOutlined />, label: <Link href="/vat">{t("nav.vat")}</Link> },
+      { key: "/vat", icon: <FileTextOutlined />, label: navLink("/vat", t("nav.vat")) },
       { type: "divider" },
-      { key: "/services", icon: <AppstoreOutlined />, label: <Link href="/services">{t("nav.services")}</Link> },
-      { key: "/emails", icon: <MailOutlined />, label: <Link href="/emails">{t("nav.emails")}</Link> },
+      { key: "/services", icon: <AppstoreOutlined />, label: navLink("/services", t("nav.services")) },
+      { key: "/emails", icon: <MailOutlined />, label: navLink("/emails", t("nav.emails")) },
       { type: "divider" },
     ];
     const usersVisible = can(PERMISSION.userManage) && canSeeMenuPage({ page: "users", apiUser, matrix: pageMatrix });
     const userChildren: MenuItems = [
       ...(usersVisible
         ? [
-            { key: "/users", icon: <UserOutlined />, label: <Link href="/users">{t("nav.userList")}</Link> },
+            { key: "/users", icon: <UserOutlined />, label: navLink("/users", t("nav.userList")) },
             {
               key: "/users/pending",
               icon: <ClockCircleOutlined />,
-              label: <Link href="/users/pending">{t("nav.pendingUsers")}</Link>,
+              label: navLink("/users/pending", t("nav.pendingUsers")),
             },
           ]
         : []),
@@ -152,7 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {
               key: "/users/permissions",
               icon: <SafetyOutlined />,
-              label: <Link href="/users/permissions">{t("nav.permissions")}</Link>,
+              label: navLink("/users/permissions", t("nav.permissions")),
             },
           ]
         : []),
@@ -165,11 +180,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         children: userChildren,
       });
     }
-    items.push({ key: "/config", icon: <SettingOutlined />, label: <Link href="/config">{t("nav.config")}</Link> });
+    items.push({ key: "/config", icon: <SettingOutlined />, label: navLink("/config", t("nav.config")) });
     items.push({
       key: "/huong-dan",
       icon: <QuestionCircleOutlined />,
-      label: <Link href="/huong-dan">{t("nav.guide")}</Link>,
+      label: navLink("/huong-dan", t("nav.guide")),
     });
     const pageByPath: Record<string, Parameters<typeof canSeeMenuPage>[0]["page"]> = {
       "/orders": "orders",
@@ -192,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (!page) return true;
       return canSeeMenuPage({ page, apiUser, matrix: pageMatrix });
     });
-  }, [t, payrollScope, apiUser, can, pageMatrix]);
+  }, [t, payrollScope, apiUser, can, pageMatrix, navLink]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];

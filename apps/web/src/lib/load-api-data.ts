@@ -16,6 +16,7 @@ import {
   resolveEntityLookups,
 } from "@/lib/entity-lookups";
 import { canLoadScope } from "@/lib/route-data-scopes";
+import { hasHydratedName, looksLikeUuid } from "@/lib/order-helpers";
 import { orderGroupKey, pickPrimaryOrder, siblingOrders } from "@/lib/order-group";
 import type { AppUser, Customer, Ctv, Order, OrderExpense, PaymentRecord, Service, VatInvoice } from "@/lib/types";
 import type { AuthUser } from "@/modules/auth/api";
@@ -30,6 +31,7 @@ import {
 } from "@/modules/config/api";
 import { customersApi } from "@/modules/customers/api";
 import { mapApiCustomerToUi } from "@/modules/customers/map-to-ui";
+import type { ApiDocument } from "@/modules/documents/api";
 import { expensesApi } from "@/modules/expenses/api";
 import { mapApiExpenseToUi } from "@/modules/expenses/map-to-ui";
 import { identityAdminApi } from "@/modules/identity-admin/api";
@@ -38,10 +40,16 @@ import { fillMissingRoleCodes } from "@/modules/identity-admin/reassign-pending"
 import type { IdentityUser } from "@/modules/identity-admin/api";
 import { notificationsApi } from "@/modules/notifications/api";
 import { mapApiNotificationToUi } from "@/modules/notifications/map-to-ui";
-import { ordersApi, type ApiScheduleLine } from "@/modules/orders/api";
+import { ordersApi, type ApiOrderDetail, type ApiScheduleLine } from "@/modules/orders/api";
 import { mapApiOrderToUi } from "@/modules/orders/map-to-ui";
 import { paymentsApi, type ApiPayment } from "@/modules/payments/api";
 import { mapPaymentsToRecords, unwrapSchedule } from "@/modules/payments/map-to-ui";
+
+function unwrapDetailList<T>(value: T[] | { items?: T[] } | null | undefined): T[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return value.items ?? [];
+}
 import { servicesApi } from "@/modules/services/api";
 import { mapApiServiceToUi } from "@/modules/services/map-to-ui";
 import { vatApi } from "@/modules/vat/api";
@@ -419,27 +427,36 @@ export async function applyRemoteData(
     const mapped = apiOrders.items.map((o) => {
       const existing = localById.get(o.id);
           const mappedOrder = mapApiOrderToUi(o, {
+        // Prefer names already JOINed on the order payload, then local catalogs / lookup cache.
         customerName:
+          o.customerName ||
           customerName.get(o.customerId) ||
           lookupCustomerName(o.customerId) ||
           existing?.customerName,
         serviceName:
-          serviceName.get(o.serviceId) || lookupServiceName(o.serviceId) || existing?.serviceName,
+          o.serviceName ||
+          serviceName.get(o.serviceId) ||
+          lookupServiceName(o.serviceId) ||
+          existing?.serviceName,
         assignedUserName:
+          o.assignedUserName ||
           userName.get(o.assignedUserId) ||
           lookupUserName(o.assignedUserId) ||
           existing?.assignedUserName,
         submitterName:
+          o.submitterName ||
           userName.get(o.submitterUserId) ||
           lookupUserName(o.submitterUserId) ||
           existing?.submitterName,
         reviewerName: o.reviewerUserId
-          ? userName.get(o.reviewerUserId) ||
+          ? o.reviewerName ||
+            userName.get(o.reviewerUserId) ||
             lookupUserName(o.reviewerUserId) ||
             existing?.reviewerName
           : undefined,
         ctvName: o.collaboratorId
-          ? ctvName.get(o.collaboratorId) ||
+          ? o.collaboratorName ||
+            ctvName.get(o.collaboratorId) ||
             lookupCtvName(o.collaboratorId) ||
             existing?.ctvName
           : undefined,
@@ -450,6 +467,24 @@ export async function applyRemoteData(
         })(),
       });
       rememberOrderNumber(o.id, mappedOrder.orderNumber);
+      if (o.customerId && o.customerName && !looksLikeUuid(o.customerName)) {
+        rememberCustomerName(o.customerId, o.customerName);
+      }
+      if (o.serviceId && o.serviceName && !looksLikeUuid(o.serviceName)) {
+        rememberServiceName(o.serviceId, o.serviceName);
+      }
+      if (o.assignedUserId && o.assignedUserName && !looksLikeUuid(o.assignedUserName)) {
+        rememberUserName(o.assignedUserId, o.assignedUserName);
+      }
+      if (o.submitterUserId && o.submitterName && !looksLikeUuid(o.submitterName)) {
+        rememberUserName(o.submitterUserId, o.submitterName);
+      }
+      if (o.reviewerUserId && o.reviewerName && !looksLikeUuid(o.reviewerName)) {
+        rememberUserName(o.reviewerUserId, o.reviewerName);
+      }
+      if (o.collaboratorId && o.collaboratorName && !looksLikeUuid(o.collaboratorName)) {
+        rememberCtvName(o.collaboratorId, o.collaboratorName);
+      }
       return mergeOrderLocal(mappedOrder, existing);
     });
     orders = append ? mergeById(current.orders, mapped) : mapped;
@@ -461,46 +496,88 @@ export async function applyRemoteData(
       loaded: orders.length,
     });
 
-    // Name cells fill in after first paint (plan: rows render immediately).
+    // BE hydrates *Name on list (2026-10-06). Only GET /:id for fields still missing.
     const nameResolve = options.nameResolve ?? "full";
     if (nameResolve !== "off") {
       void (async () => {
         const preview = nameResolve === "dashboardPreview" ? mapped.slice(0, 5) : mapped;
+        const customerIds = preview
+          .filter((o) => o.customerId && !hasHydratedName(o.customerName))
+          .map((o) => o.customerId);
+        const serviceIds = preview
+          .filter((o) => o.serviceId && !hasHydratedName(o.serviceName))
+          .map((o) => o.serviceId);
+        const userIds = preview
+          .flatMap((o) => {
+            const ids: string[] = [];
+            if (o.assignedUserId && !hasHydratedName(o.assignedUserName)) ids.push(o.assignedUserId);
+            if (o.submitterId && !hasHydratedName(o.submitterName)) ids.push(o.submitterId);
+            if (o.reviewerId && !hasHydratedName(o.reviewerName)) ids.push(o.reviewerId);
+            return ids;
+          });
         const lookupReq =
-          nameResolve === "dashboardPreview"
-            ? {
-                customerIds: preview.map((o) => o.customerId).filter(Boolean),
-                serviceIds: preview.map((o) => o.serviceId).filter(Boolean),
-              }
-            : nameResolve === "listLean"
-              ? {
-                  customerIds: mapped.map((o) => o.customerId).filter(Boolean),
-                  serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
-                  userIds: mapped
-                    .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
-                    .filter(Boolean) as string[],
-                }
-              : {
-                  customerIds: mapped.map((o) => o.customerId).filter(Boolean),
-                  serviceIds: mapped.map((o) => o.serviceId).filter(Boolean),
-                  userIds: mapped
-                    .flatMap((o) => [o.assignedUserId, o.submitterId, o.reviewerId])
-                    .filter(Boolean) as string[],
-                  contractIds: mapped.map((o) => o.contractId).filter(Boolean) as string[],
-                  ctvIds: mapped.map((o) => o.ctvId).filter(Boolean) as string[],
-                };
+          nameResolve === "dashboardPreview" || nameResolve === "listLean"
+            ? { customerIds, serviceIds, userIds }
+            : {
+                customerIds: mapped
+                  .filter((o) => o.customerId && !hasHydratedName(o.customerName))
+                  .map((o) => o.customerId),
+                serviceIds: mapped
+                  .filter((o) => o.serviceId && !hasHydratedName(o.serviceName))
+                  .map((o) => o.serviceId),
+                userIds: mapped.flatMap((o) => {
+                  const ids: string[] = [];
+                  if (o.assignedUserId && !hasHydratedName(o.assignedUserName)) ids.push(o.assignedUserId);
+                  if (o.submitterId && !hasHydratedName(o.submitterName)) ids.push(o.submitterId);
+                  if (o.reviewerId && !hasHydratedName(o.reviewerName)) ids.push(o.reviewerId);
+                  return ids;
+                }),
+                contractIds: mapped
+                  .filter((o) => o.contractId && o.contractNumber == null)
+                  .map((o) => o.contractId)
+                  .filter(Boolean) as string[],
+                ctvIds: mapped
+                  .filter((o) => o.ctvId && !hasHydratedName(o.ctvName))
+                  .map((o) => o.ctvId)
+                  .filter(Boolean) as string[],
+              };
+        const needsLookup =
+          (lookupReq.customerIds?.length ?? 0) +
+            (lookupReq.serviceIds?.length ?? 0) +
+            (lookupReq.userIds?.length ?? 0) +
+            (lookupReq.contractIds?.length ?? 0) +
+            (lookupReq.ctvIds?.length ?? 0) >
+          0;
+        if (!needsLookup) return;
         await resolveEntityLookups(lookupReq, perms);
         if (options.abandonIf?.()) return;
         applier.replaceOrders(
           orders.map((o) => ({
             ...o,
-            customerName: lookupCustomerName(o.customerId) || o.customerName,
-            serviceName: lookupServiceName(o.serviceId) || o.serviceName,
-            assignedUserName: lookupUserName(o.assignedUserId) || o.assignedUserName,
-            submitterName: lookupUserName(o.submitterId) || o.submitterName,
-            reviewerName: o.reviewerId ? lookupUserName(o.reviewerId) || o.reviewerName : o.reviewerName,
-            ctvName: o.ctvId ? lookupCtvName(o.ctvId) || o.ctvName : o.ctvName,
+            customerName: hasHydratedName(o.customerName)
+              ? o.customerName
+              : lookupCustomerName(o.customerId) || o.customerName,
+            serviceName: hasHydratedName(o.serviceName)
+              ? o.serviceName
+              : lookupServiceName(o.serviceId) || o.serviceName,
+            assignedUserName: hasHydratedName(o.assignedUserName)
+              ? o.assignedUserName
+              : lookupUserName(o.assignedUserId) || o.assignedUserName,
+            submitterName: hasHydratedName(o.submitterName)
+              ? o.submitterName
+              : lookupUserName(o.submitterId) || o.submitterName,
+            reviewerName: o.reviewerId
+              ? hasHydratedName(o.reviewerName)
+                ? o.reviewerName
+                : lookupUserName(o.reviewerId) || o.reviewerName
+              : o.reviewerName,
+            ctvName: o.ctvId
+              ? hasHydratedName(o.ctvName)
+                ? o.ctvName
+                : lookupCtvName(o.ctvId) || o.ctvName
+              : o.ctvName,
             contractNumber: (() => {
+              if (o.contractNumber != null) return o.contractNumber;
               const raw = o.contractId ? lookupContractNumber(o.contractId) : undefined;
               const n = raw != null ? Number(raw) : undefined;
               return Number.isFinite(n) ? n : o.contractNumber;
@@ -512,12 +589,39 @@ export async function applyRemoteData(
   }
 
   if (apiPayments) {
+    for (const p of apiPayments.items) {
+      if (p.orderId && hasHydratedName(p.orderNumber)) rememberOrderNumber(p.orderId, p.orderNumber!);
+      if (p.customerId && hasHydratedName(p.customerName)) {
+        rememberCustomerName(p.customerId, p.customerName!);
+      }
+    }
     const paymentRecords = mapPaymentsToRecords(orders, apiPayments.items);
     for (const p of paymentRecords) {
-      if (p.orderId) rememberOrderNumber(p.orderId, p.orderNumber);
+      if (p.orderId && hasHydratedName(p.orderNumber)) rememberOrderNumber(p.orderId, p.orderNumber);
     }
     const paymentRows = append ? mergePaymentRecords(current.payments, paymentRecords) : paymentRecords;
-    applier.replacePayments(paymentRows);
+    const hydratedPayments = paymentRows.map((p) => {
+      const apiRow = apiPayments.items.find((row) => {
+        const recordIds = p.groupedOrderIds?.length ? p.groupedOrderIds : [p.orderId];
+        return recordIds.includes(row.orderId);
+      });
+      return {
+        ...p,
+        orderNumber:
+          (hasHydratedName(apiRow?.orderNumber) ? apiRow!.orderNumber! : undefined) ||
+          lookupOrderNumber(p.orderId) ||
+          p.orderNumber,
+        customerId: apiRow?.customerId || p.customerId,
+        customerName:
+          (hasHydratedName(apiRow?.customerName) ? apiRow!.customerName! : undefined) ||
+          p.customerName ||
+          lookupCustomerName(
+            apiRow?.customerId || orders.find((o) => o.id === p.orderId)?.customerId,
+          ) ||
+          "",
+      };
+    });
+    applier.replacePayments(hydratedPayments);
     applier.setListMeta("payments", {
       total: apiPayments.total,
       page: apiPayments.page,
@@ -530,34 +634,63 @@ export async function applyRemoteData(
       ),
     });
     const nameResolve = options.nameResolve ?? "full";
-    const orderIds = [...new Set(apiPayments.items.map((p) => p.orderId).filter(Boolean))];
-    // Dashboard preview skips payment orphan lookups; listLean still resolves order numbers.
+    const orderIds = [
+      ...new Set(
+        apiPayments.items
+          .filter((p) => p.orderId && !hasHydratedName(p.orderNumber))
+          .map((p) => p.orderId),
+      ),
+    ];
     if (orderIds.length && (nameResolve === "full" || nameResolve === "listLean")) {
       void (async () => {
         await resolveEntityLookups({ orderIds }, perms);
         if (options.abandonIf?.()) return;
-        const withNames = paymentRows.map((p) => ({
-          ...p,
-          orderNumber: lookupOrderNumber(p.orderId) || p.orderNumber,
-          customerName:
-            p.customerName ||
-            lookupCustomerName(orders.find((o) => o.id === p.orderId)?.customerId) ||
-            "",
-        }));
-        applier.replacePayments(withNames);
+        applier.replacePayments(
+          hydratedPayments.map((p) => ({
+            ...p,
+            orderNumber: hasHydratedName(p.orderNumber)
+              ? p.orderNumber
+              : lookupOrderNumber(p.orderId) || p.orderNumber,
+            customerName: hasHydratedName(p.customerName)
+              ? p.customerName
+              : lookupCustomerName(orders.find((o) => o.id === p.orderId)?.customerId) ||
+                p.customerName ||
+                "",
+          })),
+        );
       })();
     }
   }
 
   const orderNumber = new Map(orders.map((o) => [o.id, o.orderNumber]));
   if (apiExpenses) {
+    for (const e of apiExpenses.items) {
+      if (e.orderId && hasHydratedName(e.orderNumber)) rememberOrderNumber(e.orderId, e.orderNumber!);
+      if (e.requestedByUserId && hasHydratedName(e.requestedByName)) {
+        rememberUserName(e.requestedByUserId, e.requestedByName!);
+      }
+      if (e.reviewedByUserId && hasHydratedName(e.reviewedByName)) {
+        rememberUserName(e.reviewedByUserId, e.reviewedByName!);
+      }
+    }
     const mapped = apiExpenses.items.map((e) =>
-      mapApiExpenseToUi(e, orderNumber.get(e.orderId) || lookupOrderNumber(e.orderId), {
-        requestedByName: userName.get(e.requestedByUserId) || lookupUserName(e.requestedByUserId),
-        reviewedByName: e.reviewedByUserId
-          ? userName.get(e.reviewedByUserId) || lookupUserName(e.reviewedByUserId)
-          : undefined,
-      }),
+      mapApiExpenseToUi(
+        e,
+        (hasHydratedName(e.orderNumber) ? e.orderNumber! : undefined) ||
+          orderNumber.get(e.orderId) ||
+          lookupOrderNumber(e.orderId),
+        {
+          requestedByName:
+            (hasHydratedName(e.requestedByName) ? e.requestedByName! : undefined) ||
+            userName.get(e.requestedByUserId) ||
+            lookupUserName(e.requestedByUserId),
+          reviewedByName: e.reviewedByUserId
+            ? (hasHydratedName(e.reviewedByName) ? e.reviewedByName! : undefined) ||
+              userName.get(e.reviewedByUserId) ||
+              lookupUserName(e.reviewedByUserId)
+            : undefined,
+        },
+      ),
     );
     const expenses = append ? mergeById(current.expenses, mapped) : mapped;
     applier.replaceExpenses(expenses);
@@ -570,23 +703,31 @@ export async function applyRemoteData(
     void (async () => {
       const nameResolve = options.nameResolve ?? "full";
       if (nameResolve === "off" || nameResolve === "dashboardPreview") return;
-      await resolveEntityLookups(
-        {
-          orderIds: mapped.map((e) => e.orderId).filter(Boolean) as string[],
-          userIds: mapped
-            .flatMap((e) => [e.requestedById, e.reviewedById])
-            .filter(Boolean) as string[],
-        },
-        perms,
-      );
+      const orderIds = mapped
+        .filter((e) => e.orderId && !hasHydratedName(e.orderNumber))
+        .map((e) => e.orderId!);
+      const userIds = mapped.flatMap((e) => {
+        const ids: string[] = [];
+        if (e.requestedById && !hasHydratedName(e.requestedByName)) ids.push(e.requestedById);
+        if (e.reviewedById && !hasHydratedName(e.reviewedByName)) ids.push(e.reviewedById);
+        return ids;
+      });
+      if (!orderIds.length && !userIds.length) return;
+      await resolveEntityLookups({ orderIds, userIds }, perms);
       if (options.abandonIf?.()) return;
       applier.replaceExpenses(
         expenses.map((e) => ({
           ...e,
-          orderNumber: lookupOrderNumber(e.orderId) || e.orderNumber,
-          requestedByName: lookupUserName(e.requestedById) || e.requestedByName,
+          orderNumber: hasHydratedName(e.orderNumber)
+            ? e.orderNumber
+            : lookupOrderNumber(e.orderId) || e.orderNumber,
+          requestedByName: hasHydratedName(e.requestedByName)
+            ? e.requestedByName
+            : lookupUserName(e.requestedById) || e.requestedByName,
           reviewedByName: e.reviewedById
-            ? lookupUserName(e.reviewedById) || e.reviewedByName
+            ? hasHydratedName(e.reviewedByName)
+              ? e.reviewedByName
+              : lookupUserName(e.reviewedById) || e.reviewedByName
             : e.reviewedByName,
         })),
       );
@@ -652,6 +793,53 @@ const FINANCE_CACHE_TTL_MS = 45_000;
 const financePaymentCache = new Map<string, { at: number; hasSchedule: boolean }>();
 const financeInflight = new Map<string, Promise<void>>();
 
+/**
+ * Apply finance + expense rows from GET /orders/:id/detail (1 RTT).
+ * Marks the contract payment cache fresh so sibling hops skip refetch.
+ */
+export function applyOrderDetailFinance(args: {
+  order: Order;
+  groupOrders?: Order[];
+  detail: ApiOrderDetail;
+  upsertPayment: (record: PaymentRecord) => void;
+  mergeExpensesForOrder: (orderId: string, items: OrderExpense[]) => void;
+}): ApiDocument[] {
+  const group = siblingOrders(args.groupOrders?.length ? args.groupOrders : [args.order], args.order);
+  const primary = pickPrimaryOrder(group.length ? group : [args.order]);
+  const payments = unwrapDetailList(args.detail.payments);
+  const scheduleLines = unwrapSchedule(args.detail.paymentSchedule);
+  const schedules = new Map<string, ApiScheduleLine[]>();
+  schedules.set(primary.id, scheduleLines);
+  const [record] = mapPaymentsToRecords(group, payments, schedules);
+  if (record) args.upsertPayment(record);
+  financePaymentCache.set(orderGroupKey(primary), {
+    at: Date.now(),
+    hasSchedule: true,
+  });
+
+  const expenses = unwrapDetailList(args.detail.expenses);
+  for (const e of expenses) {
+    if (e.orderId && hasHydratedName(e.orderNumber)) rememberOrderNumber(e.orderId, e.orderNumber!);
+    if (e.requestedByUserId && hasHydratedName(e.requestedByName)) {
+      rememberUserName(e.requestedByUserId, e.requestedByName!);
+    }
+    if (e.reviewedByUserId && hasHydratedName(e.reviewedByName)) {
+      rememberUserName(e.reviewedByUserId, e.reviewedByName!);
+    }
+  }
+  args.mergeExpensesForOrder(
+    args.order.id,
+    expenses.map((e) =>
+      mapApiExpenseToUi(e, args.order.orderNumber, {
+        requestedByName: hasHydratedName(e.requestedByName) ? e.requestedByName! : undefined,
+        reviewedByName: hasHydratedName(e.reviewedByName) ? e.reviewedByName! : undefined,
+      }),
+    ),
+  );
+
+  return unwrapDetailList(args.detail.documents);
+}
+
 /** Shared payment lives on the contract primary; do not fan out to every sibling. */
 export async function reloadOrderFinance(args: {
   order: Order;
@@ -661,8 +849,8 @@ export async function reloadOrderFinance(args: {
   mergeExpensesForOrder: (orderId: string, items: OrderExpense[]) => void;
   force?: boolean;
   /**
-   * Fetch payment-schedule (often 404/~3s when empty). Default false on order detail;
-   * true on payment detail / after schedule edits.
+   * Fetch payment-schedule. Empty schedule is 200 + lines:[]; 404 means order missing/out of scope.
+   * Default false on order detail (prefer GET /orders/:id/detail); true after schedule edits.
    */
   includeSchedule?: boolean;
 }): Promise<void> {
@@ -703,9 +891,9 @@ export async function reloadOrderFinance(args: {
         )
       : Promise.resolve(null);
 
-    // 404 "Payment schedule not found" → empty via settled; only primary (not × siblings).
+    // Empty schedule = 200 + empty/lines:[]. Do not treat 404 as empty.
     const schedulePromise: Promise<ApiScheduleLine[] | null> = needSchedule
-      ? settled(ordersApi.listSchedule(primary.id).then(unwrapSchedule), [])
+      ? ordersApi.listSchedule(primary.id).then(unwrapSchedule)
       : Promise.resolve(null);
 
     const expensesPromise = settled(
@@ -738,8 +926,13 @@ export async function reloadOrderFinance(args: {
       order.id,
       expenses.map((e) =>
         mapApiExpenseToUi(e, order.orderNumber, {
-          requestedByName: userName.get(e.requestedByUserId),
-          reviewedByName: e.reviewedByUserId ? userName.get(e.reviewedByUserId) : undefined,
+          requestedByName:
+            (hasHydratedName(e.requestedByName) ? e.requestedByName! : undefined) ||
+            userName.get(e.requestedByUserId),
+          reviewedByName: e.reviewedByUserId
+            ? (hasHydratedName(e.reviewedByName) ? e.reviewedByName! : undefined) ||
+              userName.get(e.reviewedByUserId)
+            : undefined,
         }),
       ),
     );

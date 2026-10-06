@@ -1,5 +1,8 @@
 import { apiRequest } from "@/lib/http/client";
 import type { PageResult } from "@/lib/http/paging";
+import type { ApiDocument } from "@/modules/documents/api";
+import type { ApiExpense } from "@/modules/expenses/api";
+import type { ApiPayment } from "@/modules/payments/api";
 
 export type ApiOrder = {
   id: string;
@@ -17,7 +20,7 @@ export type ApiOrder = {
   totalGross: string;
   currency: string;
   assignedUserId: string;
-  /** Present when BE JOINs identity (not always on list). */
+  /** BE batch-JOIN on list/detail (2026-10-06). */
   assignedUserName?: string | null;
   submitterUserId: string;
   submitterName?: string | null;
@@ -28,7 +31,7 @@ export type ApiOrder = {
   collaboratorName?: string | null;
   approvalStatus: string;
   notes: string | null;
-  /** % hoa hồng NV phụ trách — BE có thể trả number hoặc decimal string */
+  /** % hoa hồng NV phụ trách — number hoặc decimal string */
   commissionPercent?: string | number | null;
   createdAt: string;
   updatedAt: string;
@@ -39,6 +42,24 @@ export type ApiScheduleLine = {
   dueDate?: string | null;
   amount: string | number;
   sortOrder?: number;
+};
+
+/** GET /orders/:orderId/payment-schedule — empty schedule is 200 + empty:true. */
+export type ApiPaymentSchedule = {
+  id?: string | null;
+  orderId?: string;
+  lines?: ApiScheduleLine[];
+  items?: ApiScheduleLine[];
+  empty?: boolean;
+};
+
+/** GET /orders/:id/detail — one RTT for order + finance + docs. */
+export type ApiOrderDetail = {
+  order: ApiOrder;
+  paymentSchedule?: ApiPaymentSchedule | null;
+  payments?: ApiPayment[] | { items?: ApiPayment[] };
+  expenses?: ApiExpense[] | { items?: ApiExpense[] };
+  documents?: ApiDocument[] | { items?: ApiDocument[] };
 };
 
 export type CreateOrderBody = {
@@ -94,6 +115,15 @@ export const ordersApi = {
     return apiRequest<ApiOrder | { data: ApiOrder }>(`/orders/${id}`).then(unwrapOrder);
   },
 
+  getDetail(id: string) {
+    return apiRequest<ApiOrderDetail | { data: ApiOrderDetail }>(`/orders/${id}/detail`).then((raw) => {
+      if (raw && typeof raw === "object" && "data" in raw && raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)) {
+        return raw.data;
+      }
+      return raw as ApiOrderDetail;
+    });
+  },
+
   create(body: CreateOrderBody) {
     return apiRequest<ApiOrder>("/orders", { method: "POST", body: JSON.stringify(body) });
   },
@@ -124,7 +154,7 @@ export const ordersApi = {
   },
 
   listSchedule(orderId: string) {
-    return apiRequest<{ items?: ApiScheduleLine[] } | ApiScheduleLine[]>(
+    return apiRequest<ApiPaymentSchedule | ApiScheduleLine[]>(
       `/orders/${orderId}/payment-schedule`,
     );
   },

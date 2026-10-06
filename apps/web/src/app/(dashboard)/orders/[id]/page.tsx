@@ -29,6 +29,7 @@ import { useNotifications } from "@/lib/notifications-store";
 import {
   deadlineFromService,
   getOrderLicenseExpirySummary,
+  hasHydratedName,
   isContractNumberTaken,
   licenseExpiryTagColor,
   licenseWarnMonthsForOrder,
@@ -40,7 +41,7 @@ import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ApiError } from "@/lib/http/errors";
 import { unwrapList } from "@/lib/http/paging";
-import { reloadOrderFinance } from "@/lib/load-api-data";
+import { applyOrderDetailFinance, reloadOrderFinance } from "@/lib/load-api-data";
 import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
@@ -87,11 +88,25 @@ type ScreenBoot =
   | { status: "error"; message: string };
 
 /** Dedupe Strict Mode double-mount so order/docs each hit the network once. */
+const orderDetailInflight = new Map<
+  string,
+  Promise<Awaited<ReturnType<typeof ordersApi.getDetail>>>
+>();
 const orderGetInflight = new Map<string, Promise<Awaited<ReturnType<typeof ordersApi.get>>>>();
 const orderDocsInflight = new Map<
   string,
   Promise<Awaited<ReturnType<typeof documentsApi.list>>>
 >();
+
+function loadOrderDetail(orderId: string) {
+  const hit = orderDetailInflight.get(orderId);
+  if (hit) return hit;
+  const pending = ordersApi.getDetail(orderId).finally(() => {
+    orderDetailInflight.delete(orderId);
+  });
+  orderDetailInflight.set(orderId, pending);
+  return pending;
+}
 
 function loadOrderGet(orderId: string) {
   const hit = orderGetInflight.get(orderId);
@@ -197,18 +212,25 @@ export default function OrderDetailPage() {
       }
     };
 
-    const resolveNames = async (base: Order) => {
+    const resolveNamesIfNeeded = async (base: Order) => {
       seedUserNameCache();
+      const customerIds =
+        base.customerId && !hasHydratedName(base.customerName) ? [base.customerId] : [];
+      const serviceIds =
+        base.serviceId && !hasHydratedName(base.serviceName) ? [base.serviceId] : [];
+      const userIds = [
+        base.assignedUserId && !hasHydratedName(base.assignedUserName) ? base.assignedUserId : null,
+        base.submitterId && !hasHydratedName(base.submitterName) ? base.submitterId : null,
+        base.reviewerId && !hasHydratedName(base.reviewerName) ? base.reviewerId : null,
+      ].filter(Boolean) as string[];
+      const contractIds =
+        base.contractId && base.contractNumber == null ? [base.contractId] : [];
+      const ctvIds = base.ctvId && !hasHydratedName(base.ctvName) ? [base.ctvId] : [];
+      if (!customerIds.length && !serviceIds.length && !userIds.length && !contractIds.length && !ctvIds.length) {
+        return;
+      }
       await resolveEntityLookups(
-        {
-          customerIds: [base.customerId].filter(Boolean),
-          serviceIds: [base.serviceId].filter(Boolean),
-          userIds: [base.assignedUserId, base.submitterId, base.reviewerId].filter(
-            Boolean,
-          ) as string[],
-          contractIds: base.contractId ? [base.contractId] : [],
-          ctvIds: base.ctvId ? [base.ctvId] : [],
-        },
+        { customerIds, serviceIds, userIds, contractIds, ctvIds },
         permissionsRef.current,
       );
       if (cancelled) return;
@@ -225,63 +247,106 @@ export default function OrderDetailPage() {
       seedUserNameCache();
       setOrder(withResolvedOrderNames(cached));
       setBoot({ status: "ready" });
-      void resolveNames(cached);
+      void resolveNamesIfNeeded(cached);
     } else {
       setBoot({ status: "loading" });
       setOrder(null);
     }
 
-    const kickFinance = (mapped: Order, catalogUsers: typeof users) => {
+    const mapApiOrder = (apiOrder: Parameters<typeof mapApiOrderToUi>[0]) => {
+      const { users: catalogUsers, customers: catalogCustomers, services: catalogServices } =
+        catalogsRef.current;
+      const userName = new Map(catalogUsers.map((u) => [u.id, u.name]));
+      const customerName = new Map(catalogCustomers.map((c) => [c.id, c.name]));
+      const serviceName = new Map(catalogServices.map((s) => [s.id, s.name]));
+      for (const u of catalogUsers) {
+        if (u.id && u.name) rememberUserName(u.id, u.name);
+      }
+      return {
+        mapped: mapApiOrderToUi(apiOrder, {
+          customerName:
+            (hasHydratedName(apiOrder.customerName) ? apiOrder.customerName! : undefined) ||
+            customerName.get(apiOrder.customerId) ||
+            lookupCustomerName(apiOrder.customerId),
+          serviceName:
+            (hasHydratedName(apiOrder.serviceName) ? apiOrder.serviceName! : undefined) ||
+            serviceName.get(apiOrder.serviceId) ||
+            lookupServiceName(apiOrder.serviceId),
+          assignedUserName:
+            (hasHydratedName(apiOrder.assignedUserName) ? apiOrder.assignedUserName! : undefined) ||
+            userName.get(apiOrder.assignedUserId) ||
+            lookupUserName(apiOrder.assignedUserId),
+          submitterName:
+            (hasHydratedName(apiOrder.submitterName) ? apiOrder.submitterName! : undefined) ||
+            userName.get(apiOrder.submitterUserId) ||
+            lookupUserName(apiOrder.submitterUserId),
+          reviewerName: apiOrder.reviewerUserId
+            ? (hasHydratedName(apiOrder.reviewerName) ? apiOrder.reviewerName! : undefined) ||
+              userName.get(apiOrder.reviewerUserId) ||
+              lookupUserName(apiOrder.reviewerUserId)
+            : undefined,
+        }),
+        userName,
+      };
+    };
+
+    const applyDocs = (mappedId: string, docs: ApiDocument[], userName: Map<string, string>) => {
+      const { work, licenses } = attachmentsFromDocs(
+        docs.filter((d) => d?.id),
+        userName,
+      );
+      setOrder((prev) => {
+        if (!prev || prev.id !== mappedId) return prev;
+        const next = { ...prev, attachments: work, licenseAttachments: licenses };
+        upsertOrder(next);
+        return next;
+      });
+    };
+
+    const loadLegacy = async () => {
+      const docsPromise = loadOrderDocs(id);
+      const apiOrder = await loadOrderGet(id);
+      if (cancelled) return;
+      if (!apiOrder?.id) {
+        setBoot({ status: "missing" });
+        return;
+      }
+      const { mapped, userName } = mapApiOrder(apiOrder);
+      setOrder((prev) => ({
+        ...mapped,
+        attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
+        licenseAttachments:
+          prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
+      }));
+      upsertOrder(mapped);
+      setBoot({ status: "ready" });
+      void resolveNamesIfNeeded(mapped);
       void reloadOrderFinance({
         order: mapped,
         groupOrders: ordersRef.current,
-        users: catalogUsers,
+        users: catalogsRef.current.users,
         upsertPayment,
         mergeExpensesForOrder,
         includeSchedule: false,
       }).finally(() => {
         if (!cancelled) setFinanceReady(true);
       });
+      const docsResult = await docsPromise;
+      if (cancelled) return;
+      applyDocs(mapped.id, unwrapList(docsResult), userName);
     };
-
-    if (cached) {
-      kickFinance(cached, catalogsRef.current.users);
-    }
 
     const load = async () => {
       try {
-        // Docs + finance start as soon as order maps — not after docs finish.
-        const docsPromise = loadOrderDocs(id);
-        const apiOrder = await loadOrderGet(id);
+        // Primary: 1× GET /orders/:id/detail (order + schedule + payments + expenses + docs).
+        const detail = await loadOrderDetail(id);
         if (cancelled) return;
+        const apiOrder = detail?.order;
         if (!apiOrder?.id) {
           setBoot({ status: "missing" });
           return;
         }
-
-        const { users: catalogUsers, customers: catalogCustomers, services: catalogServices } =
-          catalogsRef.current;
-        const userName = new Map(catalogUsers.map((u) => [u.id, u.name]));
-        const customerName = new Map(catalogCustomers.map((c) => [c.id, c.name]));
-        const serviceName = new Map(catalogServices.map((s) => [s.id, s.name]));
-        for (const u of catalogUsers) {
-          if (u.id && u.name) rememberUserName(u.id, u.name);
-        }
-
-        const mapped = mapApiOrderToUi(apiOrder, {
-          customerName:
-            customerName.get(apiOrder.customerId) || lookupCustomerName(apiOrder.customerId),
-          serviceName: serviceName.get(apiOrder.serviceId) || lookupServiceName(apiOrder.serviceId),
-          assignedUserName:
-            userName.get(apiOrder.assignedUserId) || lookupUserName(apiOrder.assignedUserId),
-          submitterName:
-            userName.get(apiOrder.submitterUserId) || lookupUserName(apiOrder.submitterUserId),
-          reviewerName: apiOrder.reviewerUserId
-            ? userName.get(apiOrder.reviewerUserId) || lookupUserName(apiOrder.reviewerUserId)
-            : undefined,
-        });
-
-        if (cancelled) return;
+        const { mapped, userName } = mapApiOrder(apiOrder);
         setOrder((prev) => ({
           ...mapped,
           attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
@@ -291,26 +356,41 @@ export default function OrderDetailPage() {
         upsertOrder(mapped);
         setBoot({ status: "ready" });
 
-        if (!cached) {
-          kickFinance(mapped, catalogUsers);
-        }
-
-        // Display names (assignee / submitter / customer / service) — do not block paint.
-        void resolveNames(mapped);
-
-        const docsResult = await docsPromise;
-        if (cancelled) return;
-        const docs = unwrapList(docsResult).filter((d) => d?.id);
-        const { work, licenses } = attachmentsFromDocs(docs, userName);
-        setOrder((prev) => {
-          if (!prev || prev.id !== mapped.id) return prev;
-          const next = { ...prev, attachments: work, licenseAttachments: licenses };
-          upsertOrder(next);
-          return next;
+        const docs = applyOrderDetailFinance({
+          order: mapped,
+          groupOrders: ordersRef.current,
+          detail,
+          upsertPayment,
+          mergeExpensesForOrder,
         });
+        if (!cancelled) setFinanceReady(true);
+
+        void resolveNamesIfNeeded(mapped);
+        applyDocs(mapped.id, docs, userName);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof ApiError && (err.statusCode === 404 || err.statusCode === 403)) {
+        // Detail missing (older BE) → fallback to get + finance + docs.
+        if (err instanceof ApiError && err.statusCode === 404) {
+          try {
+            await loadLegacy();
+            return;
+          } catch (legacyErr) {
+            if (cancelled) return;
+            if (
+              legacyErr instanceof ApiError &&
+              (legacyErr.statusCode === 404 || legacyErr.statusCode === 403)
+            ) {
+              setBoot({ status: "missing" });
+              return;
+            }
+            setBoot({
+              status: "error",
+              message: apiErrorMessage(legacyErr, t("common.notFoundOrder")),
+            });
+            return;
+          }
+        }
+        if (err instanceof ApiError && err.statusCode === 403) {
           setBoot({ status: "missing" });
           return;
         }
