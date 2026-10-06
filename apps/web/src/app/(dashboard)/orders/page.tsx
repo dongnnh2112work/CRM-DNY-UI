@@ -48,6 +48,8 @@ import { ordersApi } from "@/modules/orders/api";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { useExpenses } from "@/lib/expenses-store";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
+import { useSession } from "@/lib/session/session-provider";
 import { getStatusMeta } from "@/lib/status-config";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
@@ -72,9 +74,13 @@ export default function OrdersPage() {
   const { addNotifications } = useNotifications();
   const { getMeta, stageOptions } = useOrderStatusConfig();
   const { currentUser, getEffectivePermissions, users } = useUsers();
+  const { user: apiUser } = useSession();
   const { listMeta } = useApiHydrate();
   const ordersRemote = useRemoteList("orders");
-  const cashflowReady = Boolean(listMeta.payments);
+  const apiPerms = apiUser?.permissions;
+  const cashflowReady =
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", apiPerms)) &&
+    isListSliceSettled(listMeta.expenses, canLoadScope("expenses", apiPerms));
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canViewStages = Boolean(perms?.order_statuses?.view);
   const canEditStages = Boolean(perms?.order_statuses?.edit);
@@ -149,15 +155,15 @@ export default function OrdersPage() {
           o.vatIssueDeadline,
           o.zaloGroupUrl,
           o.commissionPercent,
-          cashflowByOrder.get(o.id)?.thu,
-          cashflowByOrder.get(o.id)?.chi,
+          cashflowReady ? cashflowByOrder.get(o.id)?.thu : undefined,
+          cashflowReady ? cashflowByOrder.get(o.id)?.chi : undefined,
           o.attachments.filter((a) => !a.deleted).length,
           o.licenseAttachments?.filter((a) => !a.deleted).length,
         ]),
       );
     }
     return list;
-  }, [orders, userFilter, monthFilter, dateRange, query, getMeta, cashflowByOrder]);
+  }, [orders, userFilter, monthFilter, dateRange, query, getMeta, cashflowByOrder, cashflowReady]);
 
   const selectedCount = selectedRowKeys.length;
   const clearSelection = () => setSelectedRowKeys([]);
@@ -400,7 +406,7 @@ export default function OrdersPage() {
         cashflowForMonth(cashflowByOrder.get(a.id) ?? emptyFlow, cashflowMonth).thu -
         cashflowForMonth(cashflowByOrder.get(b.id) ?? emptyFlow, cashflowMonth).thu,
       render: (_, r) => {
-        if (!cashflowReady) return "—";
+        if (!cashflowReady) return <CashflowAmounts thu={0} chi={0} loading />;
         const m = cashflowForMonth(cashflowByOrder.get(r.id) ?? emptyFlow, cashflowMonth);
         return <CashflowAmounts thu={m.thu} chi={m.chi} />;
       },
@@ -411,7 +417,7 @@ export default function OrdersPage() {
       align: "right",
       sorter: (a, b) => (cashflowByOrder.get(a.id)?.thu ?? 0) - (cashflowByOrder.get(b.id)?.thu ?? 0),
       render: (_, r) => {
-        if (!cashflowReady) return "—";
+        if (!cashflowReady) return <CashflowAmounts thu={0} chi={0} loading />;
         const f = cashflowByOrder.get(r.id) ?? emptyFlow;
         return <CashflowAmounts thu={f.thu} chi={f.chi} />;
       },

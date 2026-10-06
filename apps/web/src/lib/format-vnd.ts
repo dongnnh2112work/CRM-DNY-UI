@@ -19,7 +19,8 @@ export const vndInputProps = {
   parser: (value: string | undefined) => parseVndGrouped(value) as unknown as number,
 };
 
-/** Hiển thị tiền trong bảng / mô tả */
+/** Hiển thị tiền trong bảng / mô tả — VND luôn làm tròn số nguyên. */
 export function formatVndDisplay(value: number): string {
-  return `${value.toLocaleString("vi-VN")} ₫`;
+  const n = Number.isFinite(value) ? Math.round(value) : 0;
+  return `${n.toLocaleString("vi-VN", { maximumFractionDigits: 0 })} ₫`;
 }

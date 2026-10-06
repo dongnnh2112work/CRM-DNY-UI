@@ -1,4 +1,31 @@
+import { ROUTE_PAGE_SIZE } from "@/lib/http/paging";
 import { PERMISSION } from "@/lib/rbac";
+
+/** Background pages to pull before showing totals derived from a list. */
+export const LIST_FILL_MAX_PAGES = 40;
+
+export function isListSliceComplete(meta?: { total: number; loaded: number } | null): boolean {
+  if (!meta) return false;
+  if (meta.total === 0) return true;
+  return meta.loaded >= meta.total;
+}
+
+/** True when this scope will not change the numbers again (done, forbidden, or fill cap). */
+export function isListSliceSettled(
+  meta: { total: number; loaded: number } | undefined,
+  allowed: boolean,
+): boolean {
+  if (!allowed) return true;
+  if (isListSliceComplete(meta)) return true;
+  if (
+    meta &&
+    meta.loaded < meta.total &&
+    meta.loaded >= ROUTE_PAGE_SIZE * LIST_FILL_MAX_PAGES
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export type RefreshScope =
   | "all"

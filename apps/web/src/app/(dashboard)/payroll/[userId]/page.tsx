@@ -17,6 +17,7 @@ import { currentYearMonth, formatYearMonth } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { buildPayroll, collectPayrollMonths, getPayrollScope, type PayrollLine } from "@/lib/payroll";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useT } from "@/lib/use-t";
@@ -53,7 +54,11 @@ function PayrollStaffPageContent() {
   const { expenses } = useExpenses();
   const { listMeta } = useApiHydrate();
   const [nameTick, setNameTick] = useState(0);
-  const payrollBooting = !listMeta.orders && !listMeta.payments && !listMeta.expenses;
+  const apiPerms = apiUser?.permissions;
+  const figuresReady =
+    isListSliceSettled(listMeta.orders, canLoadScope("orders", apiPerms)) &&
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", apiPerms)) &&
+    isListSliceSettled(listMeta.expenses, canLoadScope("expenses", apiPerms));
 
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
@@ -178,7 +183,7 @@ function PayrollStaffPageContent() {
     [t],
   );
 
-  if (payrollBooting || !currentUser) {
+  if (!currentUser) {
     return <PageLoading />;
   }
 
@@ -200,8 +205,16 @@ function PayrollStaffPageContent() {
     );
   }
 
+  if (!figuresReady) {
+    return <PageLoading />;
+  }
+
   const isOwn = Boolean(currentUser && currentUser.id === userId);
   const showCompanyList = scope === "all";
+
+  if (!staffName && nameTick === 0) {
+    return <PageLoading />;
+  }
 
   if (!staffName) {
     return (

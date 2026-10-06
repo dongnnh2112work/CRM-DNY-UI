@@ -25,6 +25,7 @@ export function StatCard({
   suffix,
   accent = ds.primary,
   description,
+  valueColor,
 }: {
   title: string;
   value: number | string;
@@ -34,6 +35,8 @@ export function StatCard({
   accent?: string;
   /** Optional hint under the value (kept inside the card so it is not clipped). */
   description?: ReactNode;
+  /** Overrides the value color (negative payroll, for example). */
+  valueColor?: string;
 }) {
   const { token } = theme.useToken();
 
@@ -62,6 +65,32 @@ export function StatCard({
           </span>
         ) : null}
         <div style={{ minWidth: 0, flex: 1 }}>
+          {typeof value === "string" ? (
+            <div>
+              <div
+                style={{
+                  color: token.colorTextSecondary,
+                  fontWeight: 500,
+                  fontSize: ds.fontSize.caption,
+                }}
+              >
+                {title}
+              </div>
+              <div
+                style={{
+                  color: valueColor ?? token.colorText,
+                  fontWeight: 700,
+                  fontSize: ds.fontSize.h3,
+                  letterSpacing: "-0.3px",
+                  fontVariantNumeric: "tabular-nums",
+                  lineHeight: 1.4,
+                }}
+              >
+                {value}
+                {suffix ? ` ${suffix}` : ""}
+              </div>
+            </div>
+          ) : (
           <Statistic
             title={
               <span
@@ -78,7 +107,7 @@ export function StatCard({
             suffix={suffix}
             styles={{
               content: {
-                color: token.colorText,
+                color: valueColor ?? token.colorText,
                 fontWeight: 700,
                 fontSize: ds.fontSize.h3,
                 letterSpacing: "-0.3px",
@@ -86,6 +115,7 @@ export function StatCard({
               },
             }}
           />
+          )}
           {description ? (
             <div
               style={{

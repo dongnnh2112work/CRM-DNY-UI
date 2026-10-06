@@ -48,7 +48,7 @@ export function monthNet(flow: OrderCashflow, month: string): number {
 
 export function orderSalary(percent: number | undefined, net: number): number {
   const p = typeof percent === "number" && Number.isFinite(percent) ? percent : 0;
-  return (p / 100) * net;
+  return Math.round((p / 100) * net);
 }
 
 export function collectPayrollMonths(

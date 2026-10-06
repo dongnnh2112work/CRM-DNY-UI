@@ -250,16 +250,9 @@ export default function OrderDetailPage() {
       });
     };
 
-    const cached = ordersRef.current.find((o) => o.id === id);
-    if (cached) {
-      seedUserNameCache();
-      setOrder(withResolvedOrderNames(cached));
-      setBoot({ status: "ready" });
-      void resolveNamesIfNeeded(cached);
-    } else {
-      setBoot({ status: "loading" });
-      setOrder(null);
-    }
+    setBoot({ status: "loading" });
+    setOrder(null);
+    if (ordersRef.current.some((o) => o.id === id)) seedUserNameCache();
 
     const mapApiOrder = (apiOrder: Parameters<typeof mapApiOrderToUi>[0]) => {
       const { users: catalogUsers, customers: catalogCustomers, services: catalogServices } =
@@ -327,21 +320,21 @@ export default function OrderDetailPage() {
           prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
       }));
       upsertOrder(mapped);
-      setBoot({ status: "ready" });
-      void resolveNamesIfNeeded(mapped);
-      void reloadOrderFinance({
+      await reloadOrderFinance({
         order: mapped,
         groupOrders: ordersRef.current,
         users: catalogsRef.current.users,
         upsertPayment,
         mergeExpensesForOrder,
         includeSchedule: false,
-      }).finally(() => {
-        if (!cancelled) setFinanceReady(true);
       });
+      if (cancelled) return;
       const docsResult = await docsPromise;
       if (cancelled) return;
       applyDocs(mapped.id, unwrapList(docsResult), userName);
+      setFinanceReady(true);
+      setBoot({ status: "ready" });
+      void resolveNamesIfNeeded(mapped);
     };
 
     const load = async () => {
@@ -362,7 +355,6 @@ export default function OrderDetailPage() {
             prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
         }));
         upsertOrder(mapped);
-        setBoot({ status: "ready" });
 
         const docs = applyOrderDetailFinance({
           order: mapped,
@@ -371,10 +363,11 @@ export default function OrderDetailPage() {
           upsertPayment,
           mergeExpensesForOrder,
         });
-        if (!cancelled) setFinanceReady(true);
-
-        void resolveNamesIfNeeded(mapped);
         applyDocs(mapped.id, docs, userName);
+        if (cancelled) return;
+        setFinanceReady(true);
+        setBoot({ status: "ready" });
+        void resolveNamesIfNeeded(mapped);
       } catch (err) {
         if (cancelled) return;
         // Detail missing (older BE) → fallback to get + finance + docs.

@@ -31,6 +31,7 @@ import { usePayments } from "@/lib/payments-store";
 import {
   canLoadScope,
   FRESHNESS_MS,
+  LIST_FILL_MAX_PAGES,
   primaryScopeForPath,
   scopesForPath,
   staleMsFor,
@@ -46,8 +47,14 @@ import { useVat } from "@/lib/vat-store";
 /** Share in-flight hydrate so React Strict Mode does not double-hit the API. */
 const hydrateInflight = new Map<string, Promise<void>>();
 
-/** Cap background pages on payroll — enough for month calc without dumping the catalog. */
-const PAYROLL_AUTO_LOAD_MAX_PAGES = 3;
+/** Lists whose on-screen totals are sums over every row, not the current page. */
+function aggregateFillScopes(pathname: string): RefreshScope[] {
+  if (pathname.startsWith("/payroll")) return ["orders", "payments", "expenses"];
+  if (pathname === "/orders") return ["payments", "expenses"];
+  if (pathname === "/dashboard") return ["orders", "payments", "expenses"];
+  if (pathname === "/vat") return ["vat"];
+  return [];
+}
 
 function nameResolveForPath(pathname: string): ApplyRemoteOptions["nameResolve"] {
   if (pathname.startsWith("/dashboard")) return "dashboardPreview";
@@ -575,20 +582,29 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     if (due.length) void refresh(due);
   }, [pathname, status, ready, refresh, run, filterAllowed, user, tick]);
 
-  // Payroll: progressively load more pages (capped) so month calc can improve without dumping full catalog.
+  // Keep paging lists that feed on-screen totals until the slice is complete.
   useEffect(() => {
     if (status !== "authenticated" || !ready || isAwaitingAccess(user)) return;
-    if (!pathname.startsWith("/payroll")) return;
+    const scopes = aggregateFillScopes(pathname).filter((s) => canLoadScope(s, user?.permissions));
+    if (!scopes.length) return;
     let cancelled = false;
-    const scopes = (["orders", "payments", "expenses"] as RefreshScope[]).filter((s) =>
-      canLoadScope(s, user?.permissions),
-    );
     void (async () => {
       for (const scope of scopes) {
-        for (let i = 0; i < PAYROLL_AUTO_LOAD_MAX_PAGES; i++) {
+        for (let i = 0; i < LIST_FILL_MAX_PAGES; i++) {
           if (cancelled) return;
           const meta = listMetaRef.current[scope];
-          if (meta && meta.loaded >= meta.total) break;
+          if (!meta) {
+            await run(scope, {
+              page: 1,
+              append: false,
+              pageSize: ROUTE_PAGE_SIZE,
+              nameResolve: nameResolveForPath(pathnameRef.current),
+            });
+            if (cancelled || !listMetaRef.current[scope]) break;
+            i -= 1;
+            continue;
+          }
+          if (meta.loaded >= meta.total) break;
           await loadMore(scope);
         }
       }
@@ -596,7 +612,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [pathname, status, ready, loadMore, user]);
+  }, [pathname, status, ready, loadMore, run, user]);
 
   // Notifications poll — only if permitted and not forbidden.
   useEffect(() => {
