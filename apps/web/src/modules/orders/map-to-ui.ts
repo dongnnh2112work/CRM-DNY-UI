@@ -23,6 +23,27 @@ function mapApproval(status: string | undefined): ApprovalStatus {
   return "none";
 }
 
+/** `YYYY-MM-DD` from a date or ISO datetime. Empty / invalid → undefined. */
+function mapDeadline(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const day = value.trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
+}
+
+function mapZaloUrl(...values: Array<string | null | undefined>): string | undefined {
+  for (const value of values) {
+    const text = value?.trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+/** Trimmed value, or null. Never an empty string (BE rejects ""). */
+function nullableText(value: string | null | undefined): string | null {
+  const text = value?.trim();
+  return text ? text : null;
+}
+
 export function mapApiOrderToUi(
   o: ApiOrder,
   names: {
@@ -68,6 +89,8 @@ export function mapApiOrderToUi(
     needsVat: vatRate > 0 && num(o.totalGross) > num(o.totalNet),
     contractNumber: names.contractNumber,
     commissionPercent: normalizeCommissionPercent(o.commissionPercent),
+    deadline: mapDeadline(o.deadline),
+    zaloGroupUrl: mapZaloUrl(o.zaloGroupUrl, o.zaloGroupLink),
   };
 }
 
@@ -114,6 +137,13 @@ export function mapUiOrderToUpdateApi(input: {
   notes?: string | null;
   /** `null` xóa %; `undefined` không đụng field */
   commissionPercent?: number | null;
+  customerId?: string;
+  serviceId?: string;
+  submitterUserId?: string;
+  /** `null` xóa hạn; `undefined` không đụng field */
+  deadline?: string | null;
+  /** `null` xóa link; `undefined` không đụng field. Chuỗi rỗng được gửi thành null. */
+  zaloGroupUrl?: string | null;
 }): UpdateOrderBody {
   const vatRate = input.vatRate ?? 0;
   const value = input.value;
@@ -132,5 +162,10 @@ export function mapUiOrderToUpdateApi(input: {
     const pct = normalizeCommissionPercent(input.commissionPercent);
     if (pct != null) body.commissionPercent = pct;
   }
+  if (input.customerId) body.customerId = input.customerId;
+  if (input.serviceId) body.serviceId = input.serviceId;
+  if (input.submitterUserId) body.submitterUserId = input.submitterUserId;
+  if (input.deadline !== undefined) body.deadline = mapDeadline(input.deadline) ?? null;
+  if (input.zaloGroupUrl !== undefined) body.zaloGroupUrl = nullableText(input.zaloGroupUrl);
   return body;
 }

@@ -25,16 +25,45 @@ type NestErrorBody = {
   statusCode?: number;
   error?: string[] | string;
   message?: string | string[];
+  /** Machine code such as CONTRACT_CUSTOMER_CONFLICT, when sent beside `message`. */
+  code?: string;
   timestamp?: string;
 };
+
+const MACHINE_CODE = /^[A-Z][A-Z0-9_]{2,}$/;
+
+function asErrorList(value: string[] | string | undefined): string[] {
+  if (value == null) return [];
+  const list = Array.isArray(value) ? value : [value];
+  return list.map((item) => String(item).trim()).filter(Boolean);
+}
+
+/**
+ * Prefer a human `message` when `error` is only a machine code.
+ * Human `error` text (the documented shape) is unchanged.
+ */
+function messagesFromBody(body: NestErrorBody, status: number, fallback?: string): string[] {
+  const errors = asErrorList(body.error);
+  const messages = asErrorList(body.message);
+  const humanErrors = errors.filter((item) => !MACHINE_CODE.test(item));
+  if (humanErrors.length) return errors;
+  const humanMessages = messages.filter((item) => !MACHINE_CODE.test(item));
+  if (errors.length && humanMessages.length) return humanMessages;
+  if (errors.length) return errors;
+  if (messages.length) return messages;
+  if (body.code?.trim()) return [body.code.trim()];
+  return [fallback || `HTTP ${status}`];
+}
 
 export function parseApiErrorText(status: number, text: string, fallbackStatusText?: string): ApiError {
   if (!text) return new ApiError(status, [fallbackStatusText || `HTTP ${status}`]);
   try {
     const body = JSON.parse(text) as NestErrorBody;
-    const raw = body.error ?? body.message ?? fallbackStatusText ?? `HTTP ${status}`;
-    const messages = Array.isArray(raw) ? raw.map(String) : [String(raw || `HTTP ${status}`)];
-    return new ApiError(body.statusCode ?? status, messages, body.timestamp);
+    return new ApiError(
+      body.statusCode ?? status,
+      messagesFromBody(body, status, fallbackStatusText),
+      body.timestamp,
+    );
   } catch {
     return new ApiError(status, [text.slice(0, 240) || fallbackStatusText || `HTTP ${status}`]);
   }

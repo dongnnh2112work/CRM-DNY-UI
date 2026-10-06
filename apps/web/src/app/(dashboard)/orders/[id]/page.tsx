@@ -40,11 +40,18 @@ import { nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ApiError } from "@/lib/http/errors";
+import {
+  firstUsableLabel,
+  resolveCatalogEntity,
+  useOrderFormCatalogs,
+  withCurrentSelectOption,
+} from "@/lib/order-form-catalogs";
 import { unwrapList } from "@/lib/http/paging";
 import { applyOrderDetailFinance, reloadOrderFinance } from "@/lib/load-api-data";
 import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
+import { orderUpdateErrorMessage } from "@/modules/orders/save-error";
 import { contractsApi } from "@/modules/contracts/api";
 import { documentsApi, type ApiDocument } from "@/modules/documents/api";
 import {
@@ -171,6 +178,7 @@ export default function OrderDetailPage() {
   const [form] = Form.useForm();
   const [addServiceForm] = Form.useForm();
   const needsVatEdit = Form.useWatch("needsVat", form) as boolean | undefined;
+  const catalogs = useOrderFormCatalogs(editOpen || addServiceOpen);
 
   const suggestedHd = useMemo(
     () => nextContractNumber(orders.filter((o) => o.id !== id)),
@@ -449,9 +457,15 @@ export default function OrderDetailPage() {
     submitterId?: string;
     commissionPercent?: number | string;
   }) => {
-    const service = services.find((s) => s.id === values.serviceId);
-    const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
-    const submitter = activeUsers.find((u) => u.id === values.submitterId);
+    const service = resolveCatalogEntity(services, values.serviceId);
+    const assigned = resolveCatalogEntity(activeUsers, values.assignedUserId, {
+      id: order.assignedUserId,
+      name: order.assignedUserName,
+    });
+    const submitter = resolveCatalogEntity(activeUsers, values.submitterId, {
+      id: order.submitterId,
+      name: order.submitterName,
+    });
     const value = Number(values.value);
     if (!service || !assigned || !submitter || !Number.isFinite(value)) {
       message.error(t("common.requiredMissing"));
@@ -729,35 +743,50 @@ export default function OrderDetailPage() {
           form={form}
           layout="vertical"
           onFinish={async (values) => {
-            setSaving(true);
-            try {
-              const customer = customers.find((c) => c.id === values.customerId);
-              const service = services.find((s) => s.id === values.serviceId);
-              const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
-              const submitter = activeUsers.find((u) => u.id === values.submitterId);
-              if (!customer || !service || !assigned || !submitter) {
-                message.error(t("common.requiredMissing"));
+            const customer = resolveCatalogEntity(customers, values.customerId, {
+              id: order.customerId,
+              name: order.customerName,
+            });
+            const service = resolveCatalogEntity(services, values.serviceId, {
+              id: order.serviceId,
+              name: order.serviceName,
+            });
+            const assigned = resolveCatalogEntity(users, values.assignedUserId, {
+              id: order.assignedUserId,
+              name: order.assignedUserName,
+            });
+            const submitter = resolveCatalogEntity(users, values.submitterId, {
+              id: order.submitterId,
+              name: order.submitterName,
+            });
+            if (!customer || !service || !assigned || !submitter) {
+              message.error(t("common.requiredMissing"));
+              return;
+            }
+
+            if (values.needsVat) {
+              const hd = Number(values.contractNumber);
+              if (!hd || hd < 1) {
+                message.error(t("order.enterContractValid"));
                 return;
               }
-
-              if (values.needsVat) {
-                const hd = Number(values.contractNumber);
-                if (!hd || hd < 1) {
-                  message.error(t("order.enterContractValid"));
-                  return;
-                }
-                if (isContractTaken(hd, order.id) || isContractNumberTaken(orders, hd, order.id)) {
-                  message.error(t("order.contractTaken"));
-                  return;
-                }
+              if (isContractTaken(hd, order.id) || isContractNumberTaken(orders, hd, order.id)) {
+                message.error(t("order.contractTaken"));
+                return;
               }
+            }
 
-              const value = Number(values.value);
-              const vatRate = values.needsVat ? 10 : 0;
-              const formCommission =
-                values.commissionPercent != null && values.commissionPercent !== ""
-                  ? Number(values.commissionPercent)
-                  : null;
+            const value = Number(values.value);
+            const vatRate = values.needsVat ? 10 : 0;
+            const formCommission =
+              values.commissionPercent != null && values.commissionPercent !== ""
+                ? Number(values.commissionPercent)
+                : null;
+            const deadline = toStorageDate(values.deadline) ?? null;
+            const zaloGroupUrl =
+              typeof values.zaloGroupUrl === "string" ? values.zaloGroupUrl.trim() || null : null;
+            setSaving(true);
+            try {
               await ordersApi.update(
                 order.id,
                 mapUiOrderToUpdateApi({
@@ -765,35 +794,44 @@ export default function OrderDetailPage() {
                   vatRate,
                   notes: values.notes,
                   commissionPercent: formCommission,
+                  customerId: customer.id,
+                  serviceId: service.id,
+                  submitterUserId: submitter.id,
+                  deadline,
+                  zaloGroupUrl,
                 }),
               );
               if (assigned.id !== order.assignedUserId) {
                 await ordersApi.assign(order.id, assigned.id);
               }
-              if (order.contractId && values.needsVat && values.contractNumber) {
+              const nextContractNumber = values.needsVat ? String(values.contractNumber) : undefined;
+              if (
+                order.contractId &&
+                nextContractNumber &&
+                String(order.contractNumber ?? "") !== nextContractNumber
+              ) {
                 await contractsApi.update(order.contractId, {
-                  contractNumber: String(values.contractNumber),
-                  customerId: customer.id,
+                  contractNumber: nextContractNumber,
                 });
               }
 
               persist({
                 ...order,
                 customerId: customer.id,
-                customerName: customer.name,
+                customerName: customer.name || order.customerName,
                 serviceId: service.id,
-                serviceName: service.name,
+                serviceName: service.name || order.serviceName,
                 value,
                 commissionPercent: formCommission ?? undefined,
                 assignedUserId: assigned.id,
-                assignedUserName: assigned.name,
+                assignedUserName: assigned.name || order.assignedUserName,
                 submitterId: submitter.id,
-                submitterName: submitter.name,
+                submitterName: submitter.name || order.submitterName,
                 notes: values.notes,
                 needsVat: Boolean(values.needsVat),
                 contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
-                deadline: toStorageDate(values.deadline),
-                zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
+                deadline: deadline ?? undefined,
+                zaloGroupUrl: zaloGroupUrl ?? undefined,
                 vatIssueDeadline: undefined,
               });
               if (assigned.id !== order.assignedUserId) {
@@ -802,8 +840,8 @@ export default function OrderDetailPage() {
                   taskAssignedDraft({
                     id: order.id,
                     orderNumber: order.orderNumber,
-                    customerName: customer.name,
-                    serviceName: service.name,
+                    customerName: customer.name || order.customerName,
+                    serviceName: service.name || order.serviceName,
                   }),
                   currentUser?.id,
                 );
@@ -811,7 +849,7 @@ export default function OrderDetailPage() {
               message.success(t("order.updated"));
               setEditOpen(false);
             } catch (err) {
-              message.error(apiErrorMessage(err, t("order.updated")));
+              message.error(orderUpdateErrorMessage(err, t));
             } finally {
               setSaving(false);
             }
@@ -821,21 +859,34 @@ export default function OrderDetailPage() {
             <Select
               showSearch
               optionFilterProp="label"
-              options={customers.map((c) => ({ value: c.id, label: c.name }))}
+              loading={catalogs.customersLoading}
+              options={withCurrentSelectOption(
+                customers.map((c) => ({ value: c.id, label: c.name })),
+                {
+                  value: order.customerId,
+                  label: firstUsableLabel(order.customerName, lookupCustomerName(order.customerId)),
+                },
+              )}
             />
           </Form.Item>
           <Form.Item name="serviceId" label={t("common.service")} rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
+              loading={catalogs.servicesLoading}
               onChange={(id) => {
                 const svc = services.find((s) => s.id === id);
                 if (!svc) return;
                 const from = order.createdAt ? new Date(order.createdAt) : new Date();
                 form.setFieldValue("deadline", dayjs(deadlineFromService(svc.processingDays, from)));
               }}
-              options={services.map((s) => ({
-                value: s.id,
-                label: s.name,
-              }))}
+              options={withCurrentSelectOption(
+                services.map((s) => ({ value: s.id, label: s.name })),
+                {
+                  value: order.serviceId,
+                  label: firstUsableLabel(order.serviceName, lookupServiceName(order.serviceId)),
+                },
+              )}
             />
           </Form.Item>
           <Form.Item name="value" label={t("common.listPrice")} rules={[{ required: true }]}>
@@ -849,10 +900,32 @@ export default function OrderDetailPage() {
             <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
-            <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={catalogs.usersLoading}
+              options={withCurrentSelectOption(
+                activeUsers.map((u) => ({ value: u.id, label: u.name })),
+                {
+                  value: order.assignedUserId,
+                  label: firstUsableLabel(order.assignedUserName, lookupUserName(order.assignedUserId)),
+                },
+              )}
+            />
           </Form.Item>
           <Form.Item name="submitterId" label={t("common.submitter")} rules={[{ required: true }]}>
-            <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={catalogs.usersLoading}
+              options={withCurrentSelectOption(
+                activeUsers.map((u) => ({ value: u.id, label: u.name })),
+                {
+                  value: order.submitterId,
+                  label: firstUsableLabel(order.submitterName, lookupUserName(order.submitterId)),
+                },
+              )}
+            />
           </Form.Item>
           <Form.Item name="deadline" label={t("order.deadlineLabel")}>
             <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
@@ -929,6 +1002,9 @@ export default function OrderDetailPage() {
             rules={[{ required: true, message: t("order.selectService") }]}
           >
             <Select
+              showSearch
+              optionFilterProp="label"
+              loading={catalogs.servicesLoading}
               options={activeServices.map((s) => ({ value: s.id, label: s.name }))}
               onChange={(id) => {
                 const svc = services.find((s) => s.id === id);
@@ -955,10 +1031,32 @@ export default function OrderDetailPage() {
             <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
-            <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={catalogs.usersLoading}
+              options={withCurrentSelectOption(
+                activeUsers.map((u) => ({ value: u.id, label: u.name })),
+                {
+                  value: order.assignedUserId,
+                  label: firstUsableLabel(order.assignedUserName, lookupUserName(order.assignedUserId)),
+                },
+              )}
+            />
           </Form.Item>
           <Form.Item name="submitterId" label={t("common.submitter")} rules={[{ required: true }]}>
-            <Select options={activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={catalogs.usersLoading}
+              options={withCurrentSelectOption(
+                activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` })),
+                {
+                  value: order.submitterId,
+                  label: firstUsableLabel(order.submitterName, lookupUserName(order.submitterId)),
+                },
+              )}
+            />
           </Form.Item>
           <Space>
             <Button onClick={() => setAddServiceOpen(false)} disabled={addingService}>
