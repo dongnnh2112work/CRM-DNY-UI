@@ -259,7 +259,8 @@ export function DataTable<T extends object>({
             flexWrap: "wrap",
             alignItems: "center",
             gap: 8,
-            padding: "8px 16px 0",
+            padding: padded ? "8px 16px 0" : "0 0 8px",
+            minWidth: 0,
           }}
         >
           {search || enableLocalSearch ? (
@@ -271,7 +272,7 @@ export function DataTable<T extends object>({
                 if (search) search.onChange(e.target.value);
                 else setLocalQuery(e.target.value);
               }}
-              style={{ maxWidth: 320 }}
+              style={{ flex: "1 1 200px", minWidth: 0, maxWidth: 360 }}
             />
           ) : null}
           {dateFilterField ? (
@@ -285,9 +286,10 @@ export function DataTable<T extends object>({
                 setPageState((prev) => ({ ...prev, current: 1 }));
               }}
               placeholder={[t("common.dateFrom"), t("common.dateTo")]}
+              style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 360 }}
             />
           ) : null}
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: "1 1 40px" }} />
           {columnManagerKey ? <ColumnManagerButton onClick={() => setManagerOpen(true)} /> : null}
         </div>
       ) : null}

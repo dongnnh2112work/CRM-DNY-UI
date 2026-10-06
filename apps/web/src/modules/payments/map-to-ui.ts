@@ -15,12 +15,19 @@ function installmentStatus(p: ApiPayment): PaymentInstallment["status"] {
   return "pending";
 }
 
+/** BE empty schedule = 200 + `{ empty: true, lines: [] }` (not 404). */
 export function unwrapSchedule(
-  data: { items?: ApiScheduleLine[] } | ApiScheduleLine[] | undefined | null,
+  data:
+    | { items?: ApiScheduleLine[]; lines?: ApiScheduleLine[]; empty?: boolean }
+    | ApiScheduleLine[]
+    | undefined
+    | null,
 ): ApiScheduleLine[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
-  return data.items ?? [];
+  if (Array.isArray(data.lines)) return data.lines;
+  if (Array.isArray(data.items)) return data.items;
+  return [];
 }
 
 function installmentsForOrders(
@@ -109,11 +116,16 @@ export function mapPaymentsToRecords(
   const orphans: PaymentRecord[] = [];
   for (const [orderId, rows] of byOrder) {
     if (!orderId || covered.has(orderId)) continue;
+    const sample = rows[0];
+    const orderNumber =
+      sample?.orderNumber?.trim() || orderId.slice(0, 8).toUpperCase();
+    const customerId = sample?.customerId?.trim() || "";
+    const customerName = sample?.customerName?.trim() || "";
     const stub = {
       id: orderId,
-      orderNumber: orderId.slice(0, 8).toUpperCase(),
-      customerId: "",
-      customerName: "",
+      orderNumber,
+      customerId,
+      customerName,
       serviceId: "",
       serviceName: "",
       stage: "unknown",
@@ -127,8 +139,8 @@ export function mapPaymentsToRecords(
       licenseAttachments: [],
       approvalStatus: "none" as const,
       approvalHistory: [],
-      createdAt: rows[0]?.recordedAt?.slice(0, 10) ?? "",
-      month: (rows[0]?.recordedAt ?? "").slice(0, 7),
+      createdAt: sample?.recordedAt?.slice(0, 10) ?? "",
+      month: (sample?.recordedAt ?? "").slice(0, 7),
       needsVat: false,
     } satisfies Order;
     const installments = installmentsForOrders([stub], byOrder, schedules);
@@ -136,9 +148,9 @@ export function mapPaymentsToRecords(
       recalcPayment({
         id: `pay-${orderId}`,
         orderId,
-        orderNumber: stub.orderNumber,
-        customerId: "",
-        customerName: "",
+        orderNumber,
+        customerId,
+        customerName,
         totalAmount: stub.value,
         paidAmount: 0,
         remaining: 0,

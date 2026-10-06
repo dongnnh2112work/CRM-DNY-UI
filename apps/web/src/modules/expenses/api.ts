@@ -4,6 +4,8 @@ import type { PageResult } from "@/lib/http/paging";
 export type ApiExpense = {
   id: string;
   orderId: string;
+  /** Hydrated on list/detail (BE JOIN). */
+  orderNumber?: string | null;
   title: string;
   amount: string;
   currency: string;
@@ -14,8 +16,10 @@ export type ApiExpense = {
   ctvRelated: boolean;
   status: string;
   requestedByUserId: string;
+  requestedByName?: string | null;
   requestedAt: string;
   reviewedByUserId: string | null;
+  reviewedByName?: string | null;
   reviewedAt: string | null;
   reviewNote: string | null;
   createdAt: string;

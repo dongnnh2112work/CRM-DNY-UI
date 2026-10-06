@@ -1,9 +1,14 @@
 import { num } from "@/lib/http/message";
-import { normalizeCommissionPercent } from "@/lib/order-helpers";
+import { entityDisplayName, normalizeCommissionPercent } from "@/lib/order-helpers";
 import type { ApprovalStatus, Order, OrderChannel } from "@/lib/types";
 import type { ApiOrder, CreateOrderBody, UpdateOrderBody } from "@/modules/orders/api";
 
 const CHANNELS = new Set(["direct", "website", "referral", "ctv"]);
+
+function optionalName(...candidates: Array<string | null | undefined>) {
+  const label = entityDisplayName(...candidates);
+  return label === "—" ? undefined : label;
+}
 
 function mapChannel(channel: string | undefined): OrderChannel {
   const c = (channel ?? "").toLowerCase();
@@ -37,21 +42,22 @@ export function mapApiOrderToUi(
     orderNumber: o.orderNumber || o.id,
     contractId: o.contractId,
     customerId: o.customerId,
-    customerName: names.customerName ?? o.customerName ?? o.customerId,
+    // Prefer API JOIN / catalog name — never store raw UUID as the display name.
+    customerName: entityDisplayName(names.customerName, o.customerName),
     serviceId: o.serviceId,
-    serviceName: names.serviceName ?? o.serviceName ?? o.serviceId,
+    serviceName: entityDisplayName(names.serviceName, o.serviceName),
     stage: o.stage || "new",
     channel: mapChannel(o.channel),
     ctvId: o.collaboratorId ?? undefined,
-    ctvName: names.ctvName ?? o.collaboratorName ?? undefined,
+    ctvName: optionalName(names.ctvName, o.collaboratorName),
     value: num(o.value),
     ctvPrice: o.collaboratorPrice != null ? num(o.collaboratorPrice) : undefined,
     assignedUserId: o.assignedUserId,
-    assignedUserName: names.assignedUserName ?? o.assignedUserName ?? o.assignedUserId,
+    assignedUserName: entityDisplayName(names.assignedUserName, o.assignedUserName),
     submitterId: o.submitterUserId,
-    submitterName: names.submitterName ?? o.submitterName ?? o.submitterUserId,
+    submitterName: entityDisplayName(names.submitterName, o.submitterName),
     reviewerId: o.reviewerUserId ?? undefined,
-    reviewerName: names.reviewerName ?? o.reviewerName ?? undefined,
+    reviewerName: o.reviewerUserId ? optionalName(names.reviewerName, o.reviewerName) : undefined,
     attachments: [],
     licenseAttachments: [],
     approvalStatus: mapApproval(o.approvalStatus),

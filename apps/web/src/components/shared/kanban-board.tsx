@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { serviceDisplayName } from "@/lib/order-helpers";
+import { entityDisplayName, serviceDisplayName } from "@/lib/order-helpers";
 import { siblingOrders } from "@/lib/order-group";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { useServices } from "@/lib/services-store";
@@ -151,15 +151,22 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                           fontSize: ds.fontSize.caption,
                                           color: token.colorTextSecondary,
                                           marginTop: 4,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
                                         }}
+                                        title={entityDisplayName(order.customerName)}
                                       >
-                                        {order.customerName}
+                                        {entityDisplayName(order.customerName)}
                                       </div>
                                       <div
                                         style={{
                                           fontSize: ds.fontSize.caption,
                                           marginTop: 4,
                                           color: token.colorText,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
                                         }}
                                       >
                                         {serviceDisplayName(order, services)}
@@ -176,12 +183,27 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                           marginTop: 8,
                                           fontSize: ds.fontSize.caption,
                                           alignItems: "center",
-                                          gap: 4,
+                                          gap: 8,
                                           color: token.colorTextSecondary,
+                                          minWidth: 0,
                                         }}
                                       >
-                                        <span>{formatVndDisplay(order.value)}</span>
-                                        <Tag style={{ fontSize: ds.fontSize.caption }}>{order.assignedUserName}</Tag>
+                                        <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                                          {formatVndDisplay(order.value)}
+                                        </span>
+                                        <Tag
+                                          style={{
+                                            fontSize: ds.fontSize.caption,
+                                            marginInlineEnd: 0,
+                                            maxWidth: 120,
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                          }}
+                                          title={entityDisplayName(order.assignedUserName)}
+                                        >
+                                          {entityDisplayName(order.assignedUserName)}
+                                        </Tag>
                                       </div>
                                       {fileCount > 0 ? (
                                         <div

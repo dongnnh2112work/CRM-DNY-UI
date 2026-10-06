@@ -46,10 +46,12 @@ import { useVat } from "@/lib/vat-store";
 /** Share in-flight hydrate so React Strict Mode does not double-hit the API. */
 const hydrateInflight = new Map<string, Promise<void>>();
 
-const PAYROLL_AUTO_LOAD_MAX_PAGES = 10;
+/** Cap background pages on payroll — enough for month calc without dumping the catalog. */
+const PAYROLL_AUTO_LOAD_MAX_PAGES = 3;
 
 function nameResolveForPath(pathname: string): ApplyRemoteOptions["nameResolve"] {
   if (pathname.startsWith("/dashboard")) return "dashboardPreview";
+  // BE hydrates *Name on list (2026-10-06). listLean still feature-detects missing fields only.
   if (
     pathname.startsWith("/orders") ||
     pathname.startsWith("/payments") ||
@@ -96,6 +98,8 @@ type ApiRefreshContextValue = {
   refreshCurrent: () => Promise<void>;
   loadMore: (scope?: RefreshScope) => Promise<void>;
   invalidate: (scope?: RefreshScope | RefreshScope[]) => void;
+  /** Warm list scopes for a path if never loaded / stale (sidebar hover). */
+  prefetchPath: (path: string) => void;
   reloadOrderFinance: (
     orderId: string,
     opts?: { includeSchedule?: boolean; force?: boolean },
@@ -135,23 +139,26 @@ export function useApiHydrate() {
     refreshCurrent: ctx.refreshCurrent,
     loadMore: ctx.loadMore,
     invalidate: ctx.invalidate,
+    prefetchPath: ctx.prefetchPath,
   };
 }
 
 export function useRemoteList(scope: RefreshScope) {
-  const { listMeta, loadMore, refreshing, dataFresh } = useApiHydrate();
+  const { listMeta, loadMore, refreshing } = useApiHydrate();
   const { user } = useSession();
   const meta = listMeta[scope];
   const allowed = canLoadScope(scope, user?.permissions);
   /** Waiting on first slice for a permitted scope — not empty-state. */
   const bootLoading = allowed && meta == null;
+  const loaded = meta?.loaded ?? 0;
   return {
-    loaded: meta?.loaded ?? 0,
+    loaded,
     total: meta?.total ?? 0,
     onLoadMore: () => {
       void loadMore(scope);
     },
-    loading: bootLoading || refreshing || !dataFresh,
+    // Don't spin the table just because data is > FRESHNESS_MS old while rows are on screen.
+    loading: bootLoading || (refreshing && loaded === 0),
     bootLoading,
   };
 }
@@ -394,6 +401,26 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     await refresh(scopes);
   }, [pathname, refresh, run, user?.permissions]);
 
+  const prefetchPath = useCallback(
+    (path: string) => {
+      if (status !== "authenticated" || isAwaitingAccess(user)) return;
+      const scopes = filterAllowed(scopesForPath(path));
+      if (!scopes.length) return;
+      const due = scopes.filter((scope) => {
+        const at = fetchedAtRef.current[scope];
+        return at == null || Date.now() - at > staleMsFor(scope);
+      });
+      if (!due.length) return;
+      void run(due, {
+        page: 1,
+        append: false,
+        pageSize: ROUTE_PAGE_SIZE,
+        nameResolve: nameResolveForPath(path),
+      });
+    },
+    [status, user, filterAllowed, run],
+  );
+
   const loadMore = useCallback(
     async (scope?: RefreshScope) => {
       const key = scope ?? primaryScopeForPath(pathname);
@@ -467,10 +494,10 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     }
     let cancelled = false;
     const boot = async () => {
-      // Config first (menu matrix / stages) — parallel with route data.
-      const configPromise = configLoadedRef.current
-        ? Promise.resolve()
-        : run([], { loadConfig: true }).catch(() => undefined);
+      // Config (menu matrix / stages) — fire-and-forget; never blocks first list paint.
+      if (!configLoadedRef.current) {
+        void run([], { loadConfig: true }).catch(() => undefined);
+      }
 
       const scheduleNotifs = () => {
         if (!canLoadScope("notifications", user?.permissions)) return;
@@ -485,7 +512,6 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
 
       if (pathnameRef.current.startsWith("/dashboard")) {
         await Promise.all([
-          configPromise,
           run(["orders", "payments"], {
             pageSize: ROUTE_PAGE_SIZE,
             nameResolve: "dashboardPreview",
@@ -499,15 +525,12 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       }
 
       const pathScopes = filterAllowed(scopesForPath(pathnameRef.current));
-      await Promise.all([
-        configPromise,
-        pathScopes.length
-          ? run(pathScopes, {
-              pageSize: ROUTE_PAGE_SIZE,
-              nameResolve: nameResolveForPath(pathnameRef.current),
-            })
-          : Promise.resolve(),
-      ]);
+      if (pathScopes.length) {
+        await run(pathScopes, {
+          pageSize: ROUTE_PAGE_SIZE,
+          nameResolve: nameResolveForPath(pathnameRef.current),
+        });
+      }
       if (cancelled) return;
       scheduleNotifs();
     };
@@ -611,6 +634,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       refreshCurrent,
       loadMore,
       invalidate,
+      prefetchPath,
       reloadOrderFinance: reloadFinance,
       ready,
       refreshing,
@@ -623,6 +647,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       refreshCurrent,
       loadMore,
       invalidate,
+      prefetchPath,
       reloadFinance,
       ready,
       refreshing,

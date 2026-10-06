@@ -26,6 +26,25 @@ export function looksLikeUuid(value: string | undefined | null): boolean {
   return UUID_RE.test(value?.trim() ?? "");
 }
 
+/** True when API/list already hydrated a usable display name (skip GET /:id lookup). */
+export function hasHydratedName(value: string | undefined | null): boolean {
+  const text = value?.trim();
+  return Boolean(text && !looksLikeUuid(text));
+}
+
+/**
+ * Human label for customer / staff fields.
+ * Prefer JOIN name from API or lookup cache; never show a raw UUID in the UI.
+ */
+export function entityDisplayName(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const raw of candidates) {
+    if (hasHydratedName(raw)) return raw!.trim();
+  }
+  return "—";
+}
+
 /** Catalog name when `serviceName` is still the service id from the API. */
 export function serviceDisplayName(
   order: { serviceId?: string; serviceName?: string },

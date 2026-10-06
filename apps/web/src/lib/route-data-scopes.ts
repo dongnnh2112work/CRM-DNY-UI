@@ -28,8 +28,11 @@ export const SCOPE_PERMISSION: Partial<Record<RefreshScope, string>> = {
   contracts: PERMISSION.orderView,
 };
 
-/** In-memory rows older than this must not be shown; refetch instead. */
-export const FRESHNESS_MS = 30_000;
+/**
+ * In-memory rows older than this trigger a background refetch on navigation.
+ * Raised from 30s → 90s to cut repeat list calls when switching sidebar tabs.
+ */
+export const FRESHNESS_MS = 90_000;
 
 export function staleMsFor(_scope: RefreshScope) {
   return FRESHNESS_MS;
@@ -48,12 +51,40 @@ export function canLoadScope(
   return Boolean(permissions?.includes(need));
 }
 
+const UUID_SEG =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/|$|\?)/i;
+
+/** `/orders/:uuid`, `/customers/:uuid`, … — page loads its own aggregate/detail. */
+export function isEntityDetailPath(pathname: string): boolean {
+  const bases = ["/orders/", "/customers/", "/payments/", "/vat/", "/services/"];
+  for (const base of bases) {
+    if (pathname.startsWith(base) && UUID_SEG.test(pathname.slice(base.length))) return true;
+  }
+  return false;
+}
+
+/** Create forms — don't hydrate the parent list just to open the form. */
+export function isEntityFormPath(pathname: string): boolean {
+  return (
+    pathname === "/orders/new" ||
+    pathname === "/customers/new" ||
+    pathname === "/vat/new" ||
+    pathname === "/services/new" ||
+    pathname.endsWith("/new")
+  );
+}
+
 /**
  * Primary list scopes for a route. Dashboard is special-cased in ApiHydrator
  * (orders+payments preview, customers count-only).
  */
 export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/dashboard")) return [];
+  // Detail pages use GET /:id or /:id/detail — skip list hydrate.
+  if (isEntityDetailPath(pathname)) return [];
+  // New forms don't need the list catalog on critical path.
+  if (isEntityFormPath(pathname)) return [];
+
   if (pathname.startsWith("/customers")) return ["customers"];
   if (pathname.startsWith("/orders")) return ["orders"];
   if (pathname.startsWith("/payments")) return ["payments"];
@@ -66,12 +97,13 @@ export function scopesForPath(pathname: string): RefreshScope[] {
   return [];
 }
 
-/** No deferred full catalogs — names resolve via GET /:id lookups. */
+/** No deferred full catalogs — names come from BE JOIN on list/detail. */
 export function deferredScopesForPath(_pathname: string): RefreshScope[] {
   return [];
 }
 
 export function primaryScopeForPath(pathname: string): RefreshScope | null {
+  if (isEntityDetailPath(pathname) || isEntityFormPath(pathname)) return null;
   if (pathname.startsWith("/customers")) return "customers";
   if (pathname.startsWith("/orders")) return "orders";
   if (pathname.startsWith("/payments")) return "payments";

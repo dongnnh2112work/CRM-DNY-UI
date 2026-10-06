@@ -7,6 +7,10 @@ export type PaymentVerificationStatus = "RECORDED" | "VERIFIED" | "VOIDED";
 export type ApiPayment = {
   id: string;
   orderId: string;
+  /** Hydrated on list/detail (BE JOIN). */
+  orderNumber?: string | null;
+  customerId?: string | null;
+  customerName?: string | null;
   scheduleLineId: string | null;
   amount: string;
   method: PaymentMethod;
