@@ -19,8 +19,12 @@ function mapType(type: string): AppNotificationType {
 }
 
 function hrefOf(n: ApiNotification): string | undefined {
-  if (n.sourceType === "order" && n.sourceId) return `/orders/${n.sourceId}`;
-  if (n.sourceType === "expense") return "/expense-approvals";
+  const fromServer = n.href?.trim();
+  if (fromServer) return fromServer;
+  if (n.type === "expense_pending" || n.type === "expense_reviewed") return "/expense-approvals";
+  if ((n.type === "task_assigned" || n.sourceType === "order") && n.sourceId) {
+    return `/orders/${n.sourceId}`;
+  }
   if (n.sourceType === "payment" && n.sourceId) return `/payments/${n.sourceId}`;
   if (n.sourceType === "user") {
     return n.type === "user_approved" ? "/dashboard" : "/users/pending";
@@ -40,5 +44,6 @@ export function mapApiNotificationToUi(n: ApiNotification): AppNotification {
     orderId: n.sourceType === "order" ? n.sourceId ?? undefined : undefined,
     read: Boolean(n.readAt),
     createdAt: n.createdAt,
+    dedupeKey: n.dedupeKey ?? undefined,
   };
 }

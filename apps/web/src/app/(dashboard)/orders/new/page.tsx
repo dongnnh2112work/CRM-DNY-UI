@@ -13,11 +13,10 @@ import { useCustomers } from "@/lib/customers-store";
 import { DISPLAY_DATE_FORMAT, toStorageDate } from "@/lib/format-date";
 import { vndInputProps } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
-import { taskAssignedDraft } from "@/lib/notification-targets";
-import { useNotifications } from "@/lib/notifications-store";
 import { deadlineFromService, nextContractNumber, nextDossierNumber } from "@/lib/order-helpers";
 import { splitDossierNumbers } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
+import { useNotifications } from "@/lib/notifications-store";
 import {
   resolveCatalogEntity,
   useOrderFormCatalogs,
@@ -26,6 +25,7 @@ import {
 } from "@/lib/order-form-catalogs";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
+import { useSession } from "@/lib/session/session-provider";
 import { contractsApi } from "@/modules/contracts/api";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi } from "@/modules/orders/map-to-ui";
@@ -55,8 +55,9 @@ function NewOrderPageContent() {
   const { services } = useServices();
   const { customers } = useCustomers();
   const { orders, replaceOrders, isContractTaken } = useOrders();
-  const { addNotifications } = useNotifications();
-  const { currentUser, users } = useUsers();
+  const { users } = useUsers();
+  const { user: sessionUser } = useSession();
+  const { refreshInbox } = useNotifications();
   const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -177,11 +178,7 @@ function NewOrderPageContent() {
             }
 
             replaceOrders([...created, ...orders]);
-            addNotifications(
-              [assigned.id],
-              taskAssignedDraft(created[0]),
-              currentUser?.id,
-            );
+            if (assigned.id !== sessionUser?.id) refreshInbox();
 
             if (created.length === 1) {
               message.success(t("order.created"));

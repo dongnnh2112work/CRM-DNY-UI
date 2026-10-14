@@ -2,7 +2,8 @@
 
 > **Status: LIVE** · Module: `communication` · Swagger tag: `notifications`  
 > Base: `/api/v1/notifications`  
-> **BE emit 6 loại thông báo:** [`FRONTEND_HANDOFF_NOTIFICATIONS.md`](./FRONTEND_HANDOFF_NOTIFICATIONS.md)
+> Backend tự insert khi command nghiệp vụ thành công. Không có `POST /notifications`.  
+> Handoff FE: [`../FRONTEND_HANDOFF_NOTIFICATIONS.md`](../FRONTEND_HANDOFF_NOTIFICATIONS.md)
 
 ## Permissions
 
@@ -25,6 +26,8 @@ interface Notification {
   readAt: string | null;
   sourceType: string | null;
   sourceId: string | null;
+  href: string | null;
+  dedupeKey: string | null;
   createdAt: string;
   updatedAt: string;
 }

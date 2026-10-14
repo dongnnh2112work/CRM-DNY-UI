@@ -11,11 +11,10 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { expenseReviewedDraft } from "@/lib/notification-targets";
 import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
+import { useNotifications } from "@/lib/notifications-store";
 import { PERMISSION, expenseReviewBlock } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
-import { useNotifications } from "@/lib/notifications-store";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { OrderExpense, OrderExpenseStatus } from "@/lib/types";
@@ -36,7 +35,7 @@ export default function ExpenseApprovalsPage() {
   const { currentUser } = useUsers();
   const { can } = useSession();
   const { expenses, reviewExpense } = useExpenses();
-  const { addNotifications } = useNotifications();
+  const { refreshInbox } = useNotifications();
   const expensesRemote = useRemoteList("expenses");
   const [statusFilter, setStatusFilter] = useState<OrderExpenseStatus | "all">("pending");
   const [query, setQuery] = useState("");
@@ -160,6 +159,7 @@ export default function ExpenseApprovalsPage() {
                 try {
                   if (!r.id.startsWith("ex-")) await expensesApi.reject(r.id, EXPENSE_VOID_NOTE);
                   reviewExpense(r.id, "cancelled", { id: currentUser.id, name: currentUser.name }, EXPENSE_VOID_NOTE);
+                  if (!r.id.startsWith("ex-")) refreshInbox();
                   message.success(t("expense.voided"));
                 } catch (err) {
                   message.error(apiErrorMessage(err, t("expense.voided")));
@@ -185,11 +185,7 @@ export default function ExpenseApprovalsPage() {
                       id: currentUser.id,
                       name: currentUser.name,
                     });
-                    addNotifications(
-                      [r.requestedById],
-                      expenseReviewedDraft(r, "approved", currentUser.name),
-                      currentUser.id,
-                    );
+                    refreshInbox();
                     message.success(t("expense.approved"));
                   } catch (err) {
                     message.error(apiErrorMessage(err, t("expense.approved")));
@@ -212,11 +208,7 @@ export default function ExpenseApprovalsPage() {
                       id: currentUser.id,
                       name: currentUser.name,
                     });
-                    addNotifications(
-                      [r.requestedById],
-                      expenseReviewedDraft(r, "rejected", currentUser.name),
-                      currentUser.id,
-                    );
+                    refreshInbox();
                     message.success(t("expense.rejected"));
                   } catch (err) {
                     message.error(apiErrorMessage(err, t("expense.rejected")));
@@ -233,7 +225,7 @@ export default function ExpenseApprovalsPage() {
         },
       },
     ],
-    [t, canApproveApi, currentUser, reviewExpense, addNotifications, message],
+    [t, canApproveApi, currentUser, reviewExpense, message],
   );
 
   if (!currentUser || !canView) {

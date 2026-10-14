@@ -6,9 +6,8 @@ import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
 import { vndInputProps } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
-import { expensePendingDraft } from "@/lib/notification-targets";
-import { useNotifications } from "@/lib/notifications-store";
 import { useOrders } from "@/lib/orders-store";
+import { useNotifications } from "@/lib/notifications-store";
 import type { Order } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { expensesApi } from "@/modules/expenses/api";
@@ -47,7 +46,7 @@ export function PaymentRequestDrawer({
   const { currentUser } = useUsers();
   const { orders } = useOrders();
   const { expenses, addExpense, replaceExpenses } = useExpenses();
-  const { addNotifications } = useNotifications();
+  const { refreshInbox } = useNotifications();
 
   useEffect(() => {
     if (!open) return;
@@ -157,7 +156,7 @@ export function PaymentRequestDrawer({
                 bankName,
               };
               replaceExpenses([created, ...expenses]);
-              addNotifications([currentUser.id], expensePendingDraft(created, currentUser.name));
+              refreshInbox();
             } else {
               const created = addExpense({
                 projectName: projectName || t("expense.fallbackProject"),
@@ -170,7 +169,6 @@ export function PaymentRequestDrawer({
                 bankAccount,
                 bankName,
               });
-              addNotifications([currentUser.id], expensePendingDraft(created, currentUser.name));
             }
             message.success(t("expense.sent"));
             close();
