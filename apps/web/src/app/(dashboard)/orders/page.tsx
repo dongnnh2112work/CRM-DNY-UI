@@ -26,8 +26,6 @@ const KanbanBoard = dynamic(
 );
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { taskAssignedDraft } from "@/lib/notification-targets";
-import { useNotifications } from "@/lib/notifications-store";
 import {
   getOrderLicenseExpirySummary,
   licenseExpiryTagColor,
@@ -43,6 +41,7 @@ import {
   type OrderCashflow,
 } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
+import { useNotifications } from "@/lib/notifications-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ordersApi } from "@/modules/orders/api";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
@@ -69,9 +68,9 @@ export default function OrdersPage() {
   const { payments } = usePayments();
   const { expenses } = useExpenses();
   const { services } = useServices();
-  const { addNotifications } = useNotifications();
   const { getMeta, stageOptions } = useOrderStatusConfig();
   const { currentUser, getEffectivePermissions, users } = useUsers();
+  const { refreshInbox } = useNotifications();
   const { listMeta } = useApiHydrate();
   const ordersRemote = useRemoteList("orders");
   const cashflowReady = Boolean(listMeta.payments);
@@ -253,27 +252,15 @@ export default function OrdersPage() {
       await Promise.all(
         selectedRowKeys.map(async (id) => {
           const orderId = String(id);
-          const order = orders.find((o) => o.id === orderId);
           await ordersApi.assign(orderId, user.id);
           updateOrder(orderId, {
             assignedUserId: user.id,
             assignedUserName: user.name,
           });
-          if (order && order.assignedUserId !== user.id) {
-            addNotifications(
-              [user.id],
-              taskAssignedDraft({
-                id: order.id,
-                orderNumber: order.orderNumber,
-                customerName: order.customerName,
-                serviceName: order.serviceName,
-              }),
-              currentUser?.id,
-            );
-          }
         }),
       );
       message.success(t("order.assigned", { count: selectedCount, name: user.name }));
+      if (user.id !== currentUser?.id) refreshInbox();
       setAssignOpen(false);
       setAssignUserId(undefined);
       clearSelection();

@@ -10,6 +10,8 @@ export type ApiNotification = {
   readAt: string | null;
   sourceType: string | null;
   sourceId: string | null;
+  href: string | null;
+  dedupeKey: string | null;
   createdAt: string;
   updatedAt: string;
 };

@@ -22,12 +22,11 @@ import { useExpenses } from "@/lib/expenses-store";
 import { rangePickerFormat } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
-import { expenseReviewedDraft } from "@/lib/notification-targets";
-import { useNotifications } from "@/lib/notifications-store";
 import { buildOrderCashflow, formatYearMonth } from "@/lib/order-cashflow";
 import { allocatePaymentShare, siblingOrders } from "@/lib/order-group";
 import { entityDisplayName, hasHydratedName } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
+import { useNotifications } from "@/lib/notifications-store";
 import { usePayments } from "@/lib/payments-store";
 import { PERMISSION, expenseReviewBlock } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
@@ -89,8 +88,8 @@ export function OrderExpensesPanel({
   const { can, user } = useSession();
   const { getByOrderId } = usePayments();
   const { orders } = useOrders();
+  const { refreshInbox } = useNotifications();
   const { getByOrderId: getExpenses, reviewExpense } = useExpenses();
-  const { addNotifications } = useNotifications();
   const [addOpen, setAddOpen] = useState(false);
   const [nameTick, setNameTick] = useState(0);
   const [mobileQuery, setMobileQuery] = useState("");
@@ -157,11 +156,7 @@ export function OrderExpensesPanel({
     try {
       await expensesApi.approve(r.id);
       reviewExpense(r.id, "approved", { id: currentUser.id, name: currentUser.name });
-      addNotifications(
-        [r.requestedById],
-        expenseReviewedDraft(r, "approved", currentUser.name),
-        currentUser.id,
-      );
+      refreshInbox();
       message.success(t("expense.approved"));
     } catch (err) {
       message.error(apiErrorMessage(err, t("expense.approved")));
@@ -173,11 +168,7 @@ export function OrderExpensesPanel({
     try {
       await expensesApi.reject(r.id);
       reviewExpense(r.id, "rejected", { id: currentUser.id, name: currentUser.name });
-      addNotifications(
-        [r.requestedById],
-        expenseReviewedDraft(r, "rejected", currentUser.name),
-        currentUser.id,
-      );
+      refreshInbox();
       message.success(t("expense.rejected"));
     } catch (err) {
       message.error(apiErrorMessage(err, t("expense.rejected")));
@@ -189,6 +180,7 @@ export function OrderExpensesPanel({
     try {
       if (!r.id.startsWith("ex-")) await expensesApi.reject(r.id, EXPENSE_VOID_NOTE);
       reviewExpense(r.id, "cancelled", { id: currentUser.id, name: currentUser.name }, EXPENSE_VOID_NOTE);
+      if (!r.id.startsWith("ex-")) refreshInbox();
       message.success(t("expense.voided"));
     } catch (err) {
       message.error(apiErrorMessage(err, t("expense.voided")));
@@ -334,7 +326,7 @@ export function OrderExpensesPanel({
     ],
     // nameTick refreshes labels after resolveEntityLookups fills the cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, canReview, currentUser, isCompact, nameTick, addNotifications, message, reviewExpense],
+    [t, canReview, currentUser, isCompact, nameTick, message, reviewExpense],
   );
 
   const mobileRows = useMemo(() => {

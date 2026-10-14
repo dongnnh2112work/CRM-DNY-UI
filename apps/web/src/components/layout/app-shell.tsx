@@ -28,18 +28,15 @@ import { useApiHydrate } from "@/components/api-hydrator";
 import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useAppReminderConfig } from "@/lib/app-config-store";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ds } from "@/lib/design-tokens";
 import { formatDisplayDateTime } from "@/lib/format-date";
 import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { useNotifications } from "@/lib/notifications-store";
-import { useOrders } from "@/lib/orders-store";
 import { getPayrollScope } from "@/lib/payroll";
 import { canSeeMenuPage, PERMISSION } from "@/lib/rbac";
-import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 
 const { Header, Sider, Content } = Layout;
@@ -94,15 +91,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     ),
     [router, prefetchPath],
   );
-  const { orders, ready: ordersReady } = useOrders();
-  const { services, ready: servicesReady } = useServices();
-  const { config } = useAppReminderConfig();
-  const { forUser, unreadCount, markRead, markAllRead, scanOrderAlerts, ready: notifReady } =
-    useNotifications();
+  const { forUser, unreadCount, markRead, markAllRead } = useNotifications();
   const [collapsed, setCollapsed] = useState(true);
   const [mobile, setMobile] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
-  const scannedRef = useRef(false);
   const isDark = appTheme === "dark";
 
   const userId = currentUser?.id;
@@ -110,15 +102,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const payrollScope = getPayrollScope(currentUser, pageMatrix, apiUser?.permissions);
   const myNotifs = userId ? forUser(userId).slice(0, 8) : [];
   const unread = userId ? unreadCount(userId) : 0;
-
-  useEffect(() => {
-    if (!ordersReady || !servicesReady || !notifReady || scannedRef.current) return;
-    scannedRef.current = true;
-    scanOrderAlerts(orders, {
-      services,
-      vatWarnDays: config.vatIssueWarnDays,
-    });
-  }, [ordersReady, servicesReady, notifReady, orders, services, config.vatIssueWarnDays, scanOrderAlerts]);
 
   const menuItems = useMemo(() => {
     const payrollItem: MenuItems =

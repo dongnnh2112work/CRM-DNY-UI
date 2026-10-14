@@ -24,8 +24,6 @@ import {
 } from "@/lib/entity-lookups";
 import { DISPLAY_DATE_FORMAT, formatDisplayDate, toStorageDate } from "@/lib/format-date";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
-import { taskAssignedDraft } from "@/lib/notification-targets";
-import { useNotifications } from "@/lib/notifications-store";
 import {
   deadlineFromService,
   getOrderLicenseExpirySummary,
@@ -38,6 +36,7 @@ import {
 } from "@/lib/order-helpers";
 import { nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
+import { useNotifications } from "@/lib/notifications-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { ApiError } from "@/lib/http/errors";
 import { unwrapList } from "@/lib/http/paging";
@@ -152,8 +151,8 @@ export default function OrderDetailPage() {
   const { message, modal } = App.useApp();
   const { status: sessionStatus, can, user: sessionUser } = useSession();
   const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
-  const { addNotifications } = useNotifications();
-  const { currentUser, users } = useUsers();
+  const { users } = useUsers();
+  const { refreshInbox } = useNotifications();
   const activeUsers = users.filter((u) => u.status === "active");
   const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId, upsertPayment } = usePayments();
@@ -508,7 +507,7 @@ export default function OrderDetailPage() {
         needsVat: order.needsVat,
       };
       upsertOrder(created);
-      addNotifications([assigned.id], taskAssignedDraft(created), currentUser?.id);
+      if (assigned.id !== sessionUser?.id) refreshInbox();
       message.success(t("order.addedService", { number: created.orderNumber, service: service.name }));
       setAddServiceOpen(false);
     } catch (err) {
@@ -769,6 +768,7 @@ export default function OrderDetailPage() {
               );
               if (assigned.id !== order.assignedUserId) {
                 await ordersApi.assign(order.id, assigned.id);
+                if (assigned.id !== sessionUser?.id) refreshInbox();
               }
               if (order.contractId && values.needsVat && values.contractNumber) {
                 await contractsApi.update(order.contractId, {
@@ -796,18 +796,6 @@ export default function OrderDetailPage() {
                 zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
                 vatIssueDeadline: undefined,
               });
-              if (assigned.id !== order.assignedUserId) {
-                addNotifications(
-                  [assigned.id],
-                  taskAssignedDraft({
-                    id: order.id,
-                    orderNumber: order.orderNumber,
-                    customerName: customer.name,
-                    serviceName: service.name,
-                  }),
-                  currentUser?.id,
-                );
-              }
               message.success(t("order.updated"));
               setEditOpen(false);
             } catch (err) {
