@@ -17,20 +17,14 @@ import { currentYearMonth, formatYearMonth } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { buildPayroll, collectPayrollMonths, getPayrollScope, type StaffPayroll } from "@/lib/payroll";
+import { canLoadScope, isListSliceComplete, isListSliceSettled } from "@/lib/route-data-scopes";
 import { matchesTableQuery } from "@/lib/table-search";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
 import { useT } from "@/lib/use-t";
-import type { ListSliceMeta } from "@/lib/load-api-data";
 
 function isYearMonth(v: string | null): v is string {
   return !!v && /^\d{4}-\d{2}$/.test(v);
-}
-
-function sliceComplete(meta?: ListSliceMeta) {
-  if (!meta) return false;
-  if (meta.total === 0) return true;
-  return meta.loaded >= meta.total;
 }
 
 function MoneyCell({ value }: { value: number }) {
@@ -126,15 +120,14 @@ function PayrollPageContent() {
 
   const grandTotal = useMemo(() => filtered.reduce((sum, r) => sum + r.total, 0), [filtered]);
 
-  const ordersComplete = sliceComplete(listMeta.orders);
-  const paymentsComplete = sliceComplete(listMeta.payments);
-  const expensesComplete = sliceComplete(listMeta.expenses);
-  const anyMeta = Boolean(listMeta.orders || listMeta.payments || listMeta.expenses);
-  const allComplete = ordersComplete && paymentsComplete && expensesComplete;
-  const hitCap =
-    ([listMeta.orders, listMeta.payments, listMeta.expenses] as (ListSliceMeta | undefined)[]).some(
-      (m) => m != null && m.loaded < m.total && m.loaded >= 200,
-    );
+  const apiPerms = apiUser?.permissions;
+  const scopeDone = (scope: "orders" | "payments" | "expenses") =>
+    !canLoadScope(scope, apiPerms) || isListSliceComplete(listMeta[scope]);
+  const figuresReady =
+    isListSliceSettled(listMeta.orders, canLoadScope("orders", apiPerms)) &&
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", apiPerms)) &&
+    isListSliceSettled(listMeta.expenses, canLoadScope("expenses", apiPerms));
+  const hitCap = figuresReady && !(scopeDone("orders") && scopeDone("payments") && scopeDone("expenses"));
 
   const setMonth = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -180,12 +173,6 @@ function PayrollPageContent() {
     return <PageLoading />;
   }
 
-  const loadedHint = t("payroll.partialLoaded", {
-    orders: listMeta.orders?.loaded ?? 0,
-    payments: listMeta.payments?.loaded ?? 0,
-    expenses: listMeta.expenses?.loaded ?? 0,
-  });
-
   return (
     <>
       <UrlQuerySync onQuery={applyUrlQuery} />
@@ -206,42 +193,33 @@ function PayrollPageContent() {
           {t("payroll.formula")}
         </Typography.Text>
       </PageHeader>
-      {!anyMeta ? (
-        <div style={{ padding: "0 16px 12px" }}>
-          <Alert type="info" showIcon message={t("payroll.loadingData")} />
-        </div>
-      ) : !allComplete ? (
-        <div style={{ padding: "0 16px 12px" }}>
-          <Alert
-            type={hitCap ? "warning" : "info"}
-            showIcon
-            message={hitCap ? t("payroll.capReached") : t("payroll.loadingMore")}
-            description={loadedHint}
+      {!figuresReady ? (
+        <PageLoading />
+      ) : (
+        <>
+          {hitCap ? (
+            <div style={{ padding: "0 16px 12px" }}>
+              <Alert type="warning" showIcon message={t("payroll.capReached")} />
+            </div>
+          ) : null}
+          <DataTable<StaffPayroll>
+            rowKey="userId"
+            columns={columns}
+            dataSource={filtered}
+            columnManagerKey="payroll"
+            onRow={(record) => ({
+              onClick: () => router.push(`/payroll/${record.userId}?month=${month}`),
+              style: { cursor: "pointer" },
+            })}
+            emptyDescription={query.trim() && rows.length > 0 ? t("common.noResults") : t("payroll.empty")}
           />
-        </div>
-      ) : null}
-      <DataTable<StaffPayroll>
-        rowKey="userId"
-        columns={columns}
-        dataSource={filtered}
-        columnManagerKey="payroll"
-        onRow={(record) => ({
-          onClick: () => router.push(`/payroll/${record.userId}?month=${month}`),
-          style: { cursor: "pointer" },
-        })}
-        emptyDescription={
-          query.trim() && rows.length > 0
-            ? t("common.noResults")
-            : !anyMeta
-              ? t("payroll.loadingData")
-              : t("payroll.empty")
-        }
-      />
-      {filtered.length > 0 ? (
-        <div style={{ padding: "0 16px 16px", textAlign: "right", fontWeight: 600 }}>
-          {t("payroll.total")}: <MoneyCell value={grandTotal} />
-        </div>
-      ) : null}
+          {filtered.length > 0 ? (
+            <div style={{ padding: "0 16px 16px", textAlign: "right", fontWeight: 600 }}>
+              {t("payroll.total")}: <MoneyCell value={grandTotal} />
+            </div>
+          ) : null}
+        </>
+      )}
     </>
   );
 }

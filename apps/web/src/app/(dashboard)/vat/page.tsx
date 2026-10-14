@@ -1,12 +1,13 @@
 "use client";
 
 import { CalendarOutlined, CheckCircleOutlined, FileTextOutlined } from "@ant-design/icons";
-import { App, Button, Col, Popconfirm, Row, type TableColumnsType } from "antd";
+import { App, Button, Card, Col, Popconfirm, Row, Skeleton, type TableColumnsType } from "antd";
 import Link from "next/link";
 import { useCallback, useMemo, useState, type Key } from "react";
 import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageLoading } from "@/components/shared/page-loading";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
@@ -22,7 +23,9 @@ import { resolveContractNumber } from "@/lib/vat-helpers";
 import { useVat } from "@/lib/vat-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { vatApi } from "@/modules/vat/api";
-import { useRemoteList } from "@/components/api-hydrator";
+import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
+import { useSession } from "@/lib/session/session-provider";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -38,6 +41,9 @@ export default function VatPage() {
   const { invoices, updateInvoice, deleteInvoices } = useVat();
   const { orders } = useOrders();
   const vatRemote = useRemoteList("vat");
+  const { listMeta } = useApiHydrate();
+  const { user: apiUser } = useSession();
+  const vatStatsReady = isListSliceSettled(listMeta.vat, canLoadScope("vat", apiUser?.permissions));
   const [query, setQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -228,17 +234,32 @@ export default function VatPage() {
       />
       <div style={{ padding: "16px 16px 0" }}>
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={8}>
-            <StatCard title={t("vat.today")} value={invoicesToday} prefix={<CalendarOutlined />} />
-          </Col>
-          <Col xs={24} sm={8}>
-            <StatCard title={t("vat.drafts")} value={draftCount} prefix={<FileTextOutlined />} />
-          </Col>
-          <Col xs={24} sm={8}>
-            <StatCard title={t("vat.issued")} value={issuedCount} prefix={<CheckCircleOutlined />} />
-          </Col>
+          {vatStatsReady ? (
+            <>
+              <Col xs={24} sm={8}>
+                <StatCard title={t("vat.today")} value={invoicesToday} prefix={<CalendarOutlined />} />
+              </Col>
+              <Col xs={24} sm={8}>
+                <StatCard title={t("vat.drafts")} value={draftCount} prefix={<FileTextOutlined />} />
+              </Col>
+              <Col xs={24} sm={8}>
+                <StatCard title={t("vat.issued")} value={issuedCount} prefix={<CheckCircleOutlined />} />
+              </Col>
+            </>
+          ) : (
+            [0, 1, 2].map((key) => (
+              <Col key={key} xs={24} sm={8}>
+                <Card size="small">
+                  <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
+                </Card>
+              </Col>
+            ))
+          )}
         </Row>
       </div>
+      {!vatStatsReady ? (
+        <PageLoading />
+      ) : (
       <DataTable<VatInvoice>
         rowKey="id"
         columns={columns}
@@ -295,6 +316,7 @@ export default function VatPage() {
           </BulkActionBar>
         }
       />
+      )}
     </>
   );
 }

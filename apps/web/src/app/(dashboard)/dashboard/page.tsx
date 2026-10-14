@@ -20,10 +20,12 @@ import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { currentYearMonth } from "@/lib/order-cashflow";
 import { looksLikeUuid } from "@/lib/order-helpers";
+import { useExpenses } from "@/lib/expenses-store";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
-import { getPayrollScope } from "@/lib/payroll";
+import { buildPayroll, getPayrollScope } from "@/lib/payroll";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useSession } from "@/lib/session/session-provider";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
 import { useT } from "@/lib/use-t";
@@ -94,20 +96,17 @@ export default function DashboardPage() {
   const { user: apiUser } = useSession();
   const { orders } = useOrders();
   const { payments } = usePayments();
+  const { expenses } = useExpenses();
   const { customers } = useCustomers();
-  const { listMeta, refreshing, dataFresh } = useApiHydrate();
+  const { listMeta } = useApiHydrate();
   const { stageOptions } = useOrderStatusConfig();
 
   const countsReady = Boolean(listMeta.orders && listMeta.customers && listMeta.payments);
-  const sliceComplete = (meta?: { total: number; loaded: number; page: number; pageSize: number }) => {
-    if (!meta) return false;
-    if (meta.total === 0) return true;
-    return meta.loaded >= meta.total || meta.page * meta.pageSize >= meta.total;
-  };
-  /** Only compute revenue/charts when the in-memory slice covers every row (or total is 0). */
-  const aggregatesReady = sliceComplete(listMeta.orders) && sliceComplete(listMeta.payments);
-  const previewReady =
-    (listMeta.orders != null || listMeta.payments != null) && !refreshing;
+  /** Revenue and status charts sum every row — wait until those lists will not grow. */
+  const aggregatesReady =
+    isListSliceSettled(listMeta.orders, canLoadScope("orders", apiUser?.permissions)) &&
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", apiUser?.permissions));
+  const previewReady = listMeta.orders != null || listMeta.payments != null;
   const recentOrders = orders.slice(0, 5);
   const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
   const orderStatusData = aggregatesReady ? buildOrderStatusChart(orders, stageOptions) : [];
@@ -124,6 +123,22 @@ export default function DashboardPage() {
     currentUser ? getEffectivePermissions(currentUser) : null,
     apiUser?.permissions,
   );
+  const apiPerms = apiUser?.permissions;
+  const payrollReady =
+    payrollScope !== "none" &&
+    isListSliceSettled(listMeta.orders, canLoadScope("orders", apiPerms)) &&
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", apiPerms)) &&
+    isListSliceSettled(listMeta.expenses, canLoadScope("expenses", apiPerms));
+  const payrollThisMonth = useMemo(() => {
+    if (!payrollReady) return 0;
+    const rows = buildPayroll(orders, payments, expenses, thisMonthKey);
+    if (payrollScope === "self") {
+      return rows.find((row) => row.userId === currentUser?.id)?.total ?? 0;
+    }
+    return rows.reduce((sum, row) => sum + row.total, 0);
+  }, [payrollReady, orders, payments, expenses, thisMonthKey, payrollScope, currentUser?.id]);
+  const payrollHref =
+    payrollScope === "self" && currentUser ? `/payroll/${currentUser.id}` : "/payroll";
 
   const displayName = (value?: string) => {
     const text = value?.trim();
@@ -144,8 +159,6 @@ export default function DashboardPage() {
     [t, revenueByMonth],
   );
 
-  const showStaleLoading = !dataFresh && refreshing;
-
   return (
     <>
       <PageHeader breadcrumbs={[{ title: t("nav.dashboard") }]} />
@@ -160,15 +173,9 @@ export default function DashboardPage() {
                 suffix="₫"
                 accent={ds.primary}
               />
-            ) : showStaleLoading || !countsReady ? (
-              <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
-                <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
-              </Card>
             ) : (
               <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  {t("dash.summaryNeeded")}
-                </Typography.Text>
+                <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
               </Card>
             )}
           </Col>
@@ -206,15 +213,20 @@ export default function DashboardPage() {
                 <Typography.Text type="secondary">{t("dash.payrollNoAccess")}</Typography.Text>
               </Card>
             ) : (
-              <Link href="/payroll" style={{ color: "inherit", display: "block", height: "100%" }}>
-                <StatCard
-                  title={payrollScope === "self" ? t("dash.myPayroll") : t("dash.commissionPaid")}
-                  value={0}
-                  prefix={<TrophyOutlined />}
-                  suffix=""
-                  accent={ds.accentOrange}
-                  description={t("dash.openPayroll")}
-                />
+              <Link href={payrollHref} style={{ color: "inherit", display: "block", height: "100%" }}>
+                {payrollReady ? (
+                  <StatCard
+                    title={payrollScope === "self" ? t("dash.myPayroll") : t("dash.commissionPaid")}
+                    value={formatVndDisplay(payrollThisMonth)}
+                    prefix={<TrophyOutlined />}
+                    accent={ds.accentOrange}
+                    valueColor={payrollThisMonth < 0 ? ds.danger : undefined}
+                  />
+                ) : (
+                  <Card size="small" className="crm-dash-card" styles={{ body: { padding: 16 } }}>
+                    <Skeleton active title={{ width: "60%" }} paragraph={{ rows: 1 }} />
+                  </Card>
+                )}
               </Link>
             )}
           </Col>
@@ -222,8 +234,6 @@ export default function DashboardPage() {
 
         <DashboardCharts
           ready={aggregatesReady}
-          incomplete={!aggregatesReady && countsReady}
-          incompleteHint={t("dash.summaryNeeded")}
           revenueData={revenueData}
           orderStatusData={orderStatusData}
           highlightMonth={thisMonthKey}

@@ -33,6 +33,11 @@ export type ApiOrder = {
   notes: string | null;
   /** % hoa hồng NV phụ trách — number hoặc decimal string */
   commissionPercent?: string | number | null;
+  /** YYYY-MM-DD hoặc ISO datetime; null khi đã xóa */
+  deadline?: string | null;
+  zaloGroupUrl?: string | null;
+  /** Tên cũ trên một số response — đọc khi `zaloGroupUrl` trống */
+  zaloGroupLink?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -94,6 +99,15 @@ export type UpdateOrderBody = {
   reviewerUserId?: string | null;
   /** null = xóa % đã lưu */
   commissionPercent?: number | null;
+  customerId?: string;
+  serviceId?: string;
+  submitterUserId?: string;
+  /** Có trên BE. FE giữ POST /orders/:id/assign, không gửi kèm field này. */
+  assignedUserId?: string;
+  /** YYYY-MM-DD, hoặc null để xóa. Không gửi "". */
+  deadline?: string | null;
+  /** URL, hoặc null để xóa. Không gửi "". */
+  zaloGroupUrl?: string | null;
 };
 
 function unwrapOrder(raw: ApiOrder | { data: ApiOrder } | null | undefined): ApiOrder {

@@ -17,6 +17,12 @@ import { deadlineFromService, nextContractNumber, nextDossierNumber } from "@/li
 import { splitDossierNumbers } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
+import {
+  resolveCatalogEntity,
+  useOrderFormCatalogs,
+  usePrefillCustomerOption,
+  withCurrentSelectOption,
+} from "@/lib/order-form-catalogs";
 import { useServices } from "@/lib/services-store";
 import { useUsers } from "@/lib/users-store";
 import { useSession } from "@/lib/session/session-provider";
@@ -55,6 +61,9 @@ function NewOrderPageContent() {
   const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const catalogs = useOrderFormCatalogs(true);
+  const knownPrefill = customers.find((customer) => customer.id === prefillCustomerId);
+  const prefillCustomer = usePrefillCustomerOption(prefillCustomerId, knownPrefill?.name);
   const needsVat = Form.useWatch("needsVat", form) as boolean | undefined;
   const activeServices = useMemo(
     () => services.filter((s) => s.status === "active"),
@@ -84,9 +93,11 @@ function NewOrderPageContent() {
         onFinish={async (values) => {
           setSaving(true);
           try {
-            const customer = customers.find((c) => c.id === values.customerId);
-            const assigned = activeUsers.find((u) => u.id === values.assignedUserId);
-            const submitter = activeUsers.find((u) => u.id === values.submitterId);
+            const customer = resolveCatalogEntity(customers, values.customerId, prefillCustomer
+              ? { id: prefillCustomer.value, name: prefillCustomer.label }
+              : undefined);
+            const assigned = resolveCatalogEntity(activeUsers, values.assignedUserId);
+            const submitter = resolveCatalogEntity(activeUsers, values.submitterId);
             const lines = ((values.lines ?? []) as ServiceLine[]).filter((line) => line.serviceId);
             if (!customer || !assigned || !submitter || lines.length === 0) {
               message.error(t("common.requiredMissing"));
@@ -188,7 +199,11 @@ function NewOrderPageContent() {
           <Select
             showSearch
             optionFilterProp="label"
-            options={customers.map((c) => ({ value: c.id, label: c.name }))}
+            loading={catalogs.customersLoading}
+            options={withCurrentSelectOption(
+              customers.map((c) => ({ value: c.id, label: c.name })),
+              prefillCustomer ?? undefined,
+            )}
           />
         </Form.Item>
         <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
@@ -239,6 +254,9 @@ function NewOrderPageContent() {
                     rules={[{ required: true, message: t("order.selectService") }]}
                   >
                     <Select
+                      showSearch
+                      optionFilterProp="label"
+                      loading={catalogs.servicesLoading}
                       options={activeServices.map((s) => ({ value: s.id, label: s.name }))}
                       onChange={(id) => setLineDeadline(field.name, id)}
                     />
@@ -270,14 +288,24 @@ function NewOrderPageContent() {
           <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
         </Form.Item>
         <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
-          <Select options={activeUsers.map((u) => ({ value: u.id, label: u.name }))} />
+          <Select
+            showSearch
+            optionFilterProp="label"
+            loading={catalogs.usersLoading}
+            options={activeUsers.map((u) => ({ value: u.id, label: u.name }))}
+          />
         </Form.Item>
         <Form.Item
           name="submitterId"
           label={t("order.submitterLabel")}
           rules={[{ required: true, message: t("order.selectSubmitter") }]}
         >
-          <Select options={activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))} />
+          <Select
+            showSearch
+            optionFilterProp="label"
+            loading={catalogs.usersLoading}
+            options={activeUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
+          />
         </Form.Item>
         <Form.Item
           name="zaloGroupUrl"
