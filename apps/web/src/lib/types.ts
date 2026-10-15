@@ -377,6 +377,8 @@ export interface PaymentInstallment {
    * hoặc id tạm `pi-…` (nút Đánh dấu đã TT trước đây gọi verify bằng id đó và 404).
    */
   paymentId?: string;
+  /** Dòng lịch thu mà phiếu đang gắn, nếu có. */
+  scheduleLineId?: string;
   amount: number;
   dueDate: string;
   paidDate?: string;

@@ -38,12 +38,16 @@ import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
 import { paymentsApi } from "@/modules/payments/api";
 import {
+  canEditInstallment,
   createInstallmentPayment,
+  InstallmentPaymentMissing,
+  InstallmentUpdateFailed,
   knownPaymentId,
   markPaidErrorMessage,
   resolvePaymentIdForInstallment,
   takenPaymentIds,
   toPaymentMethod,
+  updateInstallmentPayment,
   verifyInstallmentPayment,
 } from "@/modules/payments/mark-paid";
 import type { PaymentInstallment } from "@/lib/types";
@@ -57,11 +61,22 @@ export default function PaymentDetailPage() {
   const { can } = useSession();
   const canVerify = can(PERMISSION.paymentVerify);
   const canVoid = can(PERMISSION.paymentVoid);
-  const { getById, getByOrderId, ready, addInstallment, linkInstallmentPayment, markInstallmentPaid } = usePayments();
+  const {
+    getById,
+    getByOrderId,
+    ready,
+    addInstallment,
+    linkInstallmentPayment,
+    replaceInstallment,
+    patchInstallmentNote,
+    markInstallmentPaid,
+  } = usePayments();
   const { getById: getOrder, orders } = useOrders();
   const { ready: hydrateReady, listMeta } = useApiHydrate();
   const reloadFinance = useReloadOrderFinance();
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<PaymentInstallment | null>(null);
+  const editingRef = useRef<PaymentInstallment | null>(null);
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -70,7 +85,14 @@ export default function PaymentDetailPage() {
   const [form] = Form.useForm();
   const closeAdd = () => {
     form.resetFields();
+    editingRef.current = null;
+    setEditing(null);
     setAddOpen(false);
+  };
+  const openAdd = () => {
+    editingRef.current = null;
+    setEditing(null);
+    setAddOpen(true);
   };
 
   const payment = getById(id) ?? getByOrderId(id);
@@ -116,8 +138,29 @@ export default function PaymentDetailPage() {
         render: (_: unknown, row: PaymentInstallment) => {
           if (row.status === "cancelled") return "—";
           const record = payment;
+          const editable = canEditInstallment(row, can);
           return (
             <Space>
+              {editable ? (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    editingRef.current = row;
+                    setEditing(row);
+                    setAddOpen(true);
+                  }}
+                >
+                  {t("common.edit")}
+                </Button>
+              ) : (
+                <Tooltip title={t("payment.editForbidden")}>
+                  <span>
+                    <Button size="small" disabled>
+                      {t("common.edit")}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               {row.status !== "paid" ? (
                 canVerify && record ? (
                   <Popconfirm
@@ -205,6 +248,7 @@ export default function PaymentDetailPage() {
     ],
     [
       t,
+      can,
       canVerify,
       canVoid,
       linkInstallmentPayment,
@@ -233,7 +277,7 @@ export default function PaymentDetailPage() {
       <PageHeader breadcrumbs={[{ title: t("payment.breadcrumb"), href: "/payments" }, { title: payment.orderNumber }]}>
         <Space wrap>
           <Button onClick={() => router.push(`/orders/${payment.orderId}`)}>{t("payment.viewOrder")}</Button>
-          <Button type="primary" onClick={() => setAddOpen(true)}>
+          <Button type="primary" onClick={openAdd}>
             {t("payment.addInstallmentCta")}
           </Button>
         </Space>
@@ -305,8 +349,23 @@ export default function PaymentDetailPage() {
       </div>
 
       <Drawer
-        title={t("payment.addInstallment")}
+        title={editing ? t("payment.editTitle") : t("payment.addInstallment")}
         open={addOpen}
+        afterOpenChange={(open) => {
+          if (!open) return;
+          const row = editingRef.current;
+          if (!row) {
+            form.resetFields();
+            return;
+          }
+          form.setFieldsValue({
+            amount: row.amount,
+            dueDate: row.dueDate,
+            method: row.method ? toPaymentMethod(row.method) : undefined,
+            note: row.note,
+            markPaid: row.status === "paid",
+          });
+        }}
         onClose={() => confirmDiscardIfDirty(modal, form, closeAdd)}
         size={400}
         destroyOnClose
@@ -314,7 +373,7 @@ export default function PaymentDetailPage() {
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Button onClick={() => confirmDiscardIfDirty(modal, form, closeAdd)}>{t("common.cancel")}</Button>
             <Button type="primary" loading={saving} disabled={saving} onClick={() => form.submit()}>
-              {t("payment.add")}
+              {editing ? t("common.save") : t("payment.add")}
             </Button>
           </div>
         }
@@ -328,6 +387,56 @@ export default function PaymentDetailPage() {
             setSaving(true);
             let createdId: string | undefined;
             try {
+              const row = editingRef.current;
+              if (row) {
+                if (values.markPaid && !canVerify) throw new Error(t("payment.markPaidForbidden"));
+                let previousPaymentId = knownPaymentId(row);
+                if (!previousPaymentId && row.method) {
+                  try {
+                    previousPaymentId = await resolvePaymentIdForInstallment(
+                      payment.orderId,
+                      row,
+                      takenPaymentIds(payment.installments, row.id),
+                    );
+                  } catch (err) {
+                    if (!(err instanceof InstallmentPaymentMissing)) throw err;
+                  }
+                }
+                const result = await updateInstallmentPayment({
+                  orderId: payment.orderId,
+                  previousPaymentId,
+                  previousScheduleLineId: row.scheduleLineId,
+                  previousAmount: row.amount,
+                  previousDueDate: row.dueDate,
+                  previousMethod: row.method ? toPaymentMethod(row.method) : undefined,
+                  wasPaid: row.status === "paid",
+                  amount: Number(values.amount),
+                  method: values.method ? toPaymentMethod(values.method) : undefined,
+                  dueDate: values.dueDate,
+                  markPaid: Boolean(values.markPaid),
+                });
+                const nextId = result.payment?.id ?? row.id;
+                replaceInstallment(payment.id, row.id, {
+                  ...row,
+                  id: nextId,
+                  paymentId: result.payment?.id ?? row.paymentId,
+                  amount: Number(values.amount),
+                  dueDate: values.dueDate ?? row.dueDate,
+                  method: result.payment?.method ?? row.method,
+                  note: values.note,
+                  status: values.markPaid ? "paid" : "pending",
+                  paidDate: values.markPaid ? new Date().toISOString().slice(0, 10) : undefined,
+                  voidable: Boolean(result.payment),
+                });
+                await reloadFinance(payment.orderId, { force: true });
+                if (values.note) {
+                  patchInstallmentNote(payment.id, result.payment?.id ?? previousPaymentId ?? row.id, String(values.note));
+                }
+                if (result.payment && !result.previousVoided) message.warning(t("payment.voidPreviousFailed"));
+                else message.success(t("payment.updated"));
+                closeAdd();
+                return;
+              }
               const created = await createInstallmentPayment({
                 orderId: payment.orderId,
                 amount: Number(values.amount),
@@ -354,7 +463,13 @@ export default function PaymentDetailPage() {
               message.success(values.markPaid ? t("payment.markedPaid") : t("payment.addedInstallment"));
               closeAdd();
             } catch (err) {
-              if (createdId) {
+              if (editingRef.current) {
+                message.error(
+                  err instanceof InstallmentUpdateFailed
+                    ? t("payment.updateFailed")
+                    : markPaidErrorMessage(err, { ...paidCopy, failed: t("payment.updateFailed") }),
+                );
+              } else if (createdId) {
                 message.error(markPaidErrorMessage(err, paidCopy));
                 await reloadFinance(payment.orderId, { force: true }).catch(() => undefined);
                 closeAdd();
@@ -381,7 +496,15 @@ export default function PaymentDetailPage() {
           >
             <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
           </Form.Item>
-          <Form.Item name="method" label={t("payment.methodLabel")}>
+          <Form.Item
+            name="method"
+            label={t("payment.methodLabel")}
+            rules={
+              editing && knownPaymentId(editing)
+                ? [{ required: true, message: t("payment.selectMethod") }]
+                : []
+            }
+          >
             <Select
               options={[
                 { value: "BANK_TRANSFER", label: t("payment.bankTransfer") },
@@ -393,9 +516,9 @@ export default function PaymentDetailPage() {
           <Form.Item name="note" label={t("common.note")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          {canVerify ? (
+          {canVerify || editing ? (
             <Form.Item name="markPaid" valuePropName="checked">
-              <Checkbox>{t("payment.markPaidNow")}</Checkbox>
+              <Checkbox>{editing ? t("payment.markPaidToggle") : t("payment.markPaidNow")}</Checkbox>
             </Form.Item>
           ) : null}
         </Form>

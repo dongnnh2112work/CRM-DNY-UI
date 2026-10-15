@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/http/errors";
 import { apiErrorMessage, isUuid, num } from "@/lib/http/message";
 import { fetchAllPages } from "@/lib/http/paging";
+import { PERMISSION } from "@/lib/rbac";
 import type { PaymentInstallment } from "@/lib/types";
 import { ordersApi, type ApiScheduleLine } from "@/modules/orders/api";
 import { paymentsApi, type ApiPayment, type PaymentMethod } from "@/modules/payments/api";
@@ -65,6 +66,13 @@ export class InstallmentPaymentMissing extends Error {
   constructor() {
     super("PAYMENT_NOT_FOUND");
     this.name = "InstallmentPaymentMissing";
+  }
+}
+
+export class InstallmentUpdateFailed extends Error {
+  constructor() {
+    super("UPDATE_FAILED");
+    this.name = "InstallmentUpdateFailed";
   }
 }
 
@@ -146,6 +154,168 @@ export async function createInstallmentPayment(input: {
     method: input.method,
     scheduleLineId,
   });
+}
+
+/** Sửa được khi API ghi được kết quả: phiếu thì cần tạo + hủy; dòng lịch thì cần sửa đơn. */
+export function canEditInstallment(
+  row: PaymentInstallment,
+  can: (permission: string) => boolean,
+): boolean {
+  if (row.status === "cancelled") return false;
+  // Có phương thức nghĩa là đã có phiếu (kể cả dòng tạm pi-… trên màn hình).
+  if (knownPaymentId(row) || row.method) return can(PERMISSION.paymentCreate) && can(PERMISSION.paymentVoid);
+  return can(PERMISSION.orderUpdate);
+}
+
+export type UpdatedInstallment = {
+  payment?: ApiPayment;
+  /** false khi phiếu mới đã ghi nhưng phiếu cũ vẫn còn. */
+  previousVoided: boolean;
+  scheduleUpdated: boolean;
+};
+
+/**
+ * API không có PATCH phiếu. Sửa = ghi phiếu đúng, rồi hủy phiếu sai.
+ * Hạn TT ghi vào lịch khi không làm đứt phiếu của đợt khác.
+ */
+export async function updateInstallmentPayment(input: {
+  orderId: string;
+  previousPaymentId?: string;
+  previousScheduleLineId?: string;
+  previousAmount: number;
+  previousDueDate?: string;
+  previousMethod?: PaymentMethod;
+  wasPaid: boolean;
+  amount: number;
+  method?: PaymentMethod;
+  dueDate?: string;
+  markPaid: boolean;
+}): Promise<UpdatedInstallment> {
+  const dueChanged =
+    Boolean(input.dueDate) && input.dueDate!.slice(0, 10) !== (input.previousDueDate ?? "").slice(0, 10);
+  const amountChanged = input.amount !== input.previousAmount;
+  const methodChanged = Boolean(input.method && input.previousMethod && input.method !== input.previousMethod);
+  const paidChanged = input.markPaid !== input.wasPaid;
+  const scheduleLineId =
+    input.dueDate && (dueChanged || amountChanged || !input.previousScheduleLineId)
+      ? await rewriteScheduleForEdit({
+          orderId: input.orderId,
+          previousPaymentId: input.previousPaymentId,
+          previousScheduleLineId: input.previousScheduleLineId,
+          previousAmount: input.previousAmount,
+          previousDueDate: input.previousDueDate,
+          amount: input.amount,
+          dueDate: input.dueDate,
+        })
+      : input.previousScheduleLineId;
+  const scheduleUpdated = Boolean(scheduleLineId && scheduleLineId !== input.previousScheduleLineId);
+  const replacePayment =
+    amountChanged || methodChanged || paidChanged || (Boolean(input.previousPaymentId) && scheduleUpdated);
+  if (input.previousPaymentId && !replacePayment) {
+    if (dueChanged && !scheduleUpdated) throw new InstallmentUpdateFailed();
+    return { previousVoided: true, scheduleUpdated };
+  }
+  if (!input.previousPaymentId && !input.markPaid && !input.method) {
+    if (!scheduleUpdated && (dueChanged || amountChanged)) throw new InstallmentUpdateFailed();
+    return { previousVoided: true, scheduleUpdated };
+  }
+
+  const created = await paymentsApi.create({
+    orderId: input.orderId,
+    amount: input.amount,
+    method: input.method ?? "BANK_TRANSFER",
+    scheduleLineId,
+  });
+  try {
+    if (input.markPaid) await paymentsApi.verify(created.id);
+  } catch (err) {
+    await paymentsApi.void(created.id).catch(() => undefined);
+    throw err;
+  }
+
+  let previousVoided = !input.previousPaymentId || input.previousPaymentId === created.id;
+  if (input.previousPaymentId && input.previousPaymentId !== created.id) {
+    try {
+      const rows = await listOrderPayments(input.orderId);
+      const previous = rows.find((payment) => payment.id === input.previousPaymentId);
+      if (!previous || previous.verificationStatus === "VOIDED") previousVoided = true;
+      else {
+        await paymentsApi.void(previous.id);
+        previousVoided = true;
+      }
+    } catch {
+      previousVoided = false;
+    }
+  }
+
+  return { payment: created, previousVoided, scheduleUpdated };
+}
+
+async function rewriteScheduleForEdit(input: {
+  orderId: string;
+  previousPaymentId?: string;
+  previousScheduleLineId?: string;
+  previousAmount: number;
+  previousDueDate?: string;
+  amount: number;
+  dueDate: string;
+}): Promise<string | undefined> {
+  let current: ApiScheduleLine[];
+  try {
+    current = unwrapSchedule(await ordersApi.listSchedule(input.orderId));
+  } catch {
+    return undefined;
+  }
+  const unchanged = current.find((line) => {
+    const due = (line.dueDate ?? "").slice(0, 10);
+    const sameLine = input.previousScheduleLineId ? line.id === input.previousScheduleLineId : current.length === 1;
+    return Boolean(line.id) && sameLine && due === input.dueDate && num(line.amount) === input.amount;
+  });
+  if (unchanged?.id) return unchanged.id;
+  let payments: ApiPayment[] = [];
+  try {
+    payments = await listOrderPayments(input.orderId);
+  } catch {
+    return undefined;
+  }
+  const blocksRewrite = payments.some(
+    (payment) =>
+      payment.verificationStatus !== "VOIDED" &&
+      Boolean(payment.scheduleLineId) &&
+      payment.id !== input.previousPaymentId,
+  );
+  if (blocksRewrite && current.length > 0) return undefined;
+
+  try {
+    let replaced = current.length === 0;
+    const lines =
+      current.length === 0
+        ? [{ dueDate: input.dueDate, amount: input.amount, sortOrder: 0 }]
+        : current.map((line, index) => {
+            const due = (line.dueDate ?? "").slice(0, 10);
+            const isTarget =
+              !replaced &&
+              ((input.previousScheduleLineId && line.id === input.previousScheduleLineId) ||
+                (!input.previousScheduleLineId && current.length === 1) ||
+                (!input.previousScheduleLineId &&
+                  due === (input.previousDueDate ?? "").slice(0, 10) &&
+                  num(line.amount) === input.previousAmount));
+            if (!isTarget) {
+              return { dueDate: due || undefined, amount: num(line.amount), sortOrder: line.sortOrder ?? index };
+            }
+            replaced = true;
+            return { dueDate: input.dueDate, amount: input.amount, sortOrder: line.sortOrder ?? index };
+          });
+    if (!replaced) lines.push({ dueDate: input.dueDate, amount: input.amount, sortOrder: lines.length });
+    await ordersApi.replaceSchedule(input.orderId, lines);
+    const next = unwrapSchedule(await ordersApi.listSchedule(input.orderId));
+    return (
+      next.find((line) => (line.dueDate ?? "").slice(0, 10) === input.dueDate && num(line.amount) === input.amount)?.id ??
+      next.find((line) => line.id)?.id
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 async function scheduleLineForNewInstallment(

@@ -52,6 +52,7 @@ function installmentsForOrders(
       installments.push({
         id: pay?.id ?? line.id ?? `sch-${order.id}-${line.sortOrder ?? installments.length}`,
         paymentId: pay?.id,
+        scheduleLineId: pay?.scheduleLineId ?? line.id,
         amount: num(line.amount ?? pay?.amount),
         dueDate: due,
         paidDate: pay?.verificationStatus === "VERIFIED" ? pay.recordedAt.slice(0, 10) : undefined,
@@ -67,6 +68,7 @@ function installmentsForOrders(
       installments.push({
         id: p.id,
         paymentId: p.id,
+        scheduleLineId: p.scheduleLineId ?? undefined,
         amount: num(p.amount),
         dueDate: p.recordedAt.slice(0, 10),
         paidDate: p.verificationStatus === "VERIFIED" ? p.recordedAt.slice(0, 10) : undefined,

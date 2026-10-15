@@ -74,6 +74,9 @@ type PaymentsContextValue = {
   ) => void;
   /** Gắn id phiếu thật vào dòng tạm `pi-…` trước khi verify. */
   linkInstallmentPayment: (paymentId: string, installmentId: string, apiPaymentId: string) => void;
+  /** Ghi đè một đợt sau khi sửa (số tiền, hạn, phương thức, ghi chú). */
+  replaceInstallment: (paymentId: string, installmentId: string, next: PaymentInstallment) => void;
+  patchInstallmentNote: (paymentId: string, apiPaymentId: string, note: string) => void;
   markInstallmentPaid: (
     paymentId: string,
     installmentId: string,
@@ -174,6 +177,32 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const replaceInstallment = useCallback((paymentId: string, installmentId: string, next: PaymentInstallment) => {
+    setPayments((prev) =>
+      prev.map((p) => {
+        if (p.id !== paymentId) return p;
+        const installments = p.installments.map((row) => (row.id === installmentId ? next : row));
+        return recalcPayment({ ...p, installments });
+      }),
+    );
+  }, []);
+
+  const patchInstallmentNote = useCallback((paymentId: string, apiPaymentId: string, note: string) => {
+    const trimmed = note.trim();
+    if (!trimmed) return;
+    setPayments((prev) =>
+      prev.map((p) => {
+        if (p.id !== paymentId) return p;
+        return {
+          ...p,
+          installments: p.installments.map((row) =>
+            row.id === apiPaymentId || row.paymentId === apiPaymentId ? { ...row, note: trimmed } : row,
+          ),
+        };
+      }),
+    );
+  }, []);
+
   const markInstallmentPaid = useCallback(
     (paymentId: string, installmentId: string, patch?: { method?: string; paymentId?: string }) => {
       const today = new Date().toISOString().slice(0, 10);
@@ -207,6 +236,8 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       getByOrderId,
       addInstallment,
       linkInstallmentPayment,
+      replaceInstallment,
+      patchInstallmentNote,
       markInstallmentPaid,
       replacePayments,
       upsertPayment,
@@ -219,6 +250,8 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       getByOrderId,
       addInstallment,
       linkInstallmentPayment,
+      replaceInstallment,
+      patchInstallmentNote,
       markInstallmentPaid,
       replacePayments,
       upsertPayment,
