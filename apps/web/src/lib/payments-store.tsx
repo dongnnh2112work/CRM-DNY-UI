@@ -16,6 +16,7 @@ import {
   pickPrimaryOrder,
   recalcPayment,
 } from "@/lib/order-group";
+import { isUuid } from "@/lib/http/message";
 import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
 
 function paymentFromGroup(group: Order[], existing?: PaymentRecord): PaymentRecord {
@@ -66,9 +67,18 @@ type PaymentsContextValue = {
   getByOrderId: (orderId: string) => PaymentRecord | undefined;
   addInstallment: (
     paymentId: string,
-    input: Omit<PaymentInstallment, "id" | "status"> & { status?: PaymentInstallment["status"] },
+    input: Omit<PaymentInstallment, "id" | "status"> & {
+      id?: string;
+      status?: PaymentInstallment["status"];
+    },
   ) => void;
-  markInstallmentPaid: (paymentId: string, installmentId: string, method?: string) => void;
+  /** Gắn id phiếu thật vào dòng tạm `pi-…` trước khi verify. */
+  linkInstallmentPayment: (paymentId: string, installmentId: string, apiPaymentId: string) => void;
+  markInstallmentPaid: (
+    paymentId: string,
+    installmentId: string,
+    patch?: { method?: string; paymentId?: string },
+  ) => void;
   replacePayments: (items: PaymentRecord[]) => void;
   upsertPayment: (record: PaymentRecord) => void;
 };
@@ -121,19 +131,26 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   const addInstallment = useCallback(
     (
       paymentId: string,
-      input: Omit<PaymentInstallment, "id" | "status"> & { status?: PaymentInstallment["status"] },
+      input: Omit<PaymentInstallment, "id" | "status"> & {
+        id?: string;
+        status?: PaymentInstallment["status"];
+      },
     ) => {
       setPayments((prev) =>
         prev.map((p) => {
           if (p.id !== paymentId) return p;
+          const id = input.id?.trim() || `pi-${Date.now()}`;
+          const linked = input.paymentId ?? (isUuid(id) ? id : undefined);
           const installment: PaymentInstallment = {
-            id: `pi-${Date.now()}`,
+            id,
+            paymentId: linked,
             amount: Number(input.amount),
             dueDate: input.dueDate,
             paidDate: input.paidDate,
             method: input.method,
             note: input.note,
             status: input.status ?? (input.paidDate ? "paid" : "pending"),
+            voidable: input.voidable ?? Boolean(linked),
           };
           return recalcPayment({ ...p, installments: [...p.installments, installment] });
         }),
@@ -142,20 +159,45 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const markInstallmentPaid = useCallback((paymentId: string, installmentId: string, method?: string) => {
-    const today = new Date().toISOString().slice(0, 10);
+  const linkInstallmentPayment = useCallback((paymentId: string, installmentId: string, apiPaymentId: string) => {
+    if (!isUuid(apiPaymentId)) return;
     setPayments((prev) =>
       prev.map((p) => {
         if (p.id !== paymentId) return p;
-        const installments = p.installments.map((i) =>
-          installmentId === i.id
-            ? { ...i, status: "paid" as const, paidDate: today, method: method ?? i.method ?? "Bank transfer" }
-            : i,
-        );
-        return recalcPayment({ ...p, installments });
+        return {
+          ...p,
+          installments: p.installments.map((i) =>
+            i.id === installmentId ? { ...i, paymentId: apiPaymentId, voidable: i.status !== "cancelled" } : i,
+          ),
+        };
       }),
     );
   }, []);
+
+  const markInstallmentPaid = useCallback(
+    (paymentId: string, installmentId: string, patch?: { method?: string; paymentId?: string }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      setPayments((prev) =>
+        prev.map((p) => {
+          if (p.id !== paymentId) return p;
+          const installments = p.installments.map((i) => {
+            if (i.id !== installmentId) return i;
+            const linked = patch?.paymentId ?? i.paymentId;
+            return {
+              ...i,
+              status: "paid" as const,
+              paidDate: today,
+              method: patch?.method ?? i.method ?? "BANK_TRANSFER",
+              paymentId: linked,
+              voidable: true,
+            };
+          });
+          return recalcPayment({ ...p, installments });
+        }),
+      );
+    },
+    [],
+  );
 
   const value = useMemo(
     () => ({
@@ -164,11 +206,23 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       getById,
       getByOrderId,
       addInstallment,
+      linkInstallmentPayment,
       markInstallmentPaid,
       replacePayments,
       upsertPayment,
     }),
-    [payments, hydrated, ordersReady, getById, getByOrderId, addInstallment, markInstallmentPaid, replacePayments, upsertPayment],
+    [
+      payments,
+      hydrated,
+      ordersReady,
+      getById,
+      getByOrderId,
+      addInstallment,
+      linkInstallmentPayment,
+      markInstallmentPaid,
+      replacePayments,
+      upsertPayment,
+    ],
   );
 
   return <PaymentsContext.Provider value={value}>{children}</PaymentsContext.Provider>;

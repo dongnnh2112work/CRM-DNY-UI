@@ -14,6 +14,7 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import dayjs from "dayjs";
@@ -33,7 +34,18 @@ import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { apiErrorMessage } from "@/lib/http/message";
+import { PERMISSION } from "@/lib/rbac";
+import { useSession } from "@/lib/session/session-provider";
 import { paymentsApi } from "@/modules/payments/api";
+import {
+  createInstallmentPayment,
+  knownPaymentId,
+  markPaidErrorMessage,
+  resolvePaymentIdForInstallment,
+  takenPaymentIds,
+  toPaymentMethod,
+  verifyInstallmentPayment,
+} from "@/modules/payments/mark-paid";
 import type { PaymentInstallment } from "@/lib/types";
 import { useT } from "@/lib/use-t";
 
@@ -42,14 +54,19 @@ export default function PaymentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const { getById, getByOrderId, ready, addInstallment, markInstallmentPaid } = usePayments();
+  const { can } = useSession();
+  const canVerify = can(PERMISSION.paymentVerify);
+  const canVoid = can(PERMISSION.paymentVoid);
+  const { getById, getByOrderId, ready, addInstallment, linkInstallmentPayment, markInstallmentPaid } = usePayments();
   const { getById: getOrder, orders } = useOrders();
   const { ready: hydrateReady, listMeta } = useApiHydrate();
   const reloadFinance = useReloadOrderFinance();
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [markingId, setMarkingId] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const markingRef = useRef<string | null>(null);
   const [form] = Form.useForm();
   const closeAdd = () => {
     form.resetFields();
@@ -59,6 +76,14 @@ export default function PaymentDetailPage() {
   const payment = getById(id) ?? getByOrderId(id);
   const order = payment ? getOrder(payment.orderId) : undefined;
   const paymentsHydrated = Boolean(listMeta.payments) || (hydrateReady && ready);
+  const paidCopy = useMemo(
+    () => ({
+      failed: t("payment.markPaidFailed"),
+      forbidden: t("payment.markPaidForbidden"),
+      missing: t("payment.markPaidMissing"),
+    }),
+    [t],
+  );
 
   useEffect(() => {
     const orderId = payment?.orderId;
@@ -90,29 +115,59 @@ export default function PaymentDetailPage() {
         key: "action",
         render: (_: unknown, row: PaymentInstallment) => {
           if (row.status === "cancelled") return "—";
+          const record = payment;
           return (
             <Space>
               {row.status !== "paid" ? (
-                <Popconfirm
-                  title={t("payment.markPaidTitle")}
-                  description={t("payment.markPaidBody")}
-                  okText={t("common.confirm")}
-                  cancelText={t("common.cancel")}
-                  onConfirm={async () => {
-                    try {
-                      await paymentsApi.verify(row.id);
-                      markInstallmentPaid(payment!.id, row.id);
-                      await reloadFinance(payment!.orderId);
-                      message.success(t("payment.markedPaid"));
-                    } catch (err) {
-                      message.error(apiErrorMessage(err, t("payment.markedPaid")));
-                    }
-                  }}
-                >
-                  <Button size="small">{t("payment.markPaidBtn")}</Button>
-                </Popconfirm>
+                canVerify && record ? (
+                  <Popconfirm
+                    title={t("payment.markPaidTitle")}
+                    description={t("payment.markPaidBody")}
+                    okText={t("common.confirm")}
+                    cancelText={t("common.cancel")}
+                    onConfirm={async () => {
+                      if (markingRef.current) return;
+                      markingRef.current = row.id;
+                      setMarkingId(row.id);
+                      try {
+                        const apiPaymentId = await resolvePaymentIdForInstallment(
+                          record.orderId,
+                          row,
+                          takenPaymentIds(record.installments, row.id),
+                        );
+                        if (apiPaymentId !== row.paymentId) {
+                          linkInstallmentPayment(record.id, row.id, apiPaymentId);
+                        }
+                        await verifyInstallmentPayment(record.orderId, apiPaymentId);
+                        markInstallmentPaid(record.id, row.id, {
+                          paymentId: apiPaymentId,
+                          method: row.method,
+                        });
+                        await reloadFinance(record.orderId, { force: true });
+                        message.success(t("payment.markedPaid"));
+                      } catch (err) {
+                        message.error(markPaidErrorMessage(err, paidCopy));
+                      } finally {
+                        markingRef.current = null;
+                        setMarkingId(null);
+                      }
+                    }}
+                  >
+                    <Button size="small" loading={markingId === row.id}>
+                      {t("payment.markPaidBtn")}
+                    </Button>
+                  </Popconfirm>
+                ) : (
+                  <Tooltip title={t("payment.markPaidForbidden")}>
+                    <span>
+                      <Button size="small" disabled>
+                        {t("payment.markPaidBtn")}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                )
               ) : null}
-              {row.voidable ? (
+              {row.voidable && canVoid && record ? (
                 <Popconfirm
                   title={t("payment.voidTitle")}
                   description={t("payment.voidBody")}
@@ -121,13 +176,18 @@ export default function PaymentDetailPage() {
                   okButtonProps={{ danger: true }}
                   onConfirm={async () => {
                     if (voidingId) return;
+                    const apiPaymentId = knownPaymentId(row);
+                    if (!apiPaymentId) {
+                      message.error(t("payment.markPaidMissing"));
+                      return;
+                    }
                     setVoidingId(row.id);
                     try {
-                      await paymentsApi.void(row.id);
-                      await reloadFinance(payment!.orderId);
+                      await paymentsApi.void(apiPaymentId);
+                      await reloadFinance(record.orderId, { force: true });
                       message.success(t("payment.voided"));
                     } catch (err) {
-                      message.error(apiErrorMessage(err, t("payment.voided")));
+                      message.error(apiErrorMessage(err, t("payment.voidFailed")));
                     } finally {
                       setVoidingId(null);
                     }
@@ -143,7 +203,19 @@ export default function PaymentDetailPage() {
         },
       },
     ],
-    [t, markInstallmentPaid, message, payment, reloadFinance, voidingId],
+    [
+      t,
+      canVerify,
+      canVoid,
+      linkInstallmentPayment,
+      markInstallmentPaid,
+      markingId,
+      message,
+      paidCopy,
+      payment,
+      reloadFinance,
+      voidingId,
+    ],
   );
 
   if (!payment) {
@@ -254,16 +326,19 @@ export default function PaymentDetailPage() {
             if (savingRef.current) return;
             savingRef.current = true;
             setSaving(true);
+            let createdId: string | undefined;
             try {
-              const created = await paymentsApi.create({
+              const created = await createInstallmentPayment({
                 orderId: payment.orderId,
                 amount: Number(values.amount),
-                method:
-                  values.method === "CASH" || values.method === "QR_PAYMENT"
-                    ? values.method
-                    : "BANK_TRANSFER",
+                method: toPaymentMethod(values.method),
+                dueDate: values.dueDate,
               });
+              createdId = created.id;
               addInstallment(payment.id, {
+                id: created.id,
+                paymentId: created.id,
+                voidable: true,
                 amount: Number(created.amount),
                 dueDate: values.dueDate,
                 method: created.method,
@@ -271,12 +346,21 @@ export default function PaymentDetailPage() {
                 paidDate: values.markPaid ? new Date().toISOString().slice(0, 10) : undefined,
                 status: values.markPaid ? "paid" : "pending",
               });
-              if (values.markPaid) await paymentsApi.verify(created.id);
-              await reloadFinance(payment.orderId);
-              message.success(t("payment.addedInstallment"));
+              if (values.markPaid) {
+                if (!canVerify) throw new Error(t("payment.markPaidForbidden"));
+                await paymentsApi.verify(created.id);
+              }
+              await reloadFinance(payment.orderId, { force: true });
+              message.success(values.markPaid ? t("payment.markedPaid") : t("payment.addedInstallment"));
               closeAdd();
             } catch (err) {
-              message.error(apiErrorMessage(err, t("payment.addedInstallment")));
+              if (createdId) {
+                message.error(markPaidErrorMessage(err, paidCopy));
+                await reloadFinance(payment.orderId, { force: true }).catch(() => undefined);
+                closeAdd();
+              } else {
+                message.error(apiErrorMessage(err, t("payment.addFailed")));
+              }
             } finally {
               savingRef.current = false;
               setSaving(false);
@@ -300,18 +384,20 @@ export default function PaymentDetailPage() {
           <Form.Item name="method" label={t("payment.methodLabel")}>
             <Select
               options={[
-                { value: "Bank transfer", label: t("payment.bankTransfer") },
-                { value: "Cash", label: t("payment.cash") },
-                { value: "QR", label: "QR" },
+                { value: "BANK_TRANSFER", label: t("payment.bankTransfer") },
+                { value: "CASH", label: t("payment.cash") },
+                { value: "QR_PAYMENT", label: "QR" },
               ]}
             />
           </Form.Item>
           <Form.Item name="note" label={t("common.note")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="markPaid" valuePropName="checked">
-            <Checkbox>{t("payment.markPaidNow")}</Checkbox>
-          </Form.Item>
+          {canVerify ? (
+            <Form.Item name="markPaid" valuePropName="checked">
+              <Checkbox>{t("payment.markPaidNow")}</Checkbox>
+            </Form.Item>
+          ) : null}
         </Form>
       </Drawer>
     </>

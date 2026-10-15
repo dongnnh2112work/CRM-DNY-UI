@@ -372,6 +372,11 @@ export type PaymentStatus = "unpaid" | "partial" | "paid" | "overdue";
 
 export interface PaymentInstallment {
   id: string;
+  /**
+   * Id phiếu `POST /payments/:id/verify`. Khác `id` khi dòng là lịch TT
+   * hoặc id tạm `pi-…` (nút Đánh dấu đã TT trước đây gọi verify bằng id đó và 404).
+   */
+  paymentId?: string;
   amount: number;
   dueDate: string;
   paidDate?: string;

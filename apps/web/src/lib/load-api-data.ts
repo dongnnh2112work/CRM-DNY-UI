@@ -875,11 +875,14 @@ export async function reloadOrderFinance(args: {
   const needPayments = !paymentsFresh || needSchedule;
   const inflightKey = `${cacheKey}:${order.id}:${needPayments ? "pay" : "nopay"}:${needSchedule ? "sch" : "nosch"}`;
   const existing = financeInflight.get(inflightKey);
-  if (existing) return existing;
+  // A forced reload (after verify) must not reuse a GET that started before the write —
+  // that response is still RECORDED and would paint the row back to "Chờ".
+  if (existing && !force) return existing;
 
   const userName = new Map(users.map((u) => [u.id, u.name]));
 
   const run = async () => {
+    if (existing && force) await existing.catch(() => undefined);
     const paymentPromise: Promise<ApiPayment[] | null> = needPayments
       ? settled(
           fetchPage(
@@ -939,7 +942,7 @@ export async function reloadOrderFinance(args: {
   };
 
   const promise = run().finally(() => {
-    financeInflight.delete(inflightKey);
+    if (financeInflight.get(inflightKey) === promise) financeInflight.delete(inflightKey);
   });
   financeInflight.set(inflightKey, promise);
   return promise;
