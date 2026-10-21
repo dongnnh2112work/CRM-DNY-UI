@@ -105,6 +105,12 @@ export function isEntityFormPath(pathname: string): boolean {
  * Primary list scopes for a route. Dashboard is special-cased in ApiHydrator
  * (orders+payments preview, customers count-only).
  */
+/** Chi tiết đơn cần cả danh sách đơn (anh em cùng HĐ) và thanh toán để chia thu. */
+export function orderDetailListScopes(pathname: string): RefreshScope[] {
+  if (!isEntityDetailPath(pathname) || !pathname.startsWith("/orders/")) return [];
+  return ["orders", "payments"];
+}
+
 export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/dashboard")) return [];
   // Detail pages use GET /:id or /:id/detail — skip list hydrate.
@@ -114,7 +120,7 @@ export function scopesForPath(pathname: string): RefreshScope[] {
 
   if (pathname.startsWith("/customers")) return ["customers"];
   if (pathname.startsWith("/orders")) return ["orders"];
-  if (pathname.startsWith("/payments")) return ["payments"];
+  if (pathname.startsWith("/payments")) return ["payments", "orders"];
   if (pathname.startsWith("/expense")) return ["expenses"];
   if (pathname.startsWith("/vat")) return ["vat"];
   if (pathname.startsWith("/services")) return ["services"];

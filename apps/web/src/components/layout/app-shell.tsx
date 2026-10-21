@@ -25,7 +25,7 @@ import {
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, List, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
+import { App, Avatar, Badge, Button, Dropdown, Empty, Input, Layout, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -345,6 +345,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             style={{ borderRadius: token.borderRadius }}
           />
           <Input.Search
+            id="header-search"
+            autoComplete="off"
             placeholder={t(searchTarget.placeholderKey)}
             allowClear
             style={{ maxWidth: 360, flex: 1, minWidth: 0 }}
@@ -406,12 +408,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                       </Button>
                     </Space>
                   </div>
-                  <List
-                    size="small"
-                    dataSource={myNotifs}
-                    locale={{ emptyText: t("shell.noNotifications") }}
-                    renderItem={(item) => (
-                      <List.Item
+                  {myNotifs.length === 0 ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("shell.noNotifications")} />
+                  ) : (
+                    myNotifs.map((item) => (
+                      <div
+                        key={item.id}
+                        role={item.href ? "link" : undefined}
+                        tabIndex={item.href ? 0 : undefined}
                         style={{
                           cursor: "pointer",
                           background: item.read ? undefined : token.colorPrimaryBg,
@@ -422,22 +426,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                           markRead(item.id);
                           if (item.href) router.push(item.href);
                         }}
+                        onKeyDown={(event) => {
+                          if (!item.href || (event.key !== "Enter" && event.key !== " ")) return;
+                          event.preventDefault();
+                          markRead(item.id);
+                          router.push(item.href);
+                        }}
                       >
-                        <List.Item.Meta
-                          title={
-                            <Typography.Text style={{ fontSize: ds.fontSize.bodySm }}>
-                              {item.title}
-                            </Typography.Text>
-                          }
-                          description={
-                            <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                              {item.body}
-                            </Typography.Text>
-                          }
-                        />
-                      </List.Item>
-                    )}
-                  />
+                        <Typography.Text style={{ fontSize: ds.fontSize.bodySm }}>{item.title}</Typography.Text>
+                        <div>
+                          <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
+                            {item.body}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             >

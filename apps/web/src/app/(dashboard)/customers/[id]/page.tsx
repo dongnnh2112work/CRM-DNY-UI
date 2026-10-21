@@ -5,6 +5,7 @@ import {
   Button,
   Descriptions,
   Form,
+  Grid,
   Input,
   Modal,
   Popconfirm,
@@ -16,7 +17,7 @@ import {
 } from "antd";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UsedServiceTags } from "@/components/customers/used-service-tags";
 import { DataTable } from "@/components/shared/data-table";
 import { ExtraFormFields } from "@/components/shared/extra-form-fields";
@@ -66,6 +67,9 @@ export default function CustomerDetailPage() {
   const [liveChecked, setLiveChecked] = useState(false);
   const customer = mockCustomer ?? liveCustomer;
   const [editOpen, setEditOpen] = useState(false);
+  const leavingRef = useRef(false);
+  const screens = Grid.useBreakpoint();
+  const descriptionColumns = screens.sm === false ? 1 : 2;
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
 
@@ -159,7 +163,7 @@ export default function CustomerDetailPage() {
   );
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || leavingRef.current) return;
     if (getById(id)) {
       setLiveChecked(true);
       return;
@@ -259,12 +263,14 @@ export default function CustomerDetailPage() {
             cancelText={t("common.cancel")}
             okButtonProps={{ danger: true }}
             onConfirm={async () => {
+              leavingRef.current = true;
               try {
                 await customersApi.remove(customer.id);
                 deleteCustomer(customer.id);
                 message.success(t("customer.deleted"));
                 router.push("/customers");
               } catch (err) {
+                leavingRef.current = false;
                 message.error(apiErrorMessage(err, t("customer.loadFailed")));
               }
             }}
@@ -305,7 +311,7 @@ export default function CustomerDetailPage() {
           </Tag>
         </Space>
 
-        <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small" style={{ marginBottom: 16 }}>
+        <Descriptions bordered column={descriptionColumns} size="small" style={{ marginBottom: 16 }}>
           <Descriptions.Item label={t("field.phone")}>{customer.phone}</Descriptions.Item>
           <Descriptions.Item label={t("field.email")}>{customer.email || "—"}</Descriptions.Item>
           <Descriptions.Item label={t("field.company")}>{customer.company || "—"}</Descriptions.Item>
@@ -314,7 +320,7 @@ export default function CustomerDetailPage() {
           <Descriptions.Item label={t("field.owner")}>
             {customerOwnerLabel(customer.owner, users)}
           </Descriptions.Item>
-          <Descriptions.Item label={t("common.channel")}>
+          <Descriptions.Item label={t("common.channel")} span={descriptionColumns}>
             {customer.channel === "direct"
               ? t("channel.direct")
               : customer.channel === "website"
@@ -325,10 +331,10 @@ export default function CustomerDetailPage() {
                     ? t("channel.ctv")
                     : "—"}
           </Descriptions.Item>
-          <Descriptions.Item label={t("field.createdAt")} span={2}>
+          <Descriptions.Item label={t("field.createdAt")} span={descriptionColumns}>
             {formatDisplayDate(customer.createdAt)}
           </Descriptions.Item>
-          <Descriptions.Item label={t("customer.usedServices")} span={2}>
+          <Descriptions.Item label={t("customer.usedServices")} span={descriptionColumns}>
             <UsedServiceTags services={usedServices} max={8} />
           </Descriptions.Item>
         </Descriptions>

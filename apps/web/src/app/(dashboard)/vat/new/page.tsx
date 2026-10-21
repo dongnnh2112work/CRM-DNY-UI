@@ -1,7 +1,7 @@
 "use client";
 
 import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Col, Form, Input, InputNumber, List, Row, Select, Space, Typography, Upload } from "antd";
+import { Alert, App, Button, Col, Form, Input, InputNumber, Row, Select, Space, Typography, Upload } from "antd";
 import type { UploadProps } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -314,28 +314,21 @@ function NewVatPageContent() {
           <p className="ant-upload-hint">{t("docs.uploadHint")}</p>
         </Upload.Dragger>
         {pendingFiles.length > 0 ? (
-          <List
-            size="small"
-            style={{ marginTop: 8, marginBottom: 16 }}
-            dataSource={pendingFiles}
-            renderItem={(file, index) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="remove"
-                    type="text"
-                    danger
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    disabled={saving}
-                    onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
-                  />,
-                ]}
-              >
-                {file.name}
-              </List.Item>
-            )}
-          />
+          <div style={{ marginTop: 8, marginBottom: 16, display: "flex", flexDirection: "column", gap: 4 }}>
+            {pendingFiles.map((file, index) => (
+              <div key={`${file.name}-${index}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>{file.name}</span>
+                <Button
+                  type="text"
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  disabled={saving}
+                  onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
+                />
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ height: 16 }} />
         )}

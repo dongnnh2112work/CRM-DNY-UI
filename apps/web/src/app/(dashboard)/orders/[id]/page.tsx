@@ -34,7 +34,7 @@ import {
   nextContractNumber,
   serviceDisplayName,
 } from "@/lib/order-helpers";
-import { nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
+import { allocatePaymentShare, nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -46,7 +46,9 @@ import {
   withCurrentSelectOption,
 } from "@/lib/order-form-catalogs";
 import { unwrapList } from "@/lib/http/paging";
+import { useApiHydrate } from "@/components/api-hydrator";
 import { applyOrderDetailFinance, reloadOrderFinance } from "@/lib/load-api-data";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
@@ -157,9 +159,13 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { status: sessionStatus, can, user: sessionUser } = useSession();
-  const { upsertOrder, deleteOrder, orders, isContractTaken } = useOrders();
-  const { users } = useUsers();
+  const { listMeta } = useApiHydrate();
+  const financeListsReady =
+    isListSliceSettled(listMeta.orders, canLoadScope("orders", sessionUser?.permissions)) &&
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", sessionUser?.permissions));
+  const { upsertOrder, orders, isContractTaken } = useOrders();
   const { refreshInbox } = useNotifications();
+  const { users } = useUsers();
   const activeUsers = users.filter((u) => u.status === "active");
   const { stageOptions } = useOrderStatusConfig();
   const { getByOrderId, upsertPayment } = usePayments();
@@ -167,6 +173,13 @@ export default function OrderDetailPage() {
   const { customers } = useCustomers();
   const { services } = useServices();
   const [order, setOrder] = useState<Order | null>(null);
+  const orderRef = useRef<Order | null>(null);
+  orderRef.current = order;
+  const commitOrder = (next: Order) => {
+    orderRef.current = next;
+    setOrder(next);
+    upsertOrder(next);
+  };
   const [boot, setBoot] = useState<ScreenBoot>({ status: "loading" });
   const [financeReady, setFinanceReady] = useState(false);
   const payment = order ? getByOrderId(order.id) : undefined;
@@ -241,15 +254,13 @@ export default function OrderDetailPage() {
         permissionsRef.current,
       );
       if (cancelled) return;
-      setOrder((prev) => {
-        if (!prev || prev.id !== base.id) return prev;
-        const next = withResolvedOrderNames(prev);
-        upsertOrder(next);
-        return next;
-      });
+      const prev = orderRef.current;
+      if (!prev || prev.id !== base.id) return;
+      commitOrder(withResolvedOrderNames(prev));
     };
 
     setBoot({ status: "loading" });
+    orderRef.current = null;
     setOrder(null);
     if (ordersRef.current.some((o) => o.id === id)) seedUserNameCache();
 
@@ -295,12 +306,9 @@ export default function OrderDetailPage() {
         docs.filter((d) => d?.id),
         userName,
       );
-      setOrder((prev) => {
-        if (!prev || prev.id !== mappedId) return prev;
-        const next = { ...prev, attachments: work, licenseAttachments: licenses };
-        upsertOrder(next);
-        return next;
-      });
+      const prev = orderRef.current;
+      if (!prev || prev.id !== mappedId) return;
+      commitOrder({ ...prev, attachments: work, licenseAttachments: licenses });
     };
 
     const loadLegacy = async () => {
@@ -312,13 +320,13 @@ export default function OrderDetailPage() {
         return;
       }
       const { mapped, userName } = mapApiOrder(apiOrder);
-      setOrder((prev) => ({
+      const prev = orderRef.current;
+      commitOrder({
         ...mapped,
         attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
         licenseAttachments:
           prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
-      }));
-      upsertOrder(mapped);
+      });
       await reloadOrderFinance({
         order: mapped,
         groupOrders: ordersRef.current,
@@ -347,13 +355,13 @@ export default function OrderDetailPage() {
           return;
         }
         const { mapped, userName } = mapApiOrder(apiOrder);
-        setOrder((prev) => ({
+        const prev = orderRef.current;
+        commitOrder({
           ...mapped,
           attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
           licenseAttachments:
             prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
-        }));
-        upsertOrder(mapped);
+        });
 
         const docs = applyOrderDetailFinance({
           order: mapped,
@@ -404,7 +412,11 @@ export default function OrderDetailPage() {
     };
   }, [id, sessionStatus, upsertOrder, upsertPayment, mergeExpensesForOrder, t]);
 
-  if (sessionStatus === "loading" || boot.status === "loading" || (boot.status === "ready" && !order)) {
+  if (
+    sessionStatus === "loading" ||
+    boot.status === "loading" ||
+    (boot.status === "ready" && (!order || !financeListsReady))
+  ) {
     return <PageLoading />;
   }
   if (boot.status === "missing" || boot.status === "error" || !order) {
@@ -423,12 +435,12 @@ export default function OrderDetailPage() {
     licenseWarnMonthsForOrder(order, services),
   );
   const siblings = siblingOrders(orders, order);
+  const servicePay = allocatePaymentShare(payment, order, siblings);
   const activeServices = services.filter((s) => s.status === "active");
   const canAddService = can(PERMISSION.orderCreate) && order.stage !== "cancelled";
 
   const persist = (next: Order) => {
-    setOrder(next);
-    upsertOrder(next);
+    commitOrder(next);
   };
 
   const openAddService = () => {
@@ -571,8 +583,8 @@ export default function OrderDetailPage() {
             }}
           >
             {t("order.payment")}
-            {financeReady && payment
-              ? t("order.remainingAmount", { amount: formatVndDisplay(payment.remaining) })
+            {financeReady && servicePay
+              ? t("order.remainingAmount", { amount: formatVndDisplay(servicePay.remaining) })
               : financeReady
                 ? ""
                 : " …"}
@@ -598,19 +610,6 @@ export default function OrderDetailPage() {
             }}
           >
             <Button danger>{t("order.cancelOk")}</Button>
-          </Popconfirm>
-          <Popconfirm
-            title={t("order.deleteTitle")}
-            okText={t("common.delete")}
-            cancelText={t("common.cancel")}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => {
-              deleteOrder(order.id);
-              message.success(t("order.deleted"));
-              router.push("/orders");
-            }}
-          >
-            <Button danger>{t("common.delete")}</Button>
           </Popconfirm>
         </Space>
       </PageHeader>

@@ -1,7 +1,7 @@
 "use client";
 
 import { DeleteOutlined, InboxOutlined } from "@ant-design/icons";
-import { App, Button, DatePicker, Form, List, Modal, Space, Typography, Upload } from "antd";
+import { App, Button, DatePicker, Form, Modal, Space, Typography, Upload } from "antd";
 import type { UploadProps } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
@@ -213,73 +213,67 @@ export function LicenseUpload({
       </Modal>
 
       {visible.length > 0 && (
-        <List
-          size="small"
-          style={{ marginTop: 8 }}
-          dataSource={visible}
-          renderItem={(item) => (
-            <List.Item
-              actions={[
-                <DocumentFileActions
-                  key="file"
-                  file={item}
-                  viewer={docs}
-                  extra={
-                    <Button
-                      type="text"
-                      danger
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      onClick={() => void remove(item.id)}
-                    />
-                  }
-                />,
-              ]}
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          {visible.map((item) => (
+            <div
+              key={item.id}
+              style={{ display: "flex", gap: 8, alignItems: "flex-start" }}
             >
-              <List.Item.Meta
-                avatar={attachmentTypeIcon(item.type)}
-                title={
-                  <DocumentFileLink file={item} viewer={docs} style={{ fontSize: ds.fontSize.caption }} />
-                }
-                description={
-                  <Space orientation="vertical" size={4} style={{ width: "100%" }}>
-                    <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                      {item.uploadedBy} · {formatDisplayDate(item.uploadedAt)}
-                    </Typography.Text>
-                    <Space wrap>
-                      <DatePicker
-                        size="small"
-                        placeholder={t("license.issuedAt")}
-                        format={DISPLAY_DATE_FORMAT}
-                        value={item.issuedAt ? dayjs(item.issuedAt) : null}
-                        onChange={(d) =>
-                          updateDates(
-                            item.id,
-                            d ? d.format("YYYY-MM-DD") : undefined,
-                            item.expiresAt,
-                          )
+              <span style={{ flex: "0 0 auto", paddingTop: 2 }}>{attachmentTypeIcon(item.type)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <DocumentFileLink file={item} viewer={docs} style={{ fontSize: ds.fontSize.caption }} />
+                <Space orientation="vertical" size={4} style={{ width: "100%" }}>
+                  <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
+                    {item.uploadedBy} · {formatDisplayDate(item.uploadedAt)}
+                  </Typography.Text>
+                  <Space wrap>
+                    <DatePicker
+                      id={`license-issued-${item.id}`}
+                      size="small"
+                      placeholder={t("license.issuedAt")}
+                      format={DISPLAY_DATE_FORMAT}
+                      value={item.issuedAt ? dayjs(item.issuedAt) : null}
+                      onChange={(d) =>
+                        updateDates(
+                          item.id,
+                          d ? d.format("YYYY-MM-DD") : undefined,
+                          item.expiresAt,
+                        )
+                      }
+                    />
+                    <DatePicker
+                      id={`license-expires-${item.id}`}
+                      size="small"
+                      placeholder={t("license.expiresShort")}
+                      format={DISPLAY_DATE_FORMAT}
+                      value={item.expiresAt ? dayjs(item.expiresAt) : null}
+                      onChange={(d) => {
+                        if (!d) {
+                          message.warning(t("license.needExpiry"));
+                          return;
                         }
-                      />
-                      <DatePicker
-                        size="small"
-                        placeholder={t("license.expiresShort")}
-                        format={DISPLAY_DATE_FORMAT}
-                        value={item.expiresAt ? dayjs(item.expiresAt) : null}
-                        onChange={(d) => {
-                          if (!d) {
-                            message.warning(t("license.needExpiry"));
-                            return;
-                          }
-                          updateDates(item.id, item.issuedAt, d.format("YYYY-MM-DD"));
-                        }}
-                      />
-                    </Space>
+                        updateDates(item.id, item.issuedAt, d.format("YYYY-MM-DD"));
+                      }}
+                    />
                   </Space>
+                </Space>
+              </div>
+              <DocumentFileActions
+                file={item}
+                viewer={docs}
+                extra={
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => void remove(item.id)}
+                  />
                 }
               />
-            </List.Item>
-          )}
-        />
+            </div>
+          ))}
+        </div>
       )}
       {docs.modal}
     </div>

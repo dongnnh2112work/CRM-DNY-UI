@@ -1,7 +1,7 @@
 "use client";
 
 import { DatePicker, Input, Table, type TableColumnsType, type TableProps } from "antd";
-import { useEffect, useMemo, useState, type Key, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type Key, type ReactNode } from "react";
 import {
   ColumnManagerButton,
   ColumnManagerDrawer,
@@ -132,6 +132,8 @@ export function DataTable<T extends object>({
   remote,
 }: DataTableProps<T>) {
   const t = useT();
+  const searchId = useId();
+  const dateId = useId();
   const [managerOpen, setManagerOpen] = useState(false);
   const [pageState, setPageState] = useState({ current: 1, pageSize: DEFAULT_PAGINATION.pageSize });
   const [dateRange, setDateRange] = useState<DateRangeValue>(null);
@@ -265,6 +267,8 @@ export function DataTable<T extends object>({
         >
           {search || enableLocalSearch ? (
             <Input.Search
+              id={searchId}
+              autoComplete="off"
               allowClear
               placeholder={search?.placeholder ?? t("common.search")}
               value={search?.value ?? localQuery}
@@ -277,6 +281,7 @@ export function DataTable<T extends object>({
           ) : null}
           {dateFilterField ? (
             <DatePicker.RangePicker
+              id={{ start: `${dateId}-start`, end: `${dateId}-end` }}
               picker={datePicker}
               format={rangePickerFormat(datePicker)}
               allowEmpty={[true, true]}

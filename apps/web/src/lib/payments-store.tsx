@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -50,6 +51,31 @@ function paymentFromGroup(group: Order[], existing?: PaymentRecord): PaymentReco
   return recalcPayment(base);
 }
 
+function mergeInstallments(
+  prev: PaymentInstallment[] | undefined,
+  next: PaymentInstallment[],
+): PaymentInstallment[] {
+  if (!next.length) return prev ?? [];
+  if (!prev?.length) return next;
+  const byId = new Map(prev.map((installment) => [installment.id, installment]));
+  for (const installment of next) byId.set(installment.id, installment);
+  return [...byId.values()];
+}
+
+/** Giá HĐ lấy từ đơn đang có. Đợt thu giữ từ record thanh toán, không lấy tổng các đợt làm giá HĐ. */
+function regroupWithOrders(orders: Order[], records: PaymentRecord[]): PaymentRecord[] {
+  if (!orders.length) return records;
+  const grouped = groupOrdersByContract(orders).map((group) =>
+    paymentFromGroup(group, findExistingForGroup(group, records)),
+  );
+  const covered = new Set(grouped.flatMap((p) => [p.orderId, ...(p.groupedOrderIds ?? [])]));
+  const extras = records.filter((p) => {
+    const ids = [p.orderId, ...(p.groupedOrderIds ?? [])];
+    return !ids.some((id) => covered.has(id));
+  });
+  return [...grouped, ...extras];
+}
+
 function findExistingForGroup(group: Order[], prev: PaymentRecord[]): PaymentRecord | undefined {
   const ids = new Set(group.map((o) => o.id));
   return prev.find(
@@ -92,6 +118,8 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   const { orders, ready: ordersReady } = useOrders();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
 
   useEffect(() => {
     setHydrated(true);
@@ -99,25 +127,38 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated || !ordersReady) return;
-    setPayments((prev) =>
-      groupOrdersByContract(orders).map((group) => paymentFromGroup(group, findExistingForGroup(group, prev))),
-    );
+    setPayments((prev) => regroupWithOrders(orders, prev));
   }, [orders, ordersReady, hydrated]);
 
   const replacePayments = useCallback((items: PaymentRecord[]) => {
-    setPayments(items);
+    setPayments(regroupWithOrders(ordersRef.current, items));
   }, []);
 
   const upsertPayment = useCallback((record: PaymentRecord) => {
     setPayments((prev) => {
       const ids = new Set([record.orderId, ...(record.groupedOrderIds ?? [])]);
+      const existing = prev.find(
+        (p) =>
+          p.id === record.id ||
+          ids.has(p.orderId) ||
+          p.groupedOrderIds?.some((id) => ids.has(id)),
+      );
+      const draft: PaymentRecord = {
+        ...(existing ?? record),
+        ...record,
+        installments: mergeInstallments(existing?.installments, record.installments),
+        groupedOrderIds: record.groupedOrderIds?.length
+          ? record.groupedOrderIds
+          : existing?.groupedOrderIds,
+      };
       const next = prev.filter(
         (p) =>
+          p !== existing &&
           p.id !== record.id &&
           !ids.has(p.orderId) &&
           !p.groupedOrderIds?.some((id) => ids.has(id)),
       );
-      return [...next, record];
+      return regroupWithOrders(ordersRef.current, [...next, draft]);
     });
   }, []);
 

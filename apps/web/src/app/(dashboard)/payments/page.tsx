@@ -17,7 +17,10 @@ import { getStatusMeta, getStatusOptions } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import type { PaymentRecord, PaymentStatus } from "@/lib/types";
 import { useT } from "@/lib/use-t";
-import { useRemoteList } from "@/components/api-hydrator";
+import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
+import { PageLoading } from "@/components/shared/page-loading";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
+import { useSession } from "@/lib/session/session-provider";
 
 function compareText(a: string, b: string) {
   return a.localeCompare(b, "vi");
@@ -27,6 +30,11 @@ export default function PaymentsPage() {
   const t = useT();
   const { message } = App.useApp();
   const paymentsRemote = useRemoteList("payments");
+  const { listMeta } = useApiHydrate();
+  const { user } = useSession();
+  const moneyReady =
+    isListSliceSettled(listMeta.orders, canLoadScope("orders", user?.permissions)) &&
+    isListSliceSettled(listMeta.payments, canLoadScope("payments", user?.permissions));
   const { payments } = usePayments();
   const { orders } = useOrders();
   const [query, setQuery] = useState("");
@@ -194,6 +202,7 @@ export default function PaymentsPage() {
           options={[{ value: "all", label: t("common.allStatuses") }, ...getStatusOptions("payment")]}
         />
       </PageHeader>
+      {moneyReady ? (
       <DataTable<PaymentRecord>
         rowKey="id"
         columns={columns}
@@ -225,6 +234,9 @@ export default function PaymentsPage() {
           </BulkActionBar>
         }
       />
+      ) : (
+        <PageLoading />
+      )}
     </>
   );
 }

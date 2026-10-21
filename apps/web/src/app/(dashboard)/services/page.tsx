@@ -15,7 +15,7 @@ import { apiErrorMessage } from "@/lib/http/message";
 import type { Service } from "@/lib/types";
 import { servicesApi } from "@/modules/services/api";
 import { mapApiServiceToUi, mapUiServiceToApi } from "@/modules/services/map-to-ui";
-import { useRemoteList } from "@/components/api-hydrator";
+import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
 import { useT } from "@/lib/use-t";
 
 export default function ServicesPage() {
@@ -34,6 +34,7 @@ export default function ServicesPage() {
   const [editService, setEditService] = useState<Service | null>(null);
   const [saving, setSaving] = useState(false);
   const servicesRemote = useRemoteList("services");
+  const { noteListCount } = useApiHydrate();
 
   const filtered = services.filter((s) => {
     if (dateRange?.[0] || dateRange?.[1]) {
@@ -85,6 +86,7 @@ export default function ServicesPage() {
     try {
       await Promise.all(selectedRowKeys.map((id) => servicesApi.archive(String(id))));
       selectedRowKeys.forEach((id) => deleteService(String(id)));
+      noteListCount("services", -selectedRowKeys.length);
       message.success(t("service.deletedN", { count: selectedCount }));
       clearSelection();
     } catch (err) {
@@ -201,6 +203,7 @@ export default function ServicesPage() {
               } else {
                 const created = await servicesApi.create(mapUiServiceToApi(payload));
                 replaceServices([...services, mapApiServiceToUi(created)]);
+                noteListCount("services", 1);
                 message.success(t("service.created"));
               }
               closeForm();

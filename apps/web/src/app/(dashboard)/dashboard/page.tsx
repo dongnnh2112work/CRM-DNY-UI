@@ -290,7 +290,7 @@ export default function DashboardPage() {
               className="crm-dash-card"
               extra={<Link href="/payments">{t("common.viewAll")}</Link>}
             >
-              {previewReady ? (
+              {aggregatesReady ? (
                 upcomingPayments.length ? (
                   <Space orientation="vertical" style={{ width: "100%" }} size={0}>
                     {upcomingPayments.map((p) => (

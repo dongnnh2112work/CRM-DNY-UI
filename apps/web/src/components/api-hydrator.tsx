@@ -32,6 +32,7 @@ import {
   canLoadScope,
   FRESHNESS_MS,
   LIST_FILL_MAX_PAGES,
+  orderDetailListScopes,
   primaryScopeForPath,
   scopesForPath,
   staleMsFor,
@@ -51,7 +52,9 @@ const hydrateInflight = new Map<string, Promise<void>>();
 function aggregateFillScopes(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/payroll")) return ["orders", "payments", "expenses"];
   if (pathname === "/orders") return ["payments", "expenses"];
+  if (orderDetailListScopes(pathname).length) return ["orders", "payments"];
   if (pathname === "/dashboard") return ["orders", "payments", "expenses"];
+  if (pathname === "/payments") return ["orders", "payments"];
   if (pathname === "/vat") return ["vat"];
   return [];
 }
@@ -117,6 +120,7 @@ type ApiRefreshContextValue = {
   dataFresh: boolean;
   lastSyncedAt: number | null;
   listMeta: Partial<Record<RefreshScope, ListSliceMeta>>;
+  noteListCount: (scope: RefreshScope, delta: number) => void;
 };
 
 const ApiRefreshContext = createContext<ApiRefreshContextValue | null>(null);
@@ -143,6 +147,7 @@ export function useApiHydrate() {
     dataFresh: ctx.dataFresh,
     lastSyncedAt: ctx.lastSyncedAt,
     listMeta: ctx.listMeta,
+    noteListCount: ctx.noteListCount,
     refreshCurrent: ctx.refreshCurrent,
     loadMore: ctx.loadMore,
     invalidate: ctx.invalidate,
@@ -219,6 +224,16 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const setListMeta = useCallback((scope: RefreshScope, meta: ListSliceMeta) => {
     setListMetaState((prev) => ({ ...prev, [scope]: meta }));
     pageRef.current[scope] = meta.page;
+  }, []);
+
+  const noteListCount = useCallback((scope: RefreshScope, delta: number) => {
+    setListMetaState((prev) => {
+      const meta = prev[scope];
+      if (!meta || !delta) return prev;
+      const total = Math.max(0, meta.total + delta);
+      const loaded = Math.max(0, Math.min(total, meta.loaded + delta));
+      return { ...prev, [scope]: { ...meta, total, loaded } };
+    });
   }, []);
 
   const resetAllStores = useCallback(() => {
@@ -575,7 +590,10 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       ]);
       return;
     }
-    const due = filterAllowed(scopesForPath(pathname)).filter((scope) => {
+    const due = filterAllowed([
+      ...scopesForPath(pathname),
+      ...orderDetailListScopes(pathname),
+    ]).filter((scope, index, all) => all.indexOf(scope) === index).filter((scope) => {
       const at = fetchedAtRef.current[scope];
       return at == null || Date.now() - at > staleMsFor(scope);
     });
@@ -657,6 +675,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       dataFresh,
       lastSyncedAt,
       listMeta,
+      noteListCount,
     }),
     [
       refresh,
@@ -670,6 +689,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       dataFresh,
       lastSyncedAt,
       listMeta,
+      noteListCount,
     ],
   );
 

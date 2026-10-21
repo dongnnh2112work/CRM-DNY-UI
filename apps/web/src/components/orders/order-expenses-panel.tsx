@@ -11,7 +11,7 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { PaymentRequestDrawer } from "@/components/orders/payment-request-drawer";
 import { DataTable } from "@/components/shared/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -80,6 +80,8 @@ export function OrderExpensesPanel({
   financeReady?: boolean;
 }) {
   const t = useT();
+  const searchId = useId();
+  const dateId = useId();
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   /** Only switch to cards after we know viewport is below md (avoids SSR flash). */
@@ -434,6 +436,8 @@ export function OrderExpensesPanel({
             }}
           >
             <Input.Search
+              id={searchId}
+              autoComplete="off"
               allowClear
               placeholder={t("common.search")}
               value={mobileQuery}
@@ -441,6 +445,7 @@ export function OrderExpensesPanel({
               style={{ width: "100%" }}
             />
             <DatePicker.RangePicker
+              id={{ start: `${dateId}-start`, end: `${dateId}-end` }}
               allowEmpty={[true, true]}
               value={mobileDateRange}
               onChange={(next) => setMobileDateRange(next)}

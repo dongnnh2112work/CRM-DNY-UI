@@ -92,43 +92,66 @@ export function recalcPayment(record: PaymentRecord): PaymentRecord {
   };
 }
 
-/** Chia thu thanh toán HĐ theo tỷ lệ giá trị từng dịch vụ (phần dư vào đơn cuối). */
+/** Đơn còn hiệu lực. Đơn hủy không nhận phần thu khi HĐ còn đơn khác. */
+function sharePool(siblings: Order[]): Order[] {
+  const active = siblings.filter((s) => s.stage !== "cancelled");
+  return active.length > 0 ? active : siblings;
+}
+
+/** Chia thu thanh toán HĐ theo tỷ lệ giá trị từng dịch vụ còn hiệu lực (phần dư vào đơn cuối). */
 export function allocatePaymentShare(
   groupPayment: PaymentRecord | undefined,
   order: Order,
   siblings: Order[],
 ): PaymentRecord | undefined {
   if (!groupPayment) return undefined;
-  const total = groupContractTotal(siblings);
-  if (siblings.length <= 1 || total <= 0) {
+  const groupedOrderIds = siblings.map((s) => s.id);
+  const pool = sharePool(siblings);
+  const inPool = pool.some((s) => s.id === order.id);
+
+  if (!inPool) {
     return recalcPayment({
       ...groupPayment,
       orderId: order.id,
       orderNumber: order.orderNumber,
-      totalAmount: siblings.length <= 1 ? order.value : 0,
-      groupedOrderIds: siblings.map((s) => s.id),
+      totalAmount: Number(order.value) || 0,
+      groupedOrderIds,
+      installments: groupPayment.installments.map((installment) => ({ ...installment, amount: 0 })),
     });
   }
 
-  const index = Math.max(0, siblings.findIndex((s) => s.id === order.id));
-  const isLast = index === siblings.length - 1;
-  const shares = siblings.map((s) => s.value / total);
+  const total = groupContractTotal(pool);
+  if (pool.length <= 1 || total <= 0) {
+    return recalcPayment({
+      ...groupPayment,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      totalAmount: pool.length <= 1 ? order.value : 0,
+      groupedOrderIds,
+    });
+  }
 
-  let totalAmount = Math.round(groupPayment.totalAmount * (shares[index] ?? 0));
-  let installments = groupPayment.installments.map((i) => ({
-    ...i,
-    amount: Math.round(i.amount * (shares[index] ?? 0)),
+  const index = pool.findIndex((s) => s.id === order.id);
+  if (index < 0) return undefined;
+  const isLast = index === pool.length - 1;
+  const shares = pool.map((s) => (Number(s.value) || 0) / total);
+
+  let totalAmount = Math.round(total * (shares[index] ?? 0));
+  let installments = groupPayment.installments.map((installment) => ({
+    ...installment,
+    amount: Math.round(installment.amount * (shares[index] ?? 0)),
   }));
 
   if (isLast) {
     totalAmount = Math.max(
       0,
-      groupPayment.totalAmount -
-        siblings.slice(0, -1).reduce((sum, _, i) => sum + Math.round(groupPayment.totalAmount * shares[i]), 0),
+      total - pool.slice(0, -1).reduce((sum, _, i) => sum + Math.round(total * shares[i]), 0),
     );
-    installments = groupPayment.installments.map((inst, instIdx) => {
-      const prior = siblings.slice(0, -1).reduce((sum, _, i) => sum + Math.round(inst.amount * shares[i]), 0);
-      return { ...inst, amount: Math.max(0, inst.amount - prior) };
+    installments = groupPayment.installments.map((installment) => {
+      const prior = pool
+        .slice(0, -1)
+        .reduce((sum, _, i) => sum + Math.round(installment.amount * shares[i]), 0);
+      return { ...installment, amount: Math.max(0, installment.amount - prior) };
     });
   }
 
@@ -137,7 +160,7 @@ export function allocatePaymentShare(
     orderId: order.id,
     orderNumber: order.orderNumber,
     totalAmount,
-    groupedOrderIds: siblings.map((s) => s.id),
+    groupedOrderIds,
     installments,
   });
 }

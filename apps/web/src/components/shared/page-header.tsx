@@ -3,7 +3,7 @@
 import { Breadcrumb, Button, DatePicker, Input, theme } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { DateRangeValue } from "@/lib/date-range";
 import { rangePickerFormat } from "@/lib/format-date";
 import { useT } from "@/lib/use-t";
@@ -33,6 +33,8 @@ export function PageHeader({
   const router = useRouter();
   const { token } = theme.useToken();
   const t = useT();
+  const searchId = useId();
+  const dateId = useId();
   const items = breadcrumbs.map((b) => ({
     title: b.href ? <Link href={b.href}>{b.title}</Link> : b.title,
   }));
@@ -49,6 +51,8 @@ export function PageHeader({
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         {onSearch !== undefined && (
           <Input.Search
+            id={searchId}
+            autoComplete="off"
             placeholder={searchPlaceholder ?? t("common.search")}
             allowClear
             style={{ width: "100%", maxWidth: 280, minWidth: 0, flex: "1 1 160px" }}
@@ -58,6 +62,7 @@ export function PageHeader({
         )}
         {onDateRangeChange ? (
           <DatePicker.RangePicker
+            id={{ start: `${dateId}-start`, end: `${dateId}-end` }}
             picker={datePicker}
             format={rangePickerFormat(datePicker)}
             allowEmpty={[true, true]}
