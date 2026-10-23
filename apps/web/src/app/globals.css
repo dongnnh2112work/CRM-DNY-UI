@@ -1,56 +1,97 @@
 @import "tailwindcss";
 
+/*
+ * DNY CRM tokens. Values mirror src/lib/design-tokens.ts (`palette`).
+ * --nt-* are the names existing code already uses; --c-* are the semantic aliases from the UI spec.
+ */
 :root {
-  /* Notion design system — light */
-  --nt-primary: #0075de;
+  --nt-primary: #0069c7;
   --nt-primary-active: #005bab;
   --nt-secondary: #213183;
   --nt-on-primary: #ffffff;
   --nt-canvas: #ffffff;
-  --nt-canvas-soft: #f6f5f4;
+  --nt-canvas-soft: #f5f7fa;
   --nt-surface: #ffffff;
-  --nt-ink: #000000;
-  --nt-ink-secondary: #31302e;
-  --nt-ink-muted: #615d59;
-  --nt-ink-faint: #6f6b66;
-  --nt-hairline: #e6e6e6;
-  --nt-hover: rgba(0, 0, 0, 0.04);
-  --nt-selected: rgba(0, 117, 222, 0.08);
-  --nt-accent-sky: #62aef0;
-  --nt-accent-purple: #d6b6f6;
+  --nt-ink: #0f172a;
+  --nt-ink-secondary: #334155;
+  --nt-ink-muted: #475569;
+  --nt-ink-faint: #5b6677;
+  --nt-hairline: #e2e8f0;
+  --nt-border-strong: #8a94a6;
+  --nt-hover: rgba(15, 23, 42, 0.04);
+  --nt-selected: #e8f2fd;
+  --nt-link: #0066c0;
+  --nt-danger: #c62828;
+  --nt-success: #157a2f;
+  --nt-warning: #a34700;
+  --nt-focus-ring: rgba(0, 105, 199, 0.35);
+  --nt-accent-sky: #4a9aea;
+  --nt-accent-purple: #6d4fe0;
   --nt-accent-pink: #ff64c8;
-  --nt-accent-orange: #dd5b00;
-  --nt-accent-teal: #2a9d99;
-  --nt-accent-green: #1aae39;
-  --nt-radius-md: 8px;
-  --nt-radius-lg: 12px;
+  --nt-accent-orange: #d9730d;
+  --nt-accent-teal: #0b8a80;
+  --nt-accent-green: #157a2f;
+  --nt-radius-sm: 6px;
+  --nt-radius-md: 10px;
+  --nt-radius-lg: 14px;
   --nt-radius-full: 9999px;
-  --nt-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
-  /* better-ui surfaces.md — shadow as border for cards */
-  --nt-shadow-border: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06),
-    0 2px 4px rgba(0, 0, 0, 0.04);
-  --nt-shadow-border-hover: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.08),
-    0 2px 4px rgba(0, 0, 0, 0.06);
+  --nt-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  /* Cards: hairline ring + soft lift */
+  --nt-shadow-border: 0 0 0 1px rgba(15, 23, 42, 0.07), 0 1px 2px rgba(15, 23, 42, 0.05);
+  --nt-shadow-border-hover: 0 0 0 1px rgba(15, 23, 42, 0.1), 0 4px 12px rgba(15, 23, 42, 0.08);
+
+  --crm-sidebar-width: 240px;
+  --crm-sidebar-collapsed-width: 64px;
+  --crm-sidebar-bg: #ffffff;
+
+  /* Semantic aliases (UI spec §2) */
+  --c-app-bg: var(--nt-canvas-soft);
+  --c-surface: var(--nt-surface);
+  --c-border: var(--nt-hairline);
+  --c-border-strong: var(--nt-border-strong);
+  --c-text: var(--nt-ink);
+  --c-text-2: var(--nt-ink-muted);
+  --c-text-3: var(--nt-ink-faint);
+  --c-primary: var(--nt-primary);
+  --c-primary-hover: var(--nt-primary-active);
+  --c-primary-bg: var(--nt-selected);
+  --c-link: var(--nt-link);
+  --c-danger: var(--nt-danger);
+  --c-success: var(--nt-success);
+  --c-warning: var(--nt-warning);
 
   --background: var(--nt-canvas-soft);
   --foreground: var(--nt-ink-secondary);
 }
 
 html[data-theme="dark"] {
-  /* True black floor — not muddy #191919 gray (better-ui: hairline for structure) */
-  --nt-canvas: #000000;
-  --nt-canvas-soft: #000000;
-  --nt-surface: #0a0a0a;
-  --nt-ink: #ffffff;
-  --nt-ink-secondary: #e8e6e3;
-  --nt-ink-muted: #a39e98;
-  --nt-ink-faint: #8a8680;
-  --nt-hairline: #222222;
+  --nt-primary: #1a6dc7;
+  --nt-primary-active: #2b7fd9;
+  --nt-canvas: #0f1a2b;
+  --nt-canvas-soft: #070d18;
+  --nt-surface: #0f1a2b;
+  --nt-ink: #e8edf5;
+  --nt-ink-secondary: #e8edf5;
+  --nt-ink-muted: #aab4c5;
+  --nt-ink-faint: #8b97ab;
+  --nt-hairline: #223048;
+  --nt-border-strong: #5b6b85;
   --nt-hover: rgba(255, 255, 255, 0.06);
-  --nt-selected: rgba(0, 117, 222, 0.22);
+  --nt-selected: rgba(43, 140, 240, 0.18);
+  --nt-link: #6cb4ff;
+  --nt-danger: #ff8a80;
+  --nt-success: #5fd382;
+  --nt-warning: #ffb454;
+  --nt-focus-ring: rgba(108, 180, 255, 0.45);
+  --nt-accent-sky: #5aa6ff;
+  --nt-accent-purple: #a48bff;
+  --nt-accent-orange: #ffa24d;
+  --nt-accent-teal: #35c7bb;
+  --nt-accent-green: #5fd382;
   --nt-shadow: none;
-  --nt-shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  --nt-shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
+  --nt-shadow-border: 0 0 0 1px #223048;
+  --nt-shadow-border-hover: 0 0 0 1px #33466a;
+  --crm-sidebar-bg: #0a1322;
 
   --background: var(--nt-canvas-soft);
   --foreground: var(--nt-ink-secondary);
@@ -84,7 +125,7 @@ body {
   color: var(--nt-ink-secondary);
   font-family: var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
   margin: 0;
@@ -92,14 +133,29 @@ body {
 }
 
 a {
-  color: var(--nt-primary);
+  color: var(--nt-link);
+}
+
+/* Money and counters line up in columns */
+.ant-table-cell,
+.ant-statistic-content {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard focus is always visible */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[role="link"]:focus-visible {
+  outline: 2px solid var(--nt-primary);
+  outline-offset: 2px;
 }
 
 .ph-card,
 .nt-card {
   background: var(--nt-surface);
   border: 1px solid var(--nt-hairline);
-  border-radius: var(--nt-radius-lg);
+  border-radius: var(--nt-radius-md);
   box-shadow: var(--nt-shadow);
 }
 
@@ -107,7 +163,7 @@ a {
 .nt-page-shell {
   background: var(--nt-surface);
   border: 1px solid var(--nt-hairline);
-  border-radius: var(--nt-radius-lg);
+  border-radius: var(--nt-radius-md);
   box-shadow: var(--nt-shadow);
   flex: 1;
   min-width: 0;
@@ -222,7 +278,16 @@ html[data-theme="dark"] .guide-mark {
 .crm-sider:not(.ant-layout-sider-collapsed) .ant-menu-submenu-title {
   height: 40px !important;
   line-height: 40px !important;
+  padding-inline: 12px !important;
   white-space: nowrap;
+}
+
+.crm-sider .ant-menu-item,
+.crm-sider .ant-menu-submenu-title {
+  margin-block: 2px;
+  margin-inline: 0;
+  width: 100%;
+  font-weight: 500;
 }
 
 .crm-sider:not(.ant-layout-sider-collapsed) .ant-menu-title-content,
@@ -230,6 +295,90 @@ html[data-theme="dark"] .guide-mark {
   overflow: visible !important;
   text-overflow: unset !important;
   white-space: nowrap !important;
+}
+
+/* Menu links keep the menu colour (not link blue) */
+.crm-sider .ant-menu-item a,
+.crm-sider .ant-menu-item a:hover {
+  color: inherit;
+}
+
+/* Selected item: soft fill + 3px accent bar on the left */
+.crm-sider .ant-menu-item {
+  position: relative;
+}
+
+.crm-sider .ant-menu-item-selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--nt-link);
+}
+
+.crm-sider .ant-menu-item:focus-visible {
+  outline: 2px solid var(--nt-primary);
+  outline-offset: -2px;
+}
+
+/* Group titles (CÔNG VIỆC, TÀI CHÍNH, …) */
+.crm-sider .ant-menu-item-group-title {
+  padding: 16px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nt-ink-faint);
+}
+
+/* Thin line between groups when the sidebar is collapsed to icons */
+.crm-sider .ant-menu-item-divider {
+  margin-block: 8px;
+  border-color: var(--nt-hairline);
+}
+
+/* Logo tile: drawn in CSS, not an image */
+.crm-logo-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 32px;
+  padding-inline: 6px;
+  border-radius: 8px;
+  background: var(--nt-primary);
+  color: var(--nt-on-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* Page header (title row + description) */
+.crm-page-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+  color: var(--nt-ink);
+  letter-spacing: -0.2px;
+}
+
+.crm-page-desc {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nt-ink-muted);
+  max-width: 100ch;
+}
+
+@media (max-width: 767px) {
+  .crm-page-head-action .ant-btn {
+    width: 100%;
+  }
 }
 
 /* Screen-reader-only summaries (charts, etc.) */
