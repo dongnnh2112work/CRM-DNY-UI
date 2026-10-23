@@ -1,4 +1,10 @@
 import type { Order, PaymentInstallment, PaymentRecord, PaymentStatus } from "@/lib/types";
+import {
+  allocateInstallmentsCumulative,
+  allocateLargestRemainder,
+  weightOf,
+  type AllocationTarget,
+} from "@/lib/payment-allocation";
 
 const CHILD_SUFFIX = /-[1-9]\d*$/;
 
@@ -62,8 +68,15 @@ export function groupOrdersByContract(orders: Order[]): Order[][] {
   return [...map.values()].map((group) => [...group].sort(byDossier));
 }
 
+/** Đơn còn hiệu lực. Đơn hủy không nhận phần thu khi HĐ còn đơn khác. Hủy hết thì giữ nguyên cả nhóm. */
+function sharePool(siblings: Order[]): Order[] {
+  const active = siblings.filter((s) => s.stage !== "cancelled");
+  return active.length > 0 ? active : siblings;
+}
+
+/** Tổng giá HĐ (chưa VAT) của các đơn còn hiệu lực. Hủy hết thì tính cả nhóm. Giá âm coi là 0. */
 export function groupContractTotal(siblings: Order[]): number {
-  return siblings.reduce((sum, o) => sum + (Number(o.value) || 0), 0);
+  return sharePool(siblings).reduce((sum, o) => sum + weightOf(o.value), 0);
 }
 
 function paymentStatus(paidAmount: number, totalAmount: number, installments: PaymentInstallment[]): PaymentStatus {
@@ -92,13 +105,16 @@ export function recalcPayment(record: PaymentRecord): PaymentRecord {
   };
 }
 
-/** Đơn còn hiệu lực. Đơn hủy không nhận phần thu khi HĐ còn đơn khác. */
-function sharePool(siblings: Order[]): Order[] {
-  const active = siblings.filter((s) => s.stage !== "cancelled");
-  return active.length > 0 ? active : siblings;
-}
-
-/** Chia thu thanh toán HĐ theo tỷ lệ giá trị từng dịch vụ còn hiệu lực (phần dư vào đơn cuối). */
+/**
+ * Chia thu thanh toán HĐ cho từng dịch vụ còn hiệu lực theo tỷ lệ giá (chưa VAT) của đơn.
+ * Mỗi đợt chia theo tổng lũy kế bằng phần dư lớn nhất (xem payment-allocation.ts):
+ * tổng các phần của một đợt luôn đúng số tiền đợt, không dồn phần dư vào đơn cuối.
+ *
+ * - Đơn hủy (khi HĐ còn đơn khác): totalAmount 0, các đợt 0, remaining 0, status "cancelled".
+ * - Tổng giá các đơn còn hiệu lực = 0 (và có từ 2 đơn): totalAmount mỗi đơn là 0; khoản thu được chia
+ *   đều cho các đơn (không nhân đôi khoản thu cho từng đơn), nên tổng các đơn vẫn đúng số tiền thu.
+ * - Chỉ đợt `paid` được tính là đã thu (do recalcPayment); đợt pending/cancelled vẫn có số chia để hiển thị.
+ */
 export function allocatePaymentShare(
   groupPayment: PaymentRecord | undefined,
   order: Order,
@@ -110,50 +126,48 @@ export function allocatePaymentShare(
   const inPool = pool.some((s) => s.id === order.id);
 
   if (!inPool) {
-    return recalcPayment({
-      ...groupPayment,
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      totalAmount: Number(order.value) || 0,
-      groupedOrderIds,
-      installments: groupPayment.installments.map((installment) => ({ ...installment, amount: 0 })),
-    });
+    return {
+      ...recalcPayment({
+        ...groupPayment,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        totalAmount: 0,
+        groupedOrderIds,
+        installments: groupPayment.installments.map((installment) => ({ ...installment, amount: 0 })),
+      }),
+      remaining: 0,
+      status: "cancelled",
+    };
   }
 
-  const total = groupContractTotal(pool);
-  if (pool.length <= 1 || total <= 0) {
+  if (pool.length <= 1) {
     return recalcPayment({
       ...groupPayment,
       orderId: order.id,
       orderNumber: order.orderNumber,
-      totalAmount: pool.length <= 1 ? order.value : 0,
+      totalAmount: weightOf(order.value),
       groupedOrderIds,
     });
   }
 
   const index = pool.findIndex((s) => s.id === order.id);
   if (index < 0) return undefined;
-  const isLast = index === pool.length - 1;
-  const shares = pool.map((s) => (Number(s.value) || 0) / total);
-
-  let totalAmount = Math.round(total * (shares[index] ?? 0));
-  let installments = groupPayment.installments.map((installment) => ({
-    ...installment,
-    amount: Math.round(installment.amount * (shares[index] ?? 0)),
+  const targets: AllocationTarget[] = pool.map((s) => ({
+    weight: weightOf(s.value),
+    tieKey: String(s.orderNumber ?? ""),
+    id: String(s.id),
   }));
-
-  if (isLast) {
-    totalAmount = Math.max(
-      0,
-      total - pool.slice(0, -1).reduce((sum, _, i) => sum + Math.round(total * shares[i]), 0),
-    );
-    installments = groupPayment.installments.map((installment) => {
-      const prior = pool
-        .slice(0, -1)
-        .reduce((sum, _, i) => sum + Math.round(installment.amount * shares[i]), 0);
-      return { ...installment, amount: Math.max(0, installment.amount - prior) };
-    });
-  }
+  const poolTotal = groupContractTotal(pool);
+  // Tổng giá = 0 thì không có tỷ lệ: chia đều khoản thu để không mất và không nhân đôi tiền.
+  const installmentTargets =
+    poolTotal > 0 ? targets : targets.map((target) => ({ ...target, weight: 1 }));
+  const shares = allocateInstallmentsCumulative(groupPayment.installments, installmentTargets);
+  const installments = groupPayment.installments.map((installment, i) => ({
+    ...installment,
+    amount: shares[i]?.[index] ?? 0,
+  }));
+  // Chia giá HĐ cho chính nó cho ra đúng giá từng đơn; tổng giá = 0 thì mọi đơn là 0.
+  const totalAmount = allocateLargestRemainder(poolTotal, targets)[index] ?? 0;
 
   return recalcPayment({
     ...groupPayment,

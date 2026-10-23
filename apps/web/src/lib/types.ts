@@ -368,7 +368,8 @@ export interface AppNotification {
 
 /* ── Payment ────────────────────────────────────────────────────── */
 
-export type PaymentStatus = "unpaid" | "partial" | "paid" | "overdue";
+/** `cancelled`: bản chia của đơn đã hủy trong HĐ nhiều dịch vụ (không còn nợ). */
+export type PaymentStatus = "unpaid" | "partial" | "paid" | "overdue" | "cancelled";
 
 export interface PaymentInstallment {
   id: string;

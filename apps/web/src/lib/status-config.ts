@@ -39,6 +39,7 @@ export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
     partial: { label: "Một phần", color: "warning" },
     paid: { label: "Đã TT", color: "success" },
     overdue: { label: "Quá hạn", color: "error" },
+    cancelled: { label: "Đã hủy", color: "default" },
   },
   paymentInstallment: {
     pending: { label: "Chờ", color: "warning" },
