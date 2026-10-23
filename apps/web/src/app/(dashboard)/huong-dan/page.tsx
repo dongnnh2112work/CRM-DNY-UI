@@ -12,7 +12,7 @@ export default function GuideIndexPage() {
 
   return (
     <>
-      <PageHeader breadcrumbs={[{ title: "Hướng dẫn" }]} />
+      <PageHeader title={null} breadcrumbs={[{ title: "Hướng dẫn" }]} />
       <GuideShell>
         <h1 style={{ margin: "0 0 8px", fontSize: 24 }}>Hướng dẫn sử dụng</h1>
         <p style={{ marginTop: 0, color: token.colorTextSecondary }}>

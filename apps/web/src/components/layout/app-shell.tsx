@@ -25,7 +25,7 @@ import {
 } from "@ant-design/icons";
 import { useAppConfig } from "@/components/providers/antd-provider";
 import { useApiHydrate } from "@/components/api-hydrator";
-import { App, Avatar, Badge, Button, Dropdown, Empty, Input, Layout, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
+import { App, Avatar, Badge, Button, Dropdown, Empty, Input, Layout, Menu, Result, Space, Tooltip, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -56,6 +56,32 @@ const ROUTE_PAGE: Array<{ prefix: string; page: Parameters<typeof canSeeMenuPage
   { prefix: "/config", page: "config" },
   { prefix: "/dashboard", page: "dashboard" },
 ];
+
+const MOBILE_QUERY = "(max-width: 991px)";
+const SIDEBAR_STORAGE_KEY = "crm_sidebar_collapsed";
+
+function readIsMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+/** Desktop: open by default, remember the user's choice. Mobile: closed (drawer). */
+function readInitialCollapsed(): boolean {
+  if (readIsMobile()) return true;
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function readStoredCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function pageForPath(pathname: string): Parameters<typeof canSeeMenuPage>[0]["page"] | null {
   const hit = ROUTE_PAGE.find((r) => pathname === r.prefix || pathname.startsWith(r.prefix + "/"));
@@ -92,8 +118,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     [router, prefetchPath],
   );
   const { forUser, unreadCount, markRead, markAllRead } = useNotifications();
-  const [collapsed, setCollapsed] = useState(true);
-  const [mobile, setMobile] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(readInitialCollapsed);
+  const [mobile, setMobile] = useState<boolean>(readIsMobile);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const isDark = appTheme === "dark";
 
@@ -104,70 +130,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const unread = userId ? unreadCount(userId) : 0;
 
   const menuItems = useMemo(() => {
-    const payrollItem: MenuItems =
-      payrollScope === "none"
-        ? []
-        : [
-            {
-              key: "/payroll",
-              icon: <CalculatorOutlined />,
-              label: navLink("/payroll", payrollScope === "self" ? t("payroll.myPay") : t("nav.payroll")),
-            },
-          ];
-    const items: MenuItems = [
-      { key: "/dashboard", icon: <DashboardOutlined />, label: navLink("/dashboard", t("nav.dashboard")) },
-      { type: "divider" },
-      { key: "/customers", icon: <TeamOutlined />, label: navLink("/customers", t("nav.customers")) },
-      { key: "/orders", icon: <ProjectOutlined />, label: navLink("/orders", t("nav.orders")) },
-      { type: "divider" },
-      { key: "/payments", icon: <DollarOutlined />, label: navLink("/payments", t("nav.payments")) },
-      {
-        key: "/expense-approvals",
-        icon: <AccountBookOutlined />,
-        label: navLink("/expense-approvals", t("nav.expenses")),
-      },
-      ...payrollItem,
-      { key: "/vat", icon: <FileTextOutlined />, label: navLink("/vat", t("nav.vat")) },
-      { type: "divider" },
-      { key: "/services", icon: <AppstoreOutlined />, label: navLink("/services", t("nav.services")) },
-      { key: "/emails", icon: <MailOutlined />, label: navLink("/emails", t("nav.emails")) },
-      { type: "divider" },
-    ];
-    const usersVisible = can(PERMISSION.userManage) && canSeeMenuPage({ page: "users", apiUser, matrix: pageMatrix });
-    const userChildren: MenuItems = [
-      ...(usersVisible
-        ? [
-            { key: "/users", icon: <UserOutlined />, label: navLink("/users", t("nav.userList")) },
-            {
-              key: "/users/pending",
-              icon: <ClockCircleOutlined />,
-              label: navLink("/users/pending", t("nav.pendingUsers")),
-            },
-          ]
-        : []),
-      ...(can(PERMISSION.roleManage) || can(PERMISSION.permissionManage)
-        ? [
-            {
-              key: "/users/permissions",
-              icon: <SafetyOutlined />,
-              label: navLink("/users/permissions", t("nav.permissions")),
-            },
-          ]
-        : []),
-    ];
-    if (userChildren.length) {
-      items.push({
-        key: "users-group",
-        icon: <UserOutlined />,
-        label: t("nav.users"),
-        children: userChildren,
-      });
-    }
-    items.push({ key: "/config", icon: <SettingOutlined />, label: navLink("/config", t("nav.config")) });
-    items.push({
-      key: "/huong-dan",
-      icon: <QuestionCircleOutlined />,
-      label: navLink("/huong-dan", t("nav.guide")),
+    const navItem = (key: string, icon: ReactNode, labelText: string) => ({
+      key,
+      icon,
+      title: labelText,
+      label: navLink(key, labelText),
     });
     const pageByPath: Record<string, Parameters<typeof canSeeMenuPage>[0]["page"]> = {
       "/orders": "orders",
@@ -183,14 +150,107 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/config": "config",
       "/dashboard": "dashboard",
     };
-    return items.filter((i) => {
-      if (!i) return false;
-      if (!("key" in i) || typeof i.key !== "string") return true;
-      const page = pageByPath[i.key];
-      if (!page) return true;
-      return canSeeMenuPage({ page, apiUser, matrix: pageMatrix });
+    const allowed = (rows: MenuItems): MenuItems =>
+      rows.filter((i) => {
+        if (!i) return false;
+        if (!("key" in i) || typeof i.key !== "string") return true;
+        const page = pageByPath[i.key];
+        if (!page) return true;
+        return canSeeMenuPage({ page, apiUser, matrix: pageMatrix });
+      });
+
+    const payrollItem: MenuItems =
+      payrollScope === "none"
+        ? []
+        : [navItem("/payroll", <CalculatorOutlined />, payrollScope === "self" ? t("payroll.myPay") : t("nav.payroll"))];
+
+    const usersVisible = can(PERMISSION.userManage) && canSeeMenuPage({ page: "users", apiUser, matrix: pageMatrix });
+    const userChildren: MenuItems = [
+      ...(usersVisible
+        ? [
+            navItem("/users", <UserOutlined />, t("nav.userList")),
+            navItem("/users/pending", <ClockCircleOutlined />, t("nav.pendingUsers")),
+          ]
+        : []),
+      ...(can(PERMISSION.roleManage) || can(PERMISSION.permissionManage)
+        ? [navItem("/users/permissions", <SafetyOutlined />, t("nav.permissions"))]
+        : []),
+    ];
+
+    const sections: Array<{ key: string; titleKey: Parameters<typeof t>[0] | null; rows: MenuItems }> = [
+      {
+        key: "main",
+        titleKey: null,
+        rows: [navItem("/dashboard", <DashboardOutlined />, t("nav.dashboard"))],
+      },
+      {
+        key: "work",
+        titleKey: "nav.group.work" as const,
+        rows: [
+          navItem("/customers", <TeamOutlined />, t("nav.customers")),
+          navItem("/orders", <ProjectOutlined />, t("nav.orders")),
+          navItem("/services", <AppstoreOutlined />, t("nav.services")),
+        ],
+      },
+      {
+        key: "finance",
+        titleKey: "nav.group.finance" as const,
+        rows: [
+          navItem("/payments", <DollarOutlined />, t("nav.payments")),
+          navItem("/expense-approvals", <AccountBookOutlined />, t("nav.expenses")),
+          ...payrollItem,
+          navItem("/vat", <FileTextOutlined />, t("nav.vat")),
+        ],
+      },
+      {
+        key: "tools",
+        titleKey: "nav.group.tools" as const,
+        rows: [
+          navItem("/emails", <MailOutlined />, t("nav.emails")),
+          navItem("/huong-dan", <QuestionCircleOutlined />, t("nav.guide")),
+        ],
+      },
+      {
+        key: "admin",
+        titleKey: "nav.group.admin" as const,
+        rows: [
+          ...(userChildren.length
+            ? [
+                {
+                  key: "users-group",
+                  icon: <UserOutlined />,
+                  title: t("nav.users"),
+                  label: t("nav.users"),
+                  children: userChildren,
+                },
+              ]
+            : []),
+          navItem("/config", <SettingOutlined />, t("nav.config")),
+        ],
+      },
+    ]
+      .map((section) => ({ ...section, rows: allowed(section.rows) }))
+      .filter((section) => section.rows.length > 0);
+
+    const items: MenuItems = [];
+    sections.forEach((section, index) => {
+      if (collapsed && !mobile) {
+        // Icon-only sidebar: a thin line replaces the group title.
+        if (index > 0) items.push({ type: "divider", key: `divider-${section.key}` });
+        items.push(...section.rows);
+      } else if (section.titleKey) {
+        items.push({
+          type: "group",
+          key: `group-${section.key}`,
+          label: t(section.titleKey),
+          children: section.rows,
+        });
+      } else {
+        items.push(...section.rows);
+      }
     });
-  }, [t, payrollScope, apiUser, can, pageMatrix, navLink]);
+    return items;
+  }, [t, payrollScope, apiUser, can, pageMatrix, navLink, collapsed, mobile]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
@@ -217,15 +277,30 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname, mobile]);
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 991px)");
+    const media = window.matchMedia(MOBILE_QUERY);
     const apply = () => {
       setMobile(media.matches);
-      if (media.matches) setCollapsed(true);
+      // <992px: closed drawer. ≥992px: back to the user's saved choice (open by default).
+      setCollapsed(media.matches ? true : readStoredCollapsed());
     };
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      if (!mobile) {
+        try {
+          window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "1" : "0");
+        } catch {
+          /* storage unavailable — choice just isn't remembered */
+        }
+      }
+      return next;
+    });
+  }, [mobile]);
 
   const searchTarget = useMemo(() => getHeaderSearchTarget(pathname), [pathname]);
 
@@ -255,14 +330,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       {mobile && !collapsed ? (
         <button
           type="button"
-          aria-label="Đóng menu"
+          aria-label={t("shell.closeMenu")}
           onClick={() => setCollapsed(true)}
           style={{
             position: "fixed",
             inset: 0,
             border: 0,
             padding: 0,
-            background: "rgba(0,0,0,0.35)",
+            background: token.colorBgMask,
             zIndex: 150,
           }}
         />
@@ -272,14 +347,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         collapsible
         trigger={null}
         collapsed={collapsed}
-        collapsedWidth={mobile ? 0 : 80}
+        collapsedWidth={mobile ? 0 : ds.sidebarCollapsedWidth}
         zeroWidthTriggerStyle={{ display: "none" }}
         onCollapse={setCollapsed}
-        width={280}
-        theme={isDark ? "dark" : "light"}
+        width={ds.sidebarWidth}
+        theme="light"
         style={{
-          background: token.colorBgContainer,
-          borderRight: `1px solid ${token.colorBorder}`,
+          background: "var(--crm-sidebar-bg)",
+          borderRight: `1px solid ${token.colorBorderSecondary}`,
           ...(mobile
             ? {
                 position: "fixed",
@@ -293,23 +368,27 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <div
           style={{
-            height: 48,
-            margin: "0 8px",
+            height: 56,
             display: "flex",
             alignItems: "center",
             justifyContent: collapsed ? "center" : "flex-start",
-            paddingInline: collapsed ? 0 : 12,
+            gap: 10,
+            paddingInline: collapsed ? 0 : 16,
             color: token.colorText,
             fontWeight: 700,
-            fontSize: collapsed ? ds.fontSize.bodySm : ds.fontSize.body,
-            letterSpacing: "-0.3px",
+            fontSize: ds.fontSize.body,
+            letterSpacing: "-0.2px",
+            flexShrink: 0,
           }}
         >
-          {collapsed ? "DNY" : "DNY CRM"}
+          <span className="crm-logo-tile" aria-hidden={!collapsed}>
+            DNY
+          </span>
+          {collapsed ? null : <span>DNY CRM</span>}
         </div>
         <Menu
           mode="inline"
-          theme={isDark ? "dark" : "light"}
+          theme="light"
           selectedKeys={[selectedKey]}
           openKeys={collapsed ? undefined : openKeys}
           onOpenChange={setOpenKeys}
@@ -317,7 +396,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           style={{
             background: "transparent",
             borderInlineEnd: "none",
-            padding: "4px 8px",
+            padding: "4px 12px 16px",
             fontWeight: 500,
             fontSize: ds.fontSize.bodySm,
           }}
@@ -328,22 +407,25 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="crm-header"
           style={{
             padding: "0 20px",
-            height: 48,
-            lineHeight: "48px",
+            height: 56,
+            lineHeight: "56px",
             display: "flex",
             alignItems: "center",
             gap: 12,
-            flex: "0 0 48px",
-            borderBottom: `1px solid ${token.colorBorder}`,
+            flex: "0 0 56px",
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
             background: token.colorBgContainer,
           }}
         >
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            style={{ borderRadius: token.borderRadius }}
-          />
+          <Tooltip title={collapsed ? t("shell.expandMenu") : t("shell.collapseMenu")}>
+            <Button
+              type="text"
+              aria-label={collapsed ? t("shell.expandMenu") : t("shell.collapseMenu")}
+              aria-expanded={!collapsed}
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={toggleSidebar}
+            />
+          </Tooltip>
           <Input.Search
             id="header-search"
             autoComplete="off"
@@ -360,19 +442,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                   })
                 : t("shell.lastSyncedNever")}
             </Typography.Text>
-            <Button
-              type="text"
-              icon={<ReloadOutlined spin={refreshing} />}
-              onClick={() => void refreshCurrent()}
-              title={t("shell.refreshData")}
-              style={{ borderRadius: token.borderRadius }}
-            />
-            <Button
-              type="text"
-              icon={isDark ? <SunOutlined /> : <MoonOutlined />}
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              style={{ borderRadius: token.borderRadius }}
-            />
+            <Tooltip title={t("shell.refreshData")}>
+              <Button
+                type="text"
+                aria-label={t("shell.refreshData")}
+                icon={<ReloadOutlined spin={refreshing} />}
+                onClick={() => void refreshCurrent()}
+              />
+            </Tooltip>
+            <Tooltip title={t("shell.toggleTheme")}>
+              <Button
+                type="text"
+                aria-label={t("shell.toggleTheme")}
+                icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+              />
+            </Tooltip>
             <Dropdown
               trigger={["click"]}
               placement="bottomRight"
@@ -446,11 +531,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             >
               <Badge count={unread} size="small" offset={[-2, 2]}>
-                <Button
-                  type="text"
-                  icon={<BellOutlined />}
-                  style={{ borderRadius: token.borderRadius }}
-                />
+                <Tooltip title={t("shell.notifications")}>
+                  <Button type="text" aria-label={t("shell.openNotifications")} icon={<BellOutlined />} />
+                </Tooltip>
               </Badge>
             </Dropdown>
             <Dropdown
@@ -481,20 +564,22 @@ export function AppShell({ children }: { children: ReactNode }) {
               trigger={["click"]}
               placement="bottomRight"
             >
-              <Space style={{ cursor: "pointer", paddingInline: 4 }} size={8}>
-                <Avatar
-                  size="small"
-                  src={currentUser?.avatar}
-                  icon={<UserOutlined />}
-                  style={{
-                    background: isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
-                    color: token.colorText,
-                  }}
-                />
-                <Typography.Text className="crm-user-name" style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
-                  {displayName}
-                </Typography.Text>
-              </Space>
+              <Tooltip title={t("shell.userMenu")}>
+                <Button type="text" aria-label={t("shell.userMenu")} style={{ paddingInline: 8, height: 40 }}>
+                  <Avatar
+                    size="small"
+                    src={currentUser?.avatar}
+                    icon={<UserOutlined />}
+                    style={{
+                      background: token.colorFillSecondary,
+                      color: token.colorText,
+                    }}
+                  />
+                  <Typography.Text className="crm-user-name" style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
+                    {displayName}
+                  </Typography.Text>
+                </Button>
+              </Tooltip>
             </Dropdown>
           </Space>
         </Header>
