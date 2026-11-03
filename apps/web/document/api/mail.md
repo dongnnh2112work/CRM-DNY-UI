@@ -7,7 +7,7 @@
 
 ```bash
 RESEND_API_KEY=re_xxxxxxxx
-MAIL_FROM="DYN CRM <noreply@your-verified-domain.com>"
+MAIL_FROM="DNY CRM <noreply@your-verified-domain.com>"
 ```
 
 - Domain phải verify trên [Resend](https://resend.com/domains).
