@@ -55,6 +55,7 @@ import { matchesTableQuery } from "@/lib/table-search";
 import type { Order, OrderStage } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { useServices } from "@/lib/services-store";
+import { isOrderListOverdue } from "@/lib/overdue-highlight";
 import { useT } from "@/lib/use-t";
 
 function compareText(a: string, b: string) {
@@ -293,9 +294,21 @@ export default function OrdersPage() {
       sorter: (a, b) => compareText(a.orderNumber, b.orderNumber),
       render: (v, r) => {
         const n = siblingOrders(orders, r).length;
+        const overdue = isOrderListOverdue({
+          stage: r.stage,
+          deadline: r.deadline,
+          needsVat: r.needsVat,
+          vatIssueDeadline: r.vatIssueDeadline,
+          licenseTone: getOrderLicenseExpirySummary(r, licenseWarnMonthsForOrder(r, services)).tone,
+        });
         return (
           <>
             <Link href={`/orders/${r.id}`}>{v}</Link>
+            {overdue ? (
+              <Tag color="error" style={{ marginLeft: 6 }}>
+                {t("common.overdue")}
+              </Tag>
+            ) : null}
             {n > 1 ? (
               <Tag style={{ marginLeft: 6 }}>{t("order.groupTag", { count: n })}</Tag>
             ) : null}
@@ -497,6 +510,17 @@ export default function OrdersPage() {
           onSelectedRowKeysChange={setSelectedRowKeys}
           emptyDescription={listEmptyDescription}
           emptyAction={listEmptyAction}
+          onRow={(record) =>
+            isOrderListOverdue({
+              stage: record.stage,
+              deadline: record.deadline,
+              needsVat: record.needsVat,
+              vatIssueDeadline: record.vatIssueDeadline,
+              licenseTone: getOrderLicenseExpirySummary(record, licenseWarnMonthsForOrder(record, services)).tone,
+            })
+              ? { className: "crm-row-overdue" }
+              : {}
+          }
           bulkToolbar={
             <BulkActionBar count={selectedCount}>
               <Button size="small" onClick={bulkExport}>

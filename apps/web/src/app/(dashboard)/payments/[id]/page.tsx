@@ -31,6 +31,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { isInstallmentVisuallyOverdue } from "@/lib/overdue-highlight";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -342,9 +343,11 @@ export default function PaymentDetailPage() {
           enableLocalSearch
           emptyDescription={t("payment.noInstallments")}
           columns={installmentColumns}
-          onRow={(row) =>
-            row.status === "cancelled" ? { style: { opacity: 0.45 } } : {}
-          }
+          onRow={(row) => {
+            if (row.status === "cancelled") return { style: { opacity: 0.45 } };
+            if (isInstallmentVisuallyOverdue(row)) return { className: "crm-row-overdue" };
+            return {};
+          }}
         />
       </div>
 

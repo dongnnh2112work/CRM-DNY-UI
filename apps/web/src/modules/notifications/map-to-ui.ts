@@ -1,47 +1,31 @@
-import type { AppNotification, AppNotificationType } from "@/lib/types";
+import type { AppNotification } from "@/lib/types";
 import type { ApiNotification } from "@/modules/notifications/api";
-
-const TYPES = new Set<AppNotificationType>([
-  "task_assigned",
-  "order_overdue",
-  "license_expiring",
-  "vat_deadline_approaching",
-  "expense_pending",
-  "expense_reviewed",
-  "user_pending",
-  "user_approved",
-  "email_sent",
-  "email_failed",
-]);
-
-function mapType(type: string): AppNotificationType {
-  return TYPES.has(type as AppNotificationType) ? (type as AppNotificationType) : "task_assigned";
-}
-
-function hrefOf(n: ApiNotification): string | undefined {
-  const fromServer = n.href?.trim();
-  if (fromServer) return fromServer;
-  if (n.type === "expense_pending" || n.type === "expense_reviewed") return "/expense-approvals";
-  if ((n.type === "task_assigned" || n.sourceType === "order") && n.sourceId) {
-    return `/orders/${n.sourceId}`;
-  }
-  if (n.sourceType === "payment" && n.sourceId) return `/payments/${n.sourceId}`;
-  if (n.sourceType === "user") {
-    return n.type === "user_approved" ? "/dashboard" : "/users/pending";
-  }
-  if (n.sourceType === "email") return "/emails";
-  return undefined;
-}
+import {
+  categoryForType,
+  isKnownNotificationType,
+  normalizeCategory,
+  notificationHref,
+} from "@/modules/notifications/model";
 
 export function mapApiNotificationToUi(n: ApiNotification): AppNotification {
+  const rawType = n.type;
+  const category = normalizeCategory(n.category) ?? categoryForType(rawType);
   return {
     id: n.id,
     userId: n.recipientUserId,
-    type: mapType(n.type),
-    title: n.title,
+    type: isKnownNotificationType(rawType) ? rawType : "unknown",
+    rawType: isKnownNotificationType(rawType) ? undefined : rawType,
+    category,
+    title: n.title?.trim() ?? "",
     body: n.body ?? "",
-    href: hrefOf(n),
-    orderId: n.sourceType === "order" ? n.sourceId ?? undefined : undefined,
+    href: notificationHref({
+      href: n.href,
+      type: n.type,
+      category,
+      sourceType: n.sourceType,
+      sourceId: n.sourceId,
+    }),
+    orderId: n.sourceType === "order" ? (n.sourceId ?? undefined) : undefined,
     read: Boolean(n.readAt),
     createdAt: n.createdAt,
     dedupeKey: n.dedupeKey ?? undefined,

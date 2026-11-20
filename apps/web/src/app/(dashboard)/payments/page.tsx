@@ -20,6 +20,7 @@ import { useT } from "@/lib/use-t";
 import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
 import { PageLoading } from "@/components/shared/page-loading";
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
+import { isPaymentListOverdue } from "@/lib/overdue-highlight";
 import { useSession } from "@/lib/session/session-provider";
 
 function compareText(a: string, b: string) {
@@ -213,6 +214,7 @@ export default function PaymentsPage() {
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}
+        onRow={(record) => (isPaymentListOverdue(record) ? { className: "crm-row-overdue" } : {})}
         emptyDescription={
           hasActiveFilters && payments.length > 0
             ? t("common.noResults")
