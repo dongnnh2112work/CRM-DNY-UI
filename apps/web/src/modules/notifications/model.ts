@@ -39,6 +39,7 @@ const TYPE_CATEGORY: Record<string, NotificationCategory> = {
   user_approved: "users",
   email_sent: "emails",
   email_failed: "emails",
+  order_mentioned: "orders",
 };
 
 export const KNOWN_NOTIFICATION_TYPES = Object.keys(TYPE_CATEGORY) as AppNotificationType[];
@@ -56,6 +57,7 @@ const LABEL_KEYS = {
   user_approved: "notif.type.user_approved",
   email_sent: "notif.type.email_sent",
   email_failed: "notif.type.email_failed",
+  order_mentioned: "notif.type.order_mentioned",
 } as const;
 
 export type NotificationLabelKey = (typeof LABEL_KEYS)[keyof typeof LABEL_KEYS] | "notif.type.unknown";
@@ -73,6 +75,7 @@ export type NotificationIconKey =
   | "user-approved"
   | "email-sent"
   | "email-failed"
+  | "mention"
   | "bell";
 
 export type NotificationTone = "danger" | "warning" | "success" | "info";
@@ -159,6 +162,8 @@ export function notificationVisual(
       return { icon: "email-sent", tone: "success" };
     case "email_failed":
       return { icon: "email-failed", tone: "danger" };
+    case "order_mentioned":
+      return { icon: "mention", tone: "info" };
     default:
       return { icon: "bell", tone: "info" };
   }
@@ -233,6 +238,7 @@ export function notificationHref(input: {
   const sourceType = input.sourceType?.trim().toLowerCase() ?? "";
   const sourceId = input.sourceId?.trim() ?? "";
 
+  if (type === "order_mentioned" && sourceId) return `/orders/${sourceId}?tab=notes`;
   if (sourceType === "order" && sourceId) return `/orders/${sourceId}`;
   if (sourceType === "expense") return "/expense-approvals";
   if (sourceType === "payment") return sourceId ? `/payments/${sourceId}` : "/payments";

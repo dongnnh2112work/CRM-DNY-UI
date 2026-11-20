@@ -4,8 +4,9 @@ import { PlusOutlined } from "@ant-design/icons";
 import { App, Button, Checkbox, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Tabs, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { OrderDiscussion } from "@/components/orders/order-discussion";
 import { OrderDocuments } from "@/components/orders/order-documents";
 import { OrderExpensesPanel } from "@/components/orders/order-expenses-panel";
 import { LicenseUpload } from "@/components/orders/license-upload";
@@ -34,6 +35,7 @@ import {
   nextContractNumber,
   serviceDisplayName,
 } from "@/lib/order-helpers";
+import { resolveOrderDetailTab } from "@/lib/order-detail-tab";
 import { allocatePaymentShare, nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
@@ -153,12 +155,16 @@ function attachmentsFromDocs(docs: ApiDocument[], userName: Map<string, string>)
   };
 }
 
-export default function OrderDetailPage() {
+function OrderDetailPage() {
   const t = useT();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { message, modal } = App.useApp();
   const { status: sessionStatus, can, user: sessionUser } = useSession();
+  const canViewDiscussion = can(PERMISSION.orderView);
+  const requestedTab = searchParams.get("tab");
+  const activeTab = resolveOrderDetailTab(requestedTab, canViewDiscussion);
   const { listMeta } = useApiHydrate();
   const financeListsReady =
     isListSliceSettled(listMeta.orders, canLoadScope("orders", sessionUser?.permissions)) &&
@@ -196,6 +202,24 @@ export default function OrderDetailPage() {
     () => nextContractNumber(orders.filter((o) => o.id !== id)),
     [orders, id],
   );
+
+  const setOrderTab = (key: string) => {
+    const next = resolveOrderDetailTab(key, canViewDiscussion);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "expenses") params.delete("tab");
+    else params.set("tab", next);
+    const qs = params.toString();
+    router.replace(qs ? `/orders/${id}?${qs}` : `/orders/${id}`, { scroll: false });
+  };
+
+  useEffect(() => {
+    if (sessionStatus !== "authenticated") return;
+    if (requestedTab !== "notes" || canViewDiscussion) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("tab");
+    const qs = params.toString();
+    router.replace(qs ? `/orders/${id}?${qs}` : `/orders/${id}`, { scroll: false });
+  }, [canViewDiscussion, id, requestedTab, router, searchParams, sessionStatus]);
 
   const catalogsRef = useRef({ users, customers, services });
   catalogsRef.current = { users, customers, services };
@@ -684,6 +708,8 @@ export default function OrderDetailPage() {
         </Descriptions>
 
         <Tabs
+          activeKey={activeTab}
+          onChange={setOrderTab}
           items={[
             {
               key: "expenses",
@@ -717,6 +743,18 @@ export default function OrderDetailPage() {
                 </div>
               ),
             },
+            ...(canViewDiscussion
+              ? [
+                  {
+                    key: "notes",
+                    label: t("order.discussionTab"),
+                    children:
+                      activeTab === "notes" ? (
+                        <OrderDiscussion orderId={order.id} canCompose={can(PERMISSION.orderUpdate)} />
+                      ) : null,
+                  },
+                ]
+              : []),
           ]}
         />
       </div>
@@ -1049,5 +1087,13 @@ export default function OrderDetailPage() {
         </Form>
       </Modal>
     </>
+  );
+}
+
+export default function OrderDetailRoute() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <OrderDetailPage />
+    </Suspense>
   );
 }

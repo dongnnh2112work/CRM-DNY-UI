@@ -10,6 +10,7 @@ import {
   FieldTimeOutlined,
   FileTextOutlined,
   MailOutlined,
+  MessageOutlined,
   SafetyCertificateOutlined,
   UserAddOutlined,
   WarningOutlined,
@@ -40,6 +41,7 @@ const ICONS: Record<NotificationIconKey, ReactNode> = {
   "user-approved": <CheckCircleOutlined />,
   "email-sent": <MailOutlined />,
   "email-failed": <CloseCircleOutlined />,
+  mention: <MessageOutlined />,
   bell: <BellOutlined />,
 };
 
