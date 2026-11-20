@@ -109,6 +109,21 @@ describe("notification presentation", () => {
     );
     expect(notificationHref({ type: "email_sent", sourceType: "email", sourceId: "m1" })).toBe("/emails");
     expect(notificationHref({ type: "vat_overdue", sourceType: "order", sourceId: "o1" })).toBe("/orders/o1");
+    expect(
+      notificationHref({
+        href: "/orders/order-9?tab=notes",
+        type: "order_mentioned",
+        category: "orders",
+        sourceType: "order",
+        sourceId: "order-9",
+      }),
+    ).toBe("/orders/order-9?tab=notes");
+    expect(
+      notificationHref({ type: "order_mentioned", category: "orders", sourceType: "order", sourceId: "order-9" }),
+    ).toBe("/orders/order-9?tab=notes");
+    expect(categoryForType("order_mentioned")).toBe("orders");
+    expect(notificationLabelKey("order_mentioned")).toBe("notif.type.order_mentioned");
+    expect(notificationVisual("order_mentioned").icon).toBe("mention");
     expect(notificationHref({ type: "something_new", sourceType: "order", sourceId: "o9" })).toBe("/orders/o9");
     expect(notificationHref({ type: "something_new" })).toBeUndefined();
   });
