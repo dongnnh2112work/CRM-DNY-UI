@@ -1,7 +1,8 @@
 "use client";
 
-import { App, Alert, Button, Empty, Input, Popconfirm, Select, Spin, Typography, theme } from "antd";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { App, Alert, Button, Empty, Popconfirm, Spin, Typography, theme } from "antd";
+import { useEffect, useState } from "react";
+import { MentionComposer, PersonAvatar } from "@/components/orders/mention-composer";
 import { ds } from "@/lib/design-tokens";
 import { formatDisplayDateTime } from "@/lib/format-date";
 import { ApiError } from "@/lib/http/errors";
@@ -10,6 +11,7 @@ import { useNotifications } from "@/lib/notifications-store";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { notesApi } from "@/modules/notes/api";
+import { mentionIdsInText, relativeAge, splitMentionTokens, type MentionRef } from "@/modules/notes/mentions";
 import {
   buildOrderNotePayload,
   buildOrderNoteUpdate,
@@ -19,17 +21,6 @@ import {
   type ApiNote,
   type HttpProblem,
 } from "@/modules/notes/model";
-import { usersDirectoryApi, type DirectoryUser } from "@/modules/users/directory";
-
-const NOTE_MAX = 4000;
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  const first = parts[0]?.slice(0, 1) ?? "";
-  const last = parts.length > 1 ? parts[parts.length - 1]?.slice(0, 1) ?? "" : "";
-  return `${first}${last}`.toUpperCase();
-}
 
 function displayPerson(name: string, id: string) {
   const trimmed = name.trim();
@@ -37,18 +28,16 @@ function displayPerson(name: string, id: string) {
   return trimmed;
 }
 
-function mentionLabels(note: ApiNote) {
-  const labels: string[] = [];
-  const count = Math.max(note.mentionedUserNames.length, note.mentionedUserIds.length);
-  for (let index = 0; index < count; index += 1) {
+function mentionsFromNote(note: ApiNote): MentionRef[] {
+  return note.mentionedUserIds.flatMap((id, index) => {
+    if (!isUuid(id)) return [];
     const name = note.mentionedUserNames[index]?.trim();
-    if (!name || isUuid(name)) continue;
-    labels.push(name);
-  }
-  return labels;
+    if (!name || isUuid(name)) return [];
+    return [{ id, displayName: name }];
+  });
 }
 
-function withSelectedNames(note: ApiNote, selected: DirectoryUser[]): ApiNote {
+function withSelectedNames(note: ApiNote, selected: readonly MentionRef[]): ApiNote {
   const serverNames = note.mentionedUserNames.some((name) => name.trim() && !isUuid(name.trim()));
   if (serverNames) return note;
   const byId = new Map(selected.map((user) => [user.id, user.displayName]));
@@ -56,15 +45,6 @@ function withSelectedNames(note: ApiNote, selected: DirectoryUser[]): ApiNote {
     ...note,
     mentionedUserNames: note.mentionedUserIds.map((id) => byId.get(id) ?? ""),
   };
-}
-
-function mentionsFromNote(note: ApiNote): DirectoryUser[] {
-  return note.mentionedUserIds.flatMap((id, index) => {
-    if (!isUuid(id)) return [];
-    const name = note.mentionedUserNames[index]?.trim();
-    const displayName = name && !isUuid(name) ? name : "";
-    return [{ id, displayName, email: "" }];
-  });
 }
 
 function writeFailure(err: unknown, denied: string, missing: string, fallback: string) {
@@ -75,235 +55,19 @@ function writeFailure(err: unknown, denied: string, missing: string, fallback: s
   return fallback;
 }
 
-function MentionChip({ name }: { name: string }) {
+function CommentText({ content, mentions }: { content: string; mentions: readonly MentionRef[] }) {
+  const segments = splitMentionTokens(content, mentions);
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "2px 8px 2px 6px",
-        borderRadius: ds.radius.full,
-        background: "rgba(0, 117, 222, 0.10)",
-        color: ds.primary,
-        fontSize: ds.fontSize.caption,
-        fontWeight: 600,
-        lineHeight: "18px",
-      }}
-    >
-      <span aria-hidden>@</span>
-      {name}
-    </span>
-  );
-}
-
-function MentionPicker({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: DirectoryUser[];
-  disabled: boolean;
-  onChange: (users: DirectoryUser[]) => void;
-}) {
-  const t = useT();
-  const requestId = useRef(0);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<DirectoryUser[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [problem, setProblem] = useState<HttpProblem | null>(null);
-
-  const optionUsers = useMemo(() => {
-    const map = new Map<string, DirectoryUser>();
-    for (const user of value) map.set(user.id, user);
-    for (const user of options) map.set(user.id, user);
-    return [...map.values()];
-  }, [options, value]);
-
-  useEffect(() => {
-    if (!open || disabled) return;
-    const ticket = ++requestId.current;
-    const handle = window.setTimeout(() => {
-      setSearching(true);
-      usersDirectoryApi
-        .search(query.trim())
-        .then((rows) => {
-          if (ticket !== requestId.current) return;
-          setOptions(rows);
-          setProblem(null);
-        })
-        .catch((err: unknown) => {
-          if (ticket !== requestId.current) return;
-          setOptions([]);
-          setProblem(httpProblem(err));
-        })
-        .finally(() => {
-          if (ticket === requestId.current) setSearching(false);
-        });
-    }, 280);
-    return () => window.clearTimeout(handle);
-  }, [disabled, open, query]);
-
-  const emptyLabel =
-    problem === "forbidden"
-      ? t("order.discussionMentionDenied")
-      : problem === "missing"
-        ? t("order.discussionDirectoryUnavailable")
-        : problem === "error"
-          ? t("order.discussionMentionFailed")
-          : t("order.discussionMentionEmpty");
-
-  return (
-    <Select
-      mode="multiple"
-      allowClear
-      disabled={disabled}
-      showSearch={{ filterOption: false }}
-      filterOption={false}
-      aria-label={t("order.discussionMention")}
-      placeholder={t("order.discussionMentionPh")}
-      value={value.map((user) => user.id)}
-      options={optionUsers.map((user) => ({
-        value: user.id,
-        label: user.displayName || user.email,
-      }))}
-      optionRender={(option) => {
-        const user = optionUsers.find((item) => item.id === option.value);
-        return (
-          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
-            <span>{user?.displayName || option.label}</span>
-            {user?.email ? (
-              <span style={{ fontSize: ds.fontSize.caption, color: ds.inkMuted }}>{user.email}</span>
-            ) : null}
-          </div>
-        );
-      }}
-      tagRender={(tag) => (
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            marginInlineEnd: 4,
-            padding: "0 6px",
-            borderRadius: ds.radius.full,
-            background: "rgba(0, 117, 222, 0.10)",
-            color: ds.primary,
-            fontSize: ds.fontSize.caption,
-            fontWeight: 600,
-            lineHeight: "22px",
-          }}
-        >
-          @{tag.label}
-          {tag.closable ? (
-            <span
-              role="button"
-              aria-label={t("common.delete")}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onClick={tag.onClose}
-              style={{ cursor: "pointer", fontWeight: 500 }}
-            >
-              ×
-            </span>
-          ) : null}
-        </span>
+    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: ds.fontSize.bodySm, lineHeight: 1.45 }}>
+      {segments.map((segment, index) =>
+        segment.kind === "mention" ? (
+          <span key={`${segment.id}-${index}`} className="crm-mention">
+            @{segment.displayName}
+          </span>
+        ) : (
+          <span key={`text-${index}`}>{segment.text}</span>
+        ),
       )}
-      onOpenChange={setOpen}
-      onSearch={setQuery}
-      onChange={(ids) => {
-        const selected = new Map(optionUsers.map((user) => [user.id, user]));
-        const next = (Array.isArray(ids) ? ids : []).flatMap((id) => {
-          const user = typeof id === "string" ? selected.get(id) : undefined;
-          return user ? [user] : [];
-        });
-        onChange(next);
-      }}
-      notFoundContent={searching ? <Spin size="small" /> : emptyLabel}
-      style={{ width: "100%" }}
-    />
-  );
-}
-
-function DiscussionComposer({
-  canCompose,
-  submitting,
-  submitLabel,
-  initialContent = "",
-  initialMentions = [],
-  onSubmit,
-  onCancel,
-}: {
-  canCompose: boolean;
-  submitting: boolean;
-  submitLabel: string;
-  initialContent?: string;
-  initialMentions?: DirectoryUser[];
-  onSubmit: (content: string, mentions: DirectoryUser[]) => Promise<void>;
-  onCancel?: () => void;
-}) {
-  const t = useT();
-  const { token } = theme.useToken();
-  const [content, setContent] = useState(initialContent);
-  const [mentions, setMentions] = useState<DirectoryUser[]>(initialMentions);
-  const ready = canCompose && content.trim().length > 0 && !submitting;
-
-  return (
-    <div
-      style={{
-        background: token.colorBgContainer,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: ds.radius.lg,
-        padding: 12,
-        boxShadow: ds.shadow,
-      }}
-    >
-      <Input.TextArea
-        value={content}
-        disabled={!canCompose || submitting}
-        maxLength={NOTE_MAX}
-        autoSize={{ minRows: onCancel ? 2 : 3, maxRows: 8 }}
-        placeholder={t("order.discussionPlaceholder")}
-        aria-label={t("order.discussionPlaceholder")}
-        variant="borderless"
-        onChange={(event) => setContent(event.target.value)}
-        onKeyDown={(event) => {
-          if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && ready) {
-            event.preventDefault();
-            void onSubmit(content, mentions);
-          }
-        }}
-        style={{ paddingInline: 4, fontSize: ds.fontSize.bodySm }}
-      />
-      <div style={{ marginTop: 8 }}>
-        <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, display: "block", marginBottom: 6 }}>
-          {t("order.discussionMention")}
-        </Typography.Text>
-        <MentionPicker value={mentions} disabled={!canCompose || submitting} onChange={setMentions} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 10 }}>
-        <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-          {canCompose ? t("order.discussionHint") : t("order.discussionNeedUpdate")}
-        </Typography.Text>
-        <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
-          {onCancel ? (
-            <Button onClick={onCancel} disabled={submitting}>
-              {t("common.cancel")}
-            </Button>
-          ) : null}
-          <Button
-            type="primary"
-            loading={submitting}
-            disabled={!ready}
-            onClick={() => void onSubmit(content, mentions)}
-          >
-            {submitLabel}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -315,6 +79,7 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
   const { user } = useSession();
   const { refreshInbox } = useNotifications();
   const currentUserId = user?.id ?? null;
+  const authorName = user?.displayName || user?.email || "";
   const [notes, setNotes] = useState<ApiNote[]>([]);
   const [problem, setProblem] = useState<HttpProblem | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -348,11 +113,20 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
     };
   }, [orderId, reloadToken]);
 
-  const publish = async (content: string, mentions: DirectoryUser[]) => {
+  const timeLabel = (iso: string) => {
+    const age = relativeAge(iso);
+    if (age.unit === "justNow") return t("time.justNow");
+    if (age.unit === "minutes") return t("time.minutesAgo", { n: age.n });
+    if (age.unit === "hours") return t("time.hoursAgo", { n: age.n });
+    if (age.unit === "days") return t("time.daysAgo", { n: age.n });
+    return formatDisplayDateTime(iso);
+  };
+
+  const publish = async (content: string, mentions: MentionRef[]) => {
     const payload = buildOrderNotePayload({
       orderId,
       content,
-      mentionedUserIds: mentions.map((item) => item.id),
+      mentionedUserIds: mentionIdsInText(content, mentions),
     });
     if (!payload.content) {
       message.warning(t("order.discussionContentRequired"));
@@ -375,10 +149,10 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
     }
   };
 
-  const saveEdit = async (note: ApiNote, content: string, mentions: DirectoryUser[]) => {
+  const saveEdit = async (note: ApiNote, content: string, mentions: MentionRef[]) => {
     const body = buildOrderNoteUpdate({
       content,
-      mentionedUserIds: mentions.map((item) => item.id),
+      mentionedUserIds: mentionIdsInText(content, mentions),
     });
     if (!body.content) {
       message.warning(t("order.discussionContentRequired"));
@@ -388,7 +162,12 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
     try {
       const updated = await notesApi.update(note.id, body);
       const next = withSelectedNames(
-        updated ?? { ...note, content: body.content, mentionedUserIds: body.mentionedUserIds, updatedAt: new Date().toISOString() },
+        updated ?? {
+          ...note,
+          content: body.content,
+          mentionedUserIds: body.mentionedUserIds,
+          updatedAt: new Date().toISOString(),
+        },
         mentions,
       );
       setNotes((prev) => sortNotesNewestFirst(prev.map((item) => (item.id === note.id ? next : item))));
@@ -413,7 +192,12 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
       message.success(t("order.discussionDeleted"));
     } catch (err) {
       message.error(
-        writeFailure(err, t("order.discussionWriteForbidden"), t("order.discussionUnavailable"), t("order.discussionDeleteFailed")),
+        writeFailure(
+          err,
+          t("order.discussionWriteForbidden"),
+          t("order.discussionUnavailable"),
+          t("order.discussionDeleteFailed"),
+        ),
       );
     } finally {
       setBusyId(null);
@@ -429,8 +213,11 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
           ? t("order.discussionLoadError")
           : null;
 
+  const chronological = [...notes].reverse();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <style>{`.crm-mention { color: ${ds.primary}; font-weight: 700; }`}</style>
       {problemMessage ? (
         <Alert
           type={problem === "error" ? "error" : problem === "forbidden" ? "warning" : "info"}
@@ -438,23 +225,13 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
           title={problemMessage}
           action={
             problem === "forbidden" ? undefined : (
-              <Button size="small" onClick={() => setReloadToken((token) => token + 1)}>
+              <Button size="small" onClick={() => setReloadToken((value) => value + 1)}>
                 {t("order.discussionRetry")}
               </Button>
             )
           }
         />
       ) : null}
-
-      {problem === "forbidden" ? null : (
-        <DiscussionComposer
-          key={composerKey}
-          canCompose={canCompose}
-          submitting={posting}
-          submitLabel={t("order.discussionSend")}
-          onSubmit={publish}
-        />
-      )}
 
       {loading ? (
         <div style={{ padding: 24, textAlign: "center" }}>
@@ -463,114 +240,108 @@ export function OrderDiscussion({ orderId, canCompose }: { orderId: string; canC
       ) : notes.length === 0 && !problem ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("order.discussionEmpty")} />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {notes.map((note) => {
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {chronological.map((note) => {
             const author = displayPerson(note.authorName, note.authorUserId) || "—";
             const mine = Boolean(currentUserId && note.authorUserId === currentUserId);
-            const labels = mentionLabels(note);
+            const mentions = mentionsFromNote(note);
             const editing = editingId === note.id;
             return (
-              <article
-                key={note.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "36px minmax(0, 1fr)",
-                  gap: 12,
-                  padding: "12px 14px",
-                  background: token.colorBgContainer,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  borderRadius: ds.radius.lg,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: ds.radius.full,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0, 117, 222, 0.12)",
-                    color: ds.primary,
-                    fontSize: ds.fontSize.caption,
-                    fontWeight: 700,
-                  }}
-                >
-                  {author === "—" ? "?" : initials(author)}
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                    <Typography.Text strong style={{ fontSize: ds.fontSize.bodySm }}>
-                      {author}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, flex: "0 0 auto" }}>
-                      {formatDisplayDateTime(note.createdAt)}
-                      {noteWasEdited(note) ? ` · ${t("order.discussionEdited")}` : ""}
-                    </Typography.Text>
-                  </div>
+              <article key={note.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <PersonAvatar name={author} seed={note.authorUserId || author} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <Typography.Text strong style={{ fontSize: ds.fontSize.bodySm, display: "block" }}>
+                    {author}
+                  </Typography.Text>
                   {editing ? (
-                    <div style={{ marginTop: 8 }}>
-                      <DiscussionComposer
+                    <div style={{ marginTop: 6 }}>
+                      <MentionComposer
                         canCompose
                         submitting={busyId === note.id}
-                        submitLabel={t("common.save")}
+                        authorName={authorName || author}
                         initialContent={note.content}
-                        initialMentions={mentionsFromNote(note)}
-                        onSubmit={(content, mentions) => saveEdit(note, content, mentions)}
+                        initialMentions={mentions}
+                        autoFocus
+                        showAvatar={false}
+                        onSubmit={(content, picked) => saveEdit(note, content, picked)}
                         onCancel={() => setEditingId(null)}
                       />
                     </div>
                   ) : (
-                    <>
-                      <Typography.Paragraph
-                        style={{
-                          margin: "6px 0 0",
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                          fontSize: ds.fontSize.bodySm,
-                        }}
-                      >
-                        {note.content}
-                      </Typography.Paragraph>
-                      {labels.length ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                          {labels.map((label) => (
-                            <MentionChip key={`${note.id}-${label}`} name={label} />
-                          ))}
-                        </div>
-                      ) : null}
-                      {mine ? (
-                        <div style={{ display: "flex", gap: 4, marginTop: 4, marginInline: -8 }}>
+                    <div
+                      style={{
+                        display: "inline-block",
+                        maxWidth: "100%",
+                        marginTop: 2,
+                        padding: "8px 12px",
+                        borderRadius: 18,
+                        background: token.colorFillTertiary,
+                      }}
+                    >
+                      <CommentText content={note.content} mentions={mentions} />
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      alignItems: "center",
+                      marginTop: 4,
+                      paddingInline: 4,
+                    }}
+                  >
+                    <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }} title={formatDisplayDateTime(note.createdAt)}>
+                      {timeLabel(note.createdAt)}
+                      {noteWasEdited(note) ? ` · ${t("order.discussionEdited")}` : ""}
+                    </Typography.Text>
+                    {mine && !editing ? (
+                      <>
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: "auto", fontSize: ds.fontSize.caption }}
+                          disabled={posting || busyId === note.id}
+                          onClick={() => setEditingId(note.id)}
+                        >
+                          {t("common.edit")}
+                        </Button>
+                        <Popconfirm
+                          title={t("order.discussionDeleteTitle")}
+                          description={t("order.discussionDeleteBody")}
+                          okText={t("common.delete")}
+                          cancelText={t("common.cancel")}
+                          okButtonProps={{ danger: true }}
+                          onConfirm={() => remove(note)}
+                        >
                           <Button
                             type="link"
                             size="small"
+                            danger
+                            style={{ padding: 0, height: "auto", fontSize: ds.fontSize.caption }}
                             disabled={posting || busyId === note.id}
-                            onClick={() => setEditingId(note.id)}
                           >
-                            {t("common.edit")}
+                            {t("common.delete")}
                           </Button>
-                          <Popconfirm
-                            title={t("order.discussionDeleteTitle")}
-                            description={t("order.discussionDeleteBody")}
-                            okText={t("common.delete")}
-                            cancelText={t("common.cancel")}
-                            okButtonProps={{ danger: true }}
-                            onConfirm={() => remove(note)}
-                          >
-                            <Button type="link" size="small" danger disabled={posting || busyId === note.id}>
-                              {t("common.delete")}
-                            </Button>
-                          </Popconfirm>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
+                        </Popconfirm>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             );
           })}
         </div>
+      )}
+
+      {problem === "forbidden" ? null : (
+        <MentionComposer
+          key={composerKey}
+          canCompose={canCompose}
+          submitting={posting}
+          authorName={authorName}
+          onSubmit={publish}
+        />
       )}
     </div>
   );
