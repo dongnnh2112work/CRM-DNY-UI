@@ -384,3 +384,39 @@ a:active .crm-dash-card.ant-card {
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+.crm-row-overdue > td {
+  background: rgba(224, 62, 62, 0.08) !important;
+}
+
+html[data-theme="dark"] .crm-row-overdue > td {
+  background: rgba(224, 62, 62, 0.18) !important;
+}
+
+.crm-nav-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.crm-nav-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.crm-sider .ant-menu-title-content {
+  overflow: visible;
+  min-width: 0;
+  flex: 1;
+}
+
+.crm-sider .ant-menu-title-content > a {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}

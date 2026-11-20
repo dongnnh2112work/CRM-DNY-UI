@@ -7,7 +7,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
-import { entityDisplayName, serviceDisplayName } from "@/lib/order-helpers";
+import { entityDisplayName, getOrderLicenseExpirySummary, licenseWarnMonthsForOrder, serviceDisplayName } from "@/lib/order-helpers";
+import { isOrderListOverdue } from "@/lib/overdue-highlight";
 import { siblingOrders } from "@/lib/order-group";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { useServices } from "@/lib/services-store";
@@ -79,6 +80,16 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                       {stageOrders.map((order, idx) => {
                         const fileCount = order.attachments.filter((a) => !a.deleted).length;
                         const groupSize = siblingOrders(groupOrders ?? orders, order).length;
+                        const overdue = isOrderListOverdue({
+                          stage: order.stage,
+                          deadline: order.deadline,
+                          needsVat: order.needsVat,
+                          vatIssueDeadline: order.vatIssueDeadline,
+                          licenseTone: getOrderLicenseExpirySummary(
+                            order,
+                            licenseWarnMonthsForOrder(order, services),
+                          ).tone,
+                        });
                         return (
                           <Draggable key={order.id} draggableId={order.id} index={idx}>
                             {(dragProvided) => (
@@ -102,9 +113,10 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                     },
                                   }}
                                   style={{
-                                    border: `1px solid ${token.colorBorder}`,
+                                    border: `1px solid ${overdue ? ds.danger : token.colorBorder}`,
                                     borderRadius: token.borderRadius,
                                     background: token.colorBgElevated,
+                                    boxShadow: overdue ? `inset 3px 0 0 ${ds.danger}` : undefined,
                                   }}
                                 >
                                   <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
@@ -139,6 +151,11 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                       <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
                                         <Typography.Text strong style={{ fontSize: ds.fontSize.caption }}>
                                           {order.orderNumber}
+                                          {overdue ? (
+                                            <Tag color="error" style={{ marginLeft: 6 }}>
+                                              {t("common.overdue")}
+                                            </Tag>
+                                          ) : null}
                                         </Typography.Text>
                                         {groupSize > 1 ? (
                                           <Tag style={{ marginInlineEnd: 0 }}>

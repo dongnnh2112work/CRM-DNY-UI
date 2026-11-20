@@ -28,13 +28,17 @@ import { useApiHydrate } from "@/components/api-hydrator";
 import { App, Avatar, Badge, Button, Dropdown, Empty, Input, Layout, Menu, Result, Space, Typography, theme, type MenuProps } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { NotificationRow } from "@/components/notifications/notification-row";
+import { UnreadBadge } from "@/components/notifications/unread-badge";
 import { ds } from "@/lib/design-tokens";
 import { formatDisplayDateTime } from "@/lib/format-date";
 import { getHeaderSearchTarget, listSearchHref } from "@/lib/header-search";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { useNotifications } from "@/lib/notifications-store";
+import type { AppNotification } from "@/lib/types";
+import { categoriesForPath, MENU_BADGE_CATEGORIES, sumCategoryCounts } from "@/modules/notifications/model";
 import { getPayrollScope } from "@/lib/payroll";
 import { canSeeMenuPage, PERMISSION } from "@/lib/rbac";
 import { useUsers } from "@/lib/users-store";
@@ -91,19 +95,86 @@ export function AppShell({ children }: { children: ReactNode }) {
     ),
     [router, prefetchPath],
   );
-  const { forUser, unreadCount, markRead, markAllRead } = useNotifications();
+  const { forUser, unreadCount, markRead, markAllRead, counts, markCategoriesRead } = useNotifications();
   const [collapsed, setCollapsed] = useState(true);
   const [mobile, setMobile] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
+  const navSyncKey = `${pathname}:${mobile ? "m" : "d"}`;
+  const [seenNavSync, setSeenNavSync] = useState(navSyncKey);
+  if (seenNavSync !== navSyncKey) {
+    setSeenNavSync(navSyncKey);
+    if (pathname.startsWith("/users")) {
+      setOpenKeys((prev) => (prev.includes("users-group") ? prev : [...prev, "users-group"]));
+    }
+    if (mobile) setCollapsed(true);
+  }
   const isDark = appTheme === "dark";
 
   const userId = currentUser?.id;
   const pageMatrix = currentUser ? getEffectivePermissions(currentUser) : null;
   const payrollScope = getPayrollScope(currentUser, pageMatrix, apiUser?.permissions);
-  const myNotifs = userId ? forUser(userId).slice(0, 8) : [];
-  const unread = userId ? unreadCount(userId) : 0;
+  const mine = userId ? forUser(userId) : [];
+  const myNotifs = mine.slice(0, 8);
+  const localUnread = userId ? unreadCount(userId) : 0;
+  const bellCount = counts.status === "ready" ? counts.total : localUnread;
+  const unreadSignature = mine
+    .filter((n) => !n.read)
+    .map((n) => `${n.category ?? "-"}:${n.id}`)
+    .join("|");
+  const markedKeyRef = useRef("");
+
+  useEffect(() => {
+    const categories = categoriesForPath(pathname);
+    if (!categories.length || counts.status === "idle") return;
+    const visitKey = `${userId ?? ""}:${pathname}`;
+    if (markedKeyRef.current === visitKey) return;
+    const localPending = unreadSignature
+      .split("|")
+      .some((part) => categories.some((category) => part.startsWith(`${category}:`)));
+    const pending =
+      (counts.status === "ready" && sumCategoryCounts(counts.byCategory, categories) > 0) || localPending;
+    markedKeyRef.current = visitKey;
+    if (pending) markCategoriesRead(categories);
+  }, [pathname, counts, unreadSignature, markCategoriesRead, userId]);
+
+  const openNotification = (item: AppNotification) => {
+    markRead(item.id);
+    if (item.href) router.push(item.href);
+  };
 
   const menuItems = useMemo(() => {
+    const badgeFor = (key: string) => {
+      if (counts.status !== "ready") return 0;
+      const categories = MENU_BADGE_CATEGORIES[key];
+      return categories ? sumCategoryCounts(counts.byCategory, categories) : 0;
+    };
+    const labelWithCount = (text: string, count: number) => (
+      <span className="crm-nav-label">
+        <span className="crm-nav-label-text">{text}</span>
+        {collapsed ? null : <UnreadBadge count={count} title={t("notif.unreadCount", { n: count })} />}
+      </span>
+    );
+    const iconWithCount = (icon: ReactNode, count: number) =>
+      collapsed && count > 0 ? (
+        <Badge
+          count={count}
+          overflowCount={99}
+          size="small"
+          color={ds.danger}
+          offset={[6, -6]}
+          title={t("notif.unreadCount", { n: count })}
+        >
+          {icon}
+        </Badge>
+      ) : (
+        icon
+      );
+    const ordersCount = badgeFor("/orders");
+    const paymentsCount = badgeFor("/payments");
+    const expensesCount = badgeFor("/expense-approvals");
+    const vatCount = badgeFor("/vat");
+    const emailsCount = badgeFor("/emails");
+    const usersCount = badgeFor("users-group");
     const payrollItem: MenuItems =
       payrollScope === "none"
         ? []
@@ -118,19 +189,35 @@ export function AppShell({ children }: { children: ReactNode }) {
       { key: "/dashboard", icon: <DashboardOutlined />, label: navLink("/dashboard", t("nav.dashboard")) },
       { type: "divider" },
       { key: "/customers", icon: <TeamOutlined />, label: navLink("/customers", t("nav.customers")) },
-      { key: "/orders", icon: <ProjectOutlined />, label: navLink("/orders", t("nav.orders")) },
+      {
+        key: "/orders",
+        icon: iconWithCount(<ProjectOutlined />, ordersCount),
+        label: navLink("/orders", labelWithCount(t("nav.orders"), ordersCount)),
+      },
       { type: "divider" },
-      { key: "/payments", icon: <DollarOutlined />, label: navLink("/payments", t("nav.payments")) },
+      {
+        key: "/payments",
+        icon: iconWithCount(<DollarOutlined />, paymentsCount),
+        label: navLink("/payments", labelWithCount(t("nav.payments"), paymentsCount)),
+      },
       {
         key: "/expense-approvals",
-        icon: <AccountBookOutlined />,
-        label: navLink("/expense-approvals", t("nav.expenses")),
+        icon: iconWithCount(<AccountBookOutlined />, expensesCount),
+        label: navLink("/expense-approvals", labelWithCount(t("nav.expenses"), expensesCount)),
       },
       ...payrollItem,
-      { key: "/vat", icon: <FileTextOutlined />, label: navLink("/vat", t("nav.vat")) },
+      {
+        key: "/vat",
+        icon: iconWithCount(<FileTextOutlined />, vatCount),
+        label: navLink("/vat", labelWithCount(t("nav.vat"), vatCount)),
+      },
       { type: "divider" },
       { key: "/services", icon: <AppstoreOutlined />, label: navLink("/services", t("nav.services")) },
-      { key: "/emails", icon: <MailOutlined />, label: navLink("/emails", t("nav.emails")) },
+      {
+        key: "/emails",
+        icon: iconWithCount(<MailOutlined />, emailsCount),
+        label: navLink("/emails", labelWithCount(t("nav.emails"), emailsCount)),
+      },
       { type: "divider" },
     ];
     const usersVisible = can(PERMISSION.userManage) && canSeeMenuPage({ page: "users", apiUser, matrix: pageMatrix });
@@ -158,8 +245,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (userChildren.length) {
       items.push({
         key: "users-group",
-        icon: <UserOutlined />,
-        label: t("nav.users"),
+        icon: iconWithCount(<UserOutlined />, usersCount),
+        label: labelWithCount(t("nav.users"), usersCount),
         children: userChildren,
       });
     }
@@ -190,7 +277,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (!page) return true;
       return canSeeMenuPage({ page, apiUser, matrix: pageMatrix });
     });
-  }, [t, payrollScope, apiUser, can, pageMatrix, navLink]);
+  }, [t, payrollScope, apiUser, can, pageMatrix, navLink, collapsed, counts]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
@@ -208,13 +295,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         .sort((a, b) => b.length - a.length)[0] ?? "/dashboard"
     );
   }, [pathname, menuItems]);
-
-  useEffect(() => {
-    if (pathname.startsWith("/users")) {
-      setOpenKeys((prev) => (prev.includes("users-group") ? prev : [...prev, "users-group"]));
-    }
-    if (mobile) setCollapsed(true);
-  }, [pathname, mobile]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 991px)");
@@ -412,40 +492,20 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("shell.noNotifications")} />
                   ) : (
                     myNotifs.map((item) => (
-                      <div
-                        key={item.id}
-                        role={item.href ? "link" : undefined}
-                        tabIndex={item.href ? 0 : undefined}
-                        style={{
-                          cursor: "pointer",
-                          background: item.read ? undefined : token.colorPrimaryBg,
-                          padding: "8px 10px",
-                          borderRadius: 6,
-                        }}
-                        onClick={() => {
-                          markRead(item.id);
-                          if (item.href) router.push(item.href);
-                        }}
-                        onKeyDown={(event) => {
-                          if (!item.href || (event.key !== "Enter" && event.key !== " ")) return;
-                          event.preventDefault();
-                          markRead(item.id);
-                          router.push(item.href);
-                        }}
-                      >
-                        <Typography.Text style={{ fontSize: ds.fontSize.bodySm }}>{item.title}</Typography.Text>
-                        <div>
-                          <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption }}>
-                            {item.body}
-                          </Typography.Text>
-                        </div>
-                      </div>
+                      <NotificationRow key={item.id} item={item} variant="menu" onOpen={openNotification} />
                     ))
                   )}
                 </div>
               )}
             >
-              <Badge count={unread} size="small" offset={[-2, 2]}>
+              <Badge
+                count={bellCount}
+                overflowCount={99}
+                size="small"
+                color={ds.danger}
+                offset={[-2, 2]}
+                title={t("notif.unreadCount", { n: bellCount })}
+              >
                 <Button
                   type="text"
                   icon={<BellOutlined />}

@@ -340,13 +340,24 @@ export interface OrderExpense {
 
 /* ── App notifications ──────────────────────────────────────────── */
 
+export type NotificationCategory =
+  | "orders"
+  | "expenses"
+  | "payments"
+  | "vat"
+  | "licenses"
+  | "users"
+  | "emails";
+
 export type AppNotificationType =
   | "task_assigned"
   | "order_overdue"
   | "license_expiring"
   | "vat_deadline_approaching"
+  | "vat_overdue"
   | "expense_pending"
   | "expense_reviewed"
+  | "payment_overdue"
   | "user_pending"
   | "user_approved"
   | "email_sent"
@@ -355,7 +366,10 @@ export type AppNotificationType =
 export interface AppNotification {
   id: string;
   userId: string;
-  type: AppNotificationType;
+  type: AppNotificationType | "unknown";
+  /** Server type when it is not one of the known values. */
+  rawType?: string;
+  category?: NotificationCategory;
   title: string;
   body: string;
   href?: string;

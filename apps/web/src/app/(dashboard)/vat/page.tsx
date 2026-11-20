@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { isClosedOrderStage, isPastDate } from "@/lib/overdue-highlight";
 import { useOrders } from "@/lib/orders-store";
 import { getStatusMeta } from "@/lib/status-config";
 import { isInDateRange, type DateRangeValue } from "@/lib/date-range";
@@ -270,6 +271,17 @@ export default function VatPage() {
         enableRowSelection
         selectedRowKeys={selectedRowKeys}
         onSelectedRowKeysChange={setSelectedRowKeys}
+        onRow={(record) => {
+          const order = orders.find((item) => item.id === record.orderId);
+          const overdue = Boolean(
+            record.status === "draft" &&
+              order &&
+              !isClosedOrderStage(order.stage) &&
+              order.needsVat &&
+              isPastDate(order.vatIssueDeadline),
+          );
+          return overdue ? { className: "crm-row-overdue" } : {};
+        }}
         emptyDescription={
           query.trim() && invoices.length > 0 ? t("common.noResults") : t("vat.empty")
         }
