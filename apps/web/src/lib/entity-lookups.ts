@@ -116,6 +116,11 @@ export type LookupRequest = {
   orderIds?: string[];
 };
 
+export type LookupResult = {
+  /** GET /contracts/:id failed (contract.view). Callers should surface this. */
+  contractViewFailures: number;
+};
+
 /**
  * Resolve display names for the visible page via GET /:id.
  * Permission-gated; missing permission → leave unresolved (UI shows "—").
@@ -123,7 +128,8 @@ export type LookupRequest = {
 export async function resolveEntityLookups(
   req: LookupRequest,
   permissions: string[] | undefined | null,
-): Promise<void> {
+): Promise<LookupResult> {
+  let contractViewFailures = 0;
   const tasks: Array<() => Promise<void>> = [];
 
   const enqueue = (key: string, run: () => Promise<void>) => {
@@ -207,6 +213,7 @@ export async function resolveEntityLookups(
           else markMiss(contractNumbers, id);
         } catch {
           markMiss(contractNumbers, id);
+          contractViewFailures += 1;
         }
       });
     }
@@ -245,4 +252,5 @@ export async function resolveEntityLookups(
   }
 
   await mapPool(tasks, 6, (fn) => fn());
+  return { contractViewFailures };
 }

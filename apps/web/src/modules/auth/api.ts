@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/http/client";
 import { getApiBaseUrl } from "@/lib/http/tokens";
+import { changePasswordBody } from "@/modules/auth/change-password";
 
 export type AuthUser = {
   id: string;
@@ -66,7 +67,7 @@ export const authApi = {
   changePassword(newPassword: string) {
     return apiRequest<{ success: true }>("/auth/change-password", {
       method: "POST",
-      body: JSON.stringify({ newPassword }),
+      body: JSON.stringify(changePasswordBody(newPassword)),
     });
   },
 

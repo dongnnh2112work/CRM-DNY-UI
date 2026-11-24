@@ -413,7 +413,7 @@ export function OrderExpensesPanel({
         <Typography.Title level={5} style={{ fontSize: ds.fontSize.body, margin: 0 }}>
           {t("nav.expenses")}
         </Typography.Title>
-        {can(PERMISSION.expenseCreate) ? (
+        {can(PERMISSION.expenseCreate) && order.stage !== "cancelled" ? (
           <Button
             type="primary"
             onClick={() => setAddOpen(true)}
@@ -423,7 +423,9 @@ export function OrderExpensesPanel({
           </Button>
         ) : null}
       </div>
-      <PaymentRequestDrawer open={addOpen} onClose={() => setAddOpen(false)} lockedOrder={order} />
+      {order.stage === "cancelled" ? null : (
+        <PaymentRequestDrawer open={addOpen} onClose={() => setAddOpen(false)} lockedOrder={order} />
+      )}
 
       {isCompact ? (
         <div style={{ minWidth: 0 }}>

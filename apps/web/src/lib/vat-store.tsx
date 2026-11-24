@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { numericContractNumber } from "@/lib/contract-number";
 import { tt } from "@/lib/i18n";
 import type { VatInvoice, VatStatus } from "@/lib/types";
 
@@ -63,7 +64,7 @@ export function VatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addInvoice = useCallback((input: NewVatInvoiceInput) => {
-    if (input.contractNumber == null || input.contractNumber < 1) {
+    if (numericContractNumber(input.contractNumber) == null) {
       throw new Error(tt("vat.storeNeedContract"));
     }
     let created: VatInvoice | undefined;

@@ -1,3 +1,4 @@
+import { numericContractNumber } from "@/lib/contract-number";
 import type { Order, VatInvoice, VatInvoiceLine } from "@/lib/types";
 
 /** Thuế suất GTGT thường dùng — không hardcode 10% trên form. */
@@ -11,10 +12,15 @@ export function vatAmountsFromLines(lines: VatInvoiceLine[] | undefined, taxRate
 }
 
 export function orderHasContractNumber(order: Pick<Order, "contractNumber">): boolean {
-  return typeof order.contractNumber === "number" && order.contractNumber >= 1;
+  return numericContractNumber(order.contractNumber) != null;
 }
 
-export function resolveContractNumber(invoice: VatInvoice, orders: Order[]): number | undefined {
-  if (invoice.contractNumber != null) return invoice.contractNumber;
+export function resolveContractNumber(
+  invoice: VatInvoice,
+  orders: Order[],
+): string | number | undefined {
+  if (invoice.contractNumber != null && String(invoice.contractNumber).trim() !== "") {
+    return invoice.contractNumber;
+  }
   return orders.find((o) => o.id === invoice.orderId)?.contractNumber;
 }

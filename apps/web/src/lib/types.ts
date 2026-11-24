@@ -299,8 +299,11 @@ export interface Order {
   month: string; // YYYY-MM for filtering
   /** Đơn có xuất hóa đơn VAT */
   needsVat: boolean;
-  /** Số hợp đồng (tự nhiên, unique) — chỉ khi needsVat */
-  contractNumber?: number;
+  /**
+   * Số hợp đồng trên Contract (chuỗi). Số tự nhiên mở VAT.
+   * Nhãn không phải số (`DH-…`) vẫn giữ để hiển thị — không parse bằng `Number()`.
+   */
+  contractNumber?: string | number;
   /** Hạn xử lý đơn */
   deadline?: string;
   /** Hạn xuất hóa đơn VAT — khi needsVat */
@@ -433,8 +436,8 @@ export interface VatInvoice {
   invoiceNumber: string;
   orderId: string;
   orderNumber: string;
-  /** Số HĐ (hợp đồng) lấy từ đơn — hiển thị trên list */
-  contractNumber?: number;
+  /** Số HĐ (hợp đồng) lấy từ đơn — hiển thị nguyên văn, kể cả `DH-…` */
+  contractNumber?: string | number;
   customerName: string;
   taxCode?: string;
   amount: number;

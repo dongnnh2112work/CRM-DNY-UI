@@ -115,7 +115,9 @@ export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/dashboard")) return [];
   // Detail pages use GET /:id or /:id/detail — skip list hydrate.
   if (isEntityDetailPath(pathname)) return [];
-  // New forms don't need the list catalog on critical path.
+  // Dossier numbers and Số HĐ are minted / listed from the orders catalog.
+  // Other create forms still skip the parent list.
+  if (pathname === "/orders/new" || pathname === "/vat/new") return ["orders"];
   if (isEntityFormPath(pathname)) return [];
 
   if (pathname.startsWith("/customers")) return ["customers"];
@@ -136,6 +138,7 @@ export function deferredScopesForPath(_pathname: string): RefreshScope[] {
 }
 
 export function primaryScopeForPath(pathname: string): RefreshScope | null {
+  if (pathname === "/orders/new" || pathname === "/vat/new") return "orders";
   if (isEntityDetailPath(pathname) || isEntityFormPath(pathname)) return null;
   if (pathname.startsWith("/customers")) return "customers";
   if (pathname.startsWith("/orders")) return "orders";

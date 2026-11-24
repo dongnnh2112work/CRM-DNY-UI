@@ -273,14 +273,26 @@ export default function PaymentDetailPage() {
     );
   }
 
+  const linkedIds = payment.groupedOrderIds?.length ? payment.groupedOrderIds : [payment.orderId];
+  const linkedOrders = linkedIds
+    .map((oid) => orders.find((row) => row.id === oid))
+    .filter((row) => row != null);
+  const addInstallmentLocked =
+    orders.find((row) => row.id === payment.orderId)?.stage === "cancelled" ||
+    (linkedOrders.length > 0 &&
+      linkedOrders.length === linkedIds.length &&
+      linkedOrders.every((row) => row.stage === "cancelled"));
+
   return (
     <>
       <PageHeader breadcrumbs={[{ title: t("payment.breadcrumb"), href: "/payments" }, { title: payment.orderNumber }]}>
         <Space wrap>
           <Button onClick={() => router.push(`/orders/${payment.orderId}`)}>{t("payment.viewOrder")}</Button>
-          <Button type="primary" onClick={openAdd}>
-            {t("payment.addInstallmentCta")}
-          </Button>
+          {addInstallmentLocked ? null : (
+            <Button type="primary" onClick={openAdd}>
+              {t("payment.addInstallmentCta")}
+            </Button>
+          )}
         </Space>
       </PageHeader>
       <div style={{ padding: 16 }}>

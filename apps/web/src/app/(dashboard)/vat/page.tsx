@@ -11,6 +11,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
+import { compareContractNumbers, contractNumberLabel } from "@/lib/contract-number";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { isClosedOrderStage, isPastDate } from "@/lib/overdue-highlight";
@@ -164,9 +165,9 @@ export default function VatPage() {
         title: t("common.contractNo"),
         dataIndex: "contractNumber",
         align: "center",
-        sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
-        render: (v: number | undefined, r) => (
-          <Link href={`/vat/${r.id}`}>{v != null ? v : r.invoiceNumber}</Link>
+        sorter: (a, b) => compareContractNumbers(a.contractNumber, b.contractNumber),
+        render: (v: string | number | undefined, r) => (
+          <Link href={`/vat/${r.id}`}>{contractNumberLabel(v) ?? r.invoiceNumber}</Link>
         ),
       },
       {

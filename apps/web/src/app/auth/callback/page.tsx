@@ -77,7 +77,7 @@ export default function AuthCallbackPage() {
       refreshToken: hash.refreshToken,
       expiresIn: Number.isFinite(hash.expiresIn) ? hash.expiresIn : 0,
     });
-    window.history.replaceState(null, "", window.location.pathname);
+    clearOAuthRedirectParams();
     clearRememberedOAuthError();
 
     void (async () => {

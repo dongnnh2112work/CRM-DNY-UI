@@ -1,21 +1,24 @@
 "use client";
 
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
-import { App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space, Typography } from "antd";
+import { Alert, App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space, Typography } from "antd";
 import dayjs from "dayjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
+import { useApiHydrate } from "@/components/api-hydrator";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
+import { contractNumberLabel, numericContractNumber } from "@/lib/contract-number";
 import { ds } from "@/lib/design-tokens";
 import { useCustomers } from "@/lib/customers-store";
+import { rememberContractNumber } from "@/lib/entity-lookups";
 import { DISPLAY_DATE_FORMAT, toStorageDate } from "@/lib/format-date";
 import { vndInputProps } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
-import { deadlineFromService, nextContractNumber, nextDossierNumber } from "@/lib/order-helpers";
-import { splitDossierNumbers } from "@/lib/order-group";
+import { deadlineFromService, nextContractNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
+import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useNotifications } from "@/lib/notifications-store";
 import {
   resolveCatalogEntity,
@@ -28,6 +31,12 @@ import { useUsers } from "@/lib/users-store";
 import { useSession } from "@/lib/session/session-provider";
 import { contractsApi } from "@/modules/contracts/api";
 import { ordersApi } from "@/modules/orders/api";
+import {
+  collectOrderNumbers,
+  placeholderContractNumber,
+  proposeDossierNumbers,
+  shouldDeleteOrphanContract,
+} from "@/modules/orders/dossier-catalog";
 import { mapApiOrderToUi, mapUiOrderToCreateApi } from "@/modules/orders/map-to-ui";
 import { useT } from "@/lib/use-t";
 import type { Order } from "@/lib/types";
@@ -55,8 +64,11 @@ function NewOrderPageContent() {
   const { services } = useServices();
   const { customers } = useCustomers();
   const { orders, replaceOrders, isContractTaken } = useOrders();
+  const { listMeta } = useApiHydrate();
   const { users } = useUsers();
   const { user: sessionUser } = useSession();
+  const ordersCatalogReady =
+    canLoadScope("orders", sessionUser?.permissions) && isListSliceSettled(listMeta.orders, true);
   const { refreshInbox } = useNotifications();
   const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
@@ -70,7 +82,10 @@ function NewOrderPageContent() {
     [services],
   );
 
-  const suggestedHd = useMemo(() => nextContractNumber(orders), [orders]);
+  const suggestedHd = useMemo(
+    () => (ordersCatalogReady ? nextContractNumber(orders) : undefined),
+    [orders, ordersCatalogReady],
+  );
 
   const setLineDeadline = (lineIndex: number, serviceId: string) => {
     const svc = services.find((s) => s.id === serviceId);
@@ -92,6 +107,8 @@ function NewOrderPageContent() {
         }}
         onFinish={async (values) => {
           setSaving(true);
+          let createdContractId: string | undefined;
+          let createdOrderCount = 0;
           try {
             const customer = resolveCatalogEntity(customers, values.customerId, prefillCustomer
               ? { id: prefillCustomer.value, name: prefillCustomer.label }
@@ -114,8 +131,8 @@ function NewOrderPageContent() {
             }
 
             if (values.needsVat) {
-              const hd = Number(values.contractNumber);
-              if (!hd || hd < 1) {
+              const hd = numericContractNumber(values.contractNumber);
+              if (hd == null) {
                 message.error(t("order.enterContractValid"));
                 return;
               }
@@ -125,14 +142,34 @@ function NewOrderPageContent() {
               }
             }
 
+            const catalog = await collectOrderNumbers((page, pageSize) =>
+              ordersApi.list({ page, pageSize }),
+            );
+            const proposed = proposeDossierNumbers(
+              catalog.orderNumbers,
+              resolved.length,
+              new Date(),
+              catalog.complete,
+            );
+            if (!proposed.ok) {
+              message.error(t("order.dossierCatalogIncomplete"));
+              return;
+            }
+
             const vatRate = values.needsVat ? 10 : 0;
             const serviceNames = resolved.map((r) => r.service!.name);
+            const submittedContractNumber = values.needsVat
+              ? contractNumberLabel(values.contractNumber) ?? String(values.contractNumber)
+              : placeholderContractNumber();
             const contract = await contractsApi.create({
-              contractNumber: values.needsVat ? String(values.contractNumber) : `DH-${Date.now()}`,
+              contractNumber: submittedContractNumber,
               customerId: customer.id,
               title: `${customer.name} · ${serviceNames.join(", ")}`,
             });
-            const numbers = splitDossierNumbers(nextDossierNumber(orders, new Date()), resolved.length);
+            createdContractId = contract.id;
+            const savedContractNumber = contract.contractNumber || submittedContractNumber;
+            if (contract.id) rememberContractNumber(contract.id, savedContractNumber);
+            const numbers = proposed.numbers;
             const created: Order[] = [];
 
             try {
@@ -162,7 +199,7 @@ function NewOrderPageContent() {
                   serviceName: service!.name,
                   assignedUserName: assigned.name,
                   submitterName: submitter.name,
-                  contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
+                  contractNumber: savedContractNumber,
                 });
                 created.push({
                   ...mapped,
@@ -173,9 +210,11 @@ function NewOrderPageContent() {
                 });
               }
             } catch (err) {
+              createdOrderCount = created.length;
               if (created.length) replaceOrders([...created, ...orders]);
               throw err;
             }
+            createdOrderCount = created.length;
 
             replaceOrders([...created, ...orders]);
             if (assigned.id !== sessionUser?.id) refreshInbox();
@@ -189,12 +228,27 @@ function NewOrderPageContent() {
             }
             router.push(`/orders/${created[0].id}`);
           } catch (err) {
-            message.error(apiErrorMessage(err, t("order.createFailed")));
+            let suffix = "";
+            if (createdContractId && shouldDeleteOrphanContract(createdOrderCount)) {
+              try {
+                await contractsApi.remove(createdContractId);
+                suffix = t("order.orphanContractRemoved");
+              } catch {
+                suffix = t("order.orphanContract", { id: createdContractId });
+              }
+            } else if (createdContractId) {
+              suffix = t("order.orphanContractPartial", { id: createdContractId, count: createdOrderCount });
+            }
+            const base = apiErrorMessage(err, t("order.createFailed"));
+            message.error(suffix ? `${base} ${suffix}` : base);
           } finally {
             setSaving(false);
           }
         }}
       >
+        {ordersCatalogReady ? null : (
+          <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("order.dossierCatalogLoading")} />
+        )}
         <Form.Item name="customerId" label={t("common.customer")} rules={[{ required: true, message: t("order.selectCustomer") }]}>
           <Select
             showSearch
@@ -329,7 +383,7 @@ function NewOrderPageContent() {
         <Form.Item name="needsVat" valuePropName="checked">
           <Checkbox
             onChange={(e) => {
-              if (e.target.checked) {
+              if (e.target.checked && suggestedHd != null) {
                 form.setFieldValue("contractNumber", suggestedHd);
               }
             }}
@@ -342,7 +396,7 @@ function NewOrderPageContent() {
             name="contractNumber"
             label={t("order.contractLabel")}
             rules={[{ required: true, message: t("order.enterContract") }]}
-            extra={t("order.contractHint", { n: suggestedHd })}
+            extra={suggestedHd != null ? t("order.contractHint", { n: suggestedHd }) : t("order.dossierCatalogLoading")}
           >
             <InputNumber min={1} precision={0} style={{ width: "100%" }} />
           </Form.Item>

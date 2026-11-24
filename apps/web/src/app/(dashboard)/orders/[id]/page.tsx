@@ -15,10 +15,13 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusSelect } from "@/components/shared/status-select";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { useCustomers } from "@/lib/customers-store";
+import { contractNumberLabel, formatContractNumber, numericContractNumber } from "@/lib/contract-number";
 import {
+  lookupContractNumber,
   lookupCustomerName,
   lookupServiceName,
   lookupUserName,
+  rememberContractNumber,
   rememberUserName,
   resolveEntityLookups,
 } from "@/lib/entity-lookups";
@@ -53,6 +56,15 @@ import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { orderUpdateErrorMessage } from "@/modules/orders/save-error";
+import { placeholderContractNumber } from "@/modules/orders/dossier-catalog";
+import {
+  applyContractSync,
+  planContractSync,
+  rememberedUnlinkedContractId,
+  rememberUnlinkedContractId,
+  resolveContractForUnlinkedOrder,
+  type ContractSyncPlan,
+} from "@/modules/orders/sync-contract";
 import { contractsApi } from "@/modules/contracts/api";
 import { documentsApi, type ApiDocument } from "@/modules/documents/api";
 import {
@@ -77,6 +89,7 @@ function personLabel(name?: string | null, id?: string | null) {
 }
 
 function withResolvedOrderNames(order: Order): Order {
+  const fromContract = order.contractId ? contractNumberLabel(lookupContractNumber(order.contractId)) : undefined;
   return {
     ...order,
     customerName: lookupCustomerName(order.customerId) || order.customerName,
@@ -86,6 +99,16 @@ function withResolvedOrderNames(order: Order): Order {
     reviewerName: order.reviewerId
       ? lookupUserName(order.reviewerId) || order.reviewerName
       : order.reviewerName,
+    contractNumber: fromContract ?? contractNumberLabel(order.contractNumber),
+  };
+}
+
+function keepContractNumber(mapped: Order, prev: Order | null): Order {
+  return {
+    ...mapped,
+    contractNumber:
+      contractNumberLabel(mapped.contractNumber) ??
+      (prev?.id === mapped.id ? prev.contractNumber : undefined),
   };
 }
 
@@ -216,7 +239,7 @@ export default function OrderDetailPage() {
       deadline: order.deadline ? dayjs(order.deadline) : null,
       zaloGroupUrl: order.zaloGroupUrl,
       needsVat: order.needsVat,
-      contractNumber: order.contractNumber,
+      contractNumber: numericContractNumber(order.contractNumber),
       notes: order.notes,
     });
   }, [order, editOpen, form]);
@@ -249,11 +272,14 @@ export default function OrderDetailPage() {
       if (!customerIds.length && !serviceIds.length && !userIds.length && !contractIds.length && !ctvIds.length) {
         return;
       }
-      await resolveEntityLookups(
+      const lookup = await resolveEntityLookups(
         { customerIds, serviceIds, userIds, contractIds, ctvIds },
         permissionsRef.current,
       );
       if (cancelled) return;
+      if (base.contractId && lookup.contractViewFailures > 0) {
+        message.warning(t("order.contractViewFailed"));
+      }
       const prev = orderRef.current;
       if (!prev || prev.id !== base.id) return;
       commitOrder(withResolvedOrderNames(prev));
@@ -296,6 +322,7 @@ export default function OrderDetailPage() {
               userName.get(apiOrder.reviewerUserId) ||
               lookupUserName(apiOrder.reviewerUserId)
             : undefined,
+          contractNumber: contractNumberLabel(lookupContractNumber(apiOrder.contractId)),
         }),
         userName,
       };
@@ -321,12 +348,17 @@ export default function OrderDetailPage() {
       }
       const { mapped, userName } = mapApiOrder(apiOrder);
       const prev = orderRef.current;
-      commitOrder({
-        ...mapped,
-        attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
-        licenseAttachments:
-          prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
-      });
+      commitOrder(
+        keepContractNumber(
+          {
+            ...mapped,
+            attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
+            licenseAttachments:
+              prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
+          },
+          prev,
+        ),
+      );
       await reloadOrderFinance({
         order: mapped,
         groupOrders: ordersRef.current,
@@ -356,12 +388,17 @@ export default function OrderDetailPage() {
         }
         const { mapped, userName } = mapApiOrder(apiOrder);
         const prev = orderRef.current;
-        commitOrder({
-          ...mapped,
-          attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
-          licenseAttachments:
-            prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
-        });
+        commitOrder(
+          keepContractNumber(
+            {
+              ...mapped,
+              attachments: prev?.id === mapped.id ? prev.attachments : mapped.attachments,
+              licenseAttachments:
+                prev?.id === mapped.id ? prev.licenseAttachments : mapped.licenseAttachments,
+            },
+            prev,
+          ),
+        );
 
         const docs = applyOrderDetailFinance({
           order: mapped,
@@ -482,7 +519,7 @@ export default function OrderDetailPage() {
       if (!contractId) {
         const contract = await contractsApi.create({
           contractNumber:
-            order.contractNumber != null ? String(order.contractNumber) : `DH-${Date.now()}`,
+            contractNumberLabel(order.contractNumber) ?? placeholderContractNumber(),
           customerId: order.customerId,
           title: `${order.customerName} · ${[...siblings.map((s) => s.serviceName), service.name].join(", ")}`,
         });
@@ -536,7 +573,13 @@ export default function OrderDetailPage() {
     }
   };
 
+  const cancelledOrder = order.stage === "cancelled";
+
   const applyStage = async (newStage: OrderStage) => {
+    if (order.stage === "cancelled") {
+      message.warning(t("order.cancelledLocked"));
+      return;
+    }
     if (newStage === order.stage) return;
     try {
       await ordersApi.changeStage(order.id, newStage);
@@ -575,42 +618,48 @@ export default function OrderDetailPage() {
               {t("order.addServiceToContract")}
             </Button>
           ) : null}
-          <Button
-            type="primary"
-            onClick={() => {
-              if (payment) router.push(`/payments/${payment.id}`);
-              else router.push("/payments");
-            }}
-          >
-            {t("order.payment")}
-            {financeReady && servicePay
-              ? t("order.remainingAmount", { amount: formatVndDisplay(servicePay.remaining) })
-              : financeReady
-                ? ""
-                : " …"}
-          </Button>
-          <Tooltip title={!orderHasContractNumber(order) ? t("order.vatNeedsContract") : undefined}>
-            <span>
-              <Button
-                disabled={!orderHasContractNumber(order)}
-                onClick={() => router.push(`/vat/new?orderId=${order.id}`)}
-              >
-                {t("common.createVat")}
-              </Button>
-            </span>
-          </Tooltip>
-          <Popconfirm
-            title={t("order.cancelTitle")}
-            description={t("order.cancelBody")}
-            okText={t("order.cancelOk")}
-            cancelText={t("common.close")}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => {
-              applyStage("cancelled");
-            }}
-          >
-            <Button danger>{t("order.cancelOk")}</Button>
-          </Popconfirm>
+          {cancelledOrder ? null : (
+            <Button
+              type="primary"
+              onClick={() => {
+                if (payment) router.push(`/payments/${payment.id}`);
+                else router.push("/payments");
+              }}
+            >
+              {t("order.payment")}
+              {financeReady && servicePay
+                ? t("order.remainingAmount", { amount: formatVndDisplay(servicePay.remaining) })
+                : financeReady
+                  ? ""
+                  : " …"}
+            </Button>
+          )}
+          {cancelledOrder ? null : (
+            <Tooltip title={!orderHasContractNumber(order) ? t("order.vatNeedsContract") : undefined}>
+              <span>
+                <Button
+                  disabled={!orderHasContractNumber(order)}
+                  onClick={() => router.push(`/vat/new?orderId=${order.id}`)}
+                >
+                  {t("common.createVat")}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+          {cancelledOrder ? null : (
+            <Popconfirm
+              title={t("order.cancelTitle")}
+              description={t("order.cancelBody")}
+              okText={t("order.cancelOk")}
+              cancelText={t("common.close")}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
+                applyStage("cancelled");
+              }}
+            >
+              <Button danger>{t("order.cancelOk")}</Button>
+            </Popconfirm>
+          )}
         </Space>
       </PageHeader>
       <div style={{ padding: 16 }}>
@@ -618,17 +667,22 @@ export default function OrderDetailPage() {
           <Typography.Title level={4} style={{ margin: 0 }}>
             {order.orderNumber}
           </Typography.Title>
-          <StatusSelect
-            module="orderStage"
-            value={order.stage}
-            options={stageOptions.map((s) => ({ value: s.value, label: s.label }))}
-            onChange={(v) => requestStageChange(v as OrderStage)}
-          />
+          <Tooltip title={cancelledOrder ? t("order.cancelledLocked") : undefined}>
+            <span>
+              <StatusSelect
+                module="orderStage"
+                value={order.stage}
+                disabled={cancelledOrder}
+                options={stageOptions.map((s) => ({ value: s.value, label: s.label }))}
+                onChange={(v) => requestStageChange(v as OrderStage)}
+              />
+            </span>
+          </Tooltip>
           <Tag color={order.needsVat ? "blue" : "default"}>
             {order.needsVat ? t("common.withVat") : t("common.withoutVat")}
           </Tag>
-          {order.contractNumber != null ? (
-            <Tag>{t("order.contractTag", { n: order.contractNumber })}</Tag>
+          {contractNumberLabel(order.contractNumber) ? (
+            <Tag>{t("order.contractTag", { n: contractNumberLabel(order.contractNumber)! })}</Tag>
           ) : null}
           <Tag color={licenseExpiryTagColor(licenseSummary.tone)}>
             {licenseSummary.label}
@@ -662,7 +716,7 @@ export default function OrderDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label={t("order.issueVat")}>{order.needsVat ? t("common.yes") : t("common.no")}</Descriptions.Item>
           <Descriptions.Item label={t("common.contractNo")}>
-            {order.contractNumber != null ? order.contractNumber : "—"}
+            {formatContractNumber(order.contractNumber)}
           </Descriptions.Item>
           <Descriptions.Item label={t("common.deadline")}>
             {formatDisplayDate(order.deadline)}
@@ -756,8 +810,8 @@ export default function OrderDetailPage() {
             }
 
             if (values.needsVat) {
-              const hd = Number(values.contractNumber);
-              if (!hd || hd < 1) {
+              const hd = numericContractNumber(values.contractNumber);
+              if (hd == null) {
                 message.error(t("order.enterContractValid"));
                 return;
               }
@@ -796,16 +850,45 @@ export default function OrderDetailPage() {
                 await ordersApi.assign(order.id, assigned.id);
                 if (assigned.id !== sessionUser?.id) refreshInbox();
               }
-              const nextContractNumber = values.needsVat ? String(values.contractNumber) : undefined;
-              if (
-                order.contractId &&
-                nextContractNumber &&
-                String(order.contractNumber ?? "") !== nextContractNumber
-              ) {
-                await contractsApi.update(order.contractId, {
-                  contractNumber: nextContractNumber,
-                });
+              let contractPlan: ContractSyncPlan = planContractSync({
+                needsVat: Boolean(values.needsVat),
+                submitted: values.contractNumber,
+                contractId: order.contractId,
+                previous: order.contractNumber,
+                customerId: customer.id,
+                title: `${customer.name || order.customerName} · ${service.name || order.serviceName}`,
+              });
+              if (contractPlan.action === "invalid") {
+                message.error(t("order.enterContractValid"));
+                return;
               }
+              if (contractPlan.action === "create") {
+                const decision = await resolveContractForUnlinkedOrder(contractsApi, {
+                  contractNumber: contractPlan.contractNumber,
+                  customerId: contractPlan.customerId,
+                  title: contractPlan.title,
+                  rememberedId: rememberedUnlinkedContractId(order.id),
+                });
+                if (decision.action === "blocked") {
+                  message.error(t("order.contractLinkBlocked"));
+                  return;
+                }
+                contractPlan = decision;
+              }
+              const synced = await applyContractSync(contractPlan, contractsApi);
+              if (!synced.ok) {
+                message.error(apiErrorMessage(synced.error, t("order.contractUpdateFailed")));
+                return;
+              }
+              if (synced.contractId && synced.contractNumber) {
+                rememberContractNumber(synced.contractId, synced.contractNumber);
+              }
+              if (!synced.linked && synced.contractId) {
+                rememberUnlinkedContractId(order.id, synced.contractId);
+              }
+              const savedContractNumber =
+                synced.contractNumber ??
+                contractNumberLabel(values.needsVat ? values.contractNumber : order.contractNumber);
 
               persist({
                 ...order,
@@ -821,11 +904,16 @@ export default function OrderDetailPage() {
                 submitterName: submitter.name || order.submitterName,
                 notes: values.notes,
                 needsVat: Boolean(values.needsVat),
-                contractNumber: values.needsVat ? Number(values.contractNumber) : undefined,
+                contractId: synced.contractId ?? order.contractId,
+                contractNumber: savedContractNumber,
                 deadline: deadline ?? undefined,
                 zaloGroupUrl: zaloGroupUrl ?? undefined,
                 vatIssueDeadline: undefined,
               });
+              if (!synced.linked) {
+                message.error(t("order.contractUnlinked", { id: synced.contractId ?? "" }));
+                return;
+              }
               message.success(t("order.updated"));
               setEditOpen(false);
             } catch (err) {
