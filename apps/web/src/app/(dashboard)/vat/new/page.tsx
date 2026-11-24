@@ -23,7 +23,7 @@ import { apiErrorMessage } from "@/lib/http/message";
 import { documentsApi } from "@/modules/documents/api";
 import { encodeVatFileType } from "@/modules/documents/map-to-ui";
 import { vatApi } from "@/modules/vat/api";
-import { buildVatDraftBody } from "@/modules/vat/create-body";
+import { buildVatDraftBodyForOrder } from "@/modules/vat/create-body";
 import { mapApiVatToUi } from "@/modules/vat/map-to-ui";
 
 type VatFormValues = {
@@ -62,7 +62,7 @@ function NewVatPageContent() {
   const totals = useMemo(() => vatAmountsFromLines(lines, taxRate ?? 0), [lines, taxRate]);
 
   const eligibleOrders = useMemo(
-    () => orders.filter(orderHasContractNumber),
+    () => orders.filter((order) => order.stage !== "cancelled" && orderHasContractNumber(order)),
     [orders],
   );
 
@@ -70,6 +70,12 @@ function NewVatPageContent() {
     (orderId: string) => {
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
+      if (order.stage === "cancelled") {
+        message.warning(t("order.vatCancelled"));
+        setSelectedOrder(null);
+        form.setFieldValue("orderId", undefined);
+        return;
+      }
       if (!orderHasContractNumber(order)) {
         message.warning(t("order.vatNeedsContract"));
         setSelectedOrder(null);
@@ -96,8 +102,9 @@ function NewVatPageContent() {
     if (!orderId || orders.length === 0) return;
     if (form.getFieldValue("orderId")) return;
     const order = orders.find((o) => o.id === orderId);
-    if (!order || !orderHasContractNumber(order)) {
-      if (order) message.warning(t("vat.noContractBody"));
+    if (!order || order.stage === "cancelled" || !orderHasContractNumber(order)) {
+      if (order?.stage === "cancelled") message.warning(t("order.vatCancelled"));
+      else if (order) message.warning(t("vat.noContractBody"));
       return;
     }
     form.setFieldValue("orderId", orderId);
@@ -132,19 +139,21 @@ function NewVatPageContent() {
             }
             const computed = vatAmountsFromLines(values.lines, values.taxRate);
             // Lines stay on the form to compute net/tax/total. They are not posted:
-            // the API rejects an array (`lines must be an object`). See buildVatDraftBody.
-            const created = await vatApi.create(
-              buildVatDraftBody({
-                invoiceNumber: `VAT-${Date.now()}`,
-                orderId: order.id,
-                netAmount: computed.amount,
-                vatAmount: computed.taxAmount,
-                grossAmount: computed.totalAmount,
-                customerName: values.customerName || order.customerName,
-                customerTaxCode: values.taxCode,
-                vatRate: values.taxRate,
-              }),
-            );
+            // the API rejects an array (`lines must be an object`).
+            const draft = buildVatDraftBodyForOrder(order, {
+              invoiceNumber: `VAT-${Date.now()}`,
+              netAmount: computed.amount,
+              vatAmount: computed.taxAmount,
+              grossAmount: computed.totalAmount,
+              customerName: values.customerName || order.customerName,
+              customerTaxCode: values.taxCode,
+              vatRate: values.taxRate,
+            });
+            if (!draft.ok) {
+              message.error(t("order.vatCancelled"));
+              return;
+            }
+            const created = await vatApi.create(draft.body);
             replaceInvoices([
               mapApiVatToUi(created, order.orderNumber, order.contractNumber),
               ...invoices,

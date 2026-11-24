@@ -57,7 +57,14 @@ import { ordersApi } from "@/modules/orders/api";
 import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { orderUpdateErrorMessage } from "@/modules/orders/save-error";
 import { placeholderContractNumber } from "@/modules/orders/dossier-catalog";
-import { applyContractSync, planContractSync } from "@/modules/orders/sync-contract";
+import {
+  applyContractSync,
+  planContractSync,
+  rememberedUnlinkedContractId,
+  rememberUnlinkedContractId,
+  resolveContractForUnlinkedOrder,
+  type ContractSyncPlan,
+} from "@/modules/orders/sync-contract";
 import { contractsApi } from "@/modules/contracts/api";
 import { documentsApi, type ApiDocument } from "@/modules/documents/api";
 import {
@@ -843,7 +850,7 @@ export default function OrderDetailPage() {
                 await ordersApi.assign(order.id, assigned.id);
                 if (assigned.id !== sessionUser?.id) refreshInbox();
               }
-              const contractPlan = planContractSync({
+              let contractPlan: ContractSyncPlan = planContractSync({
                 needsVat: Boolean(values.needsVat),
                 submitted: values.contractNumber,
                 contractId: order.contractId,
@@ -855,6 +862,19 @@ export default function OrderDetailPage() {
                 message.error(t("order.enterContractValid"));
                 return;
               }
+              if (contractPlan.action === "create") {
+                const decision = await resolveContractForUnlinkedOrder(contractsApi, {
+                  contractNumber: contractPlan.contractNumber,
+                  customerId: contractPlan.customerId,
+                  title: contractPlan.title,
+                  rememberedId: rememberedUnlinkedContractId(order.id),
+                });
+                if (decision.action === "blocked") {
+                  message.error(t("order.contractLinkBlocked"));
+                  return;
+                }
+                contractPlan = decision;
+              }
               const synced = await applyContractSync(contractPlan, contractsApi);
               if (!synced.ok) {
                 message.error(apiErrorMessage(synced.error, t("order.contractUpdateFailed")));
@@ -862,6 +882,9 @@ export default function OrderDetailPage() {
               }
               if (synced.contractId && synced.contractNumber) {
                 rememberContractNumber(synced.contractId, synced.contractNumber);
+              }
+              if (!synced.linked && synced.contractId) {
+                rememberUnlinkedContractId(order.id, synced.contractId);
               }
               const savedContractNumber =
                 synced.contractNumber ??

@@ -9,6 +9,11 @@ export type VatDraftInput = {
   vatRate?: number;
 };
 
+export type VatCreateOrder = {
+  id: string;
+  stage?: string | null;
+};
+
 /**
  * POST /vat-invoices body.
  *
@@ -39,4 +44,20 @@ export function buildVatDraftBody(input: VatDraftInput): {
     ...(input.customerTaxCode ? { customerTaxCode: input.customerTaxCode } : {}),
     ...(input.vatRate != null ? { vatRate: input.vatRate } : {}),
   };
+}
+
+/** Cancelled orders must not produce a VAT create body, even via `/vat/new?orderId=`. */
+export function vatCreateBlockReason(order: Pick<VatCreateOrder, "stage"> | null | undefined): "cancelled" | null {
+  return order?.stage === "cancelled" ? "cancelled" : null;
+}
+
+export function buildVatDraftBodyForOrder(
+  order: VatCreateOrder,
+  input: Omit<VatDraftInput, "orderId">,
+):
+  | { ok: true; body: ReturnType<typeof buildVatDraftBody> }
+  | { ok: false; reason: "cancelled" } {
+  const reason = vatCreateBlockReason(order);
+  if (reason) return { ok: false, reason };
+  return { ok: true, body: buildVatDraftBody({ ...input, orderId: order.id }) };
 }
