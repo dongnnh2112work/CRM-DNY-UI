@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AntdProvider } from "@/components/providers/antd-provider";
+import { OAUTH_LOCATION_STRIP_SCRIPT } from "@/lib/http/oauth-redirect";
 import { SessionProvider } from "@/lib/session/session-provider";
 import { UsersProvider } from "@/lib/users-store";
 import "./globals.css";
@@ -38,6 +39,7 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('app_theme');if(t==='binance')t='dark';if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}}catch(e){}})();`,
           }}
         />
+        <script id="dny-oauth-strip" dangerouslySetInnerHTML={{ __html: OAUTH_LOCATION_STRIP_SCRIPT }} />
         <link rel="preconnect" href={apiOrigin()} crossOrigin="anonymous" />
       </head>
       <body className="min-h-full antialiased" suppressHydrationWarning>

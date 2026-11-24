@@ -16,6 +16,7 @@ import {
   resolveEntityLookups,
 } from "@/lib/entity-lookups";
 import { canLoadScope } from "@/lib/route-data-scopes";
+import { contractNumberLabel } from "@/lib/contract-number";
 import { hasHydratedName, looksLikeUuid } from "@/lib/order-helpers";
 import { orderGroupKey, pickPrimaryOrder, siblingOrders } from "@/lib/order-group";
 import type { AppUser, Customer, Ctv, Order, OrderExpense, PaymentRecord, Service, VatInvoice } from "@/lib/types";
@@ -87,6 +88,8 @@ export type ApplyRemoteOptions = {
    * - off: skip lookups
    */
   nameResolve?: "full" | "dashboardPreview" | "listLean" | "off";
+  /** GET /contracts/:id failed while hydrating Số HĐ. */
+  onContractViewFailure?: () => void;
 };
 
 
@@ -157,6 +160,7 @@ function mergeOrderLocal(remote: Order, local?: Order): Order {
     ...remote,
     // Prefer BE once persisted; local only fills when API still returns null/missing.
     commissionPercent: remote.commissionPercent ?? local.commissionPercent,
+    contractNumber: contractNumberLabel(remote.contractNumber) ?? contractNumberLabel(local.contractNumber),
     zaloGroupUrl: remote.zaloGroupUrl ?? local.zaloGroupUrl,
     deadline: remote.deadline ?? local.deadline,
     vatIssueDeadline: local.vatIssueDeadline ?? remote.vatIssueDeadline,
@@ -460,11 +464,9 @@ export async function applyRemoteData(
             lookupCtvName(o.collaboratorId) ||
             existing?.ctvName
           : undefined,
-        contractNumber: (() => {
-          const fromLookup = lookupContractNumber(o.contractId);
-          const n = fromLookup != null ? Number(fromLookup) : undefined;
-          return Number.isFinite(n) ? n : existing?.contractNumber;
-        })(),
+        contractNumber:
+          contractNumberLabel(lookupContractNumber(o.contractId)) ??
+          contractNumberLabel(existing?.contractNumber),
       });
       rememberOrderNumber(o.id, mappedOrder.orderNumber);
       if (o.customerId && o.customerName && !looksLikeUuid(o.customerName)) {
@@ -515,9 +517,14 @@ export async function applyRemoteData(
             if (o.reviewerId && !hasHydratedName(o.reviewerName)) ids.push(o.reviewerId);
             return ids;
           });
+        const contractSource = nameResolve === "dashboardPreview" ? preview : mapped;
+        const contractIds = contractSource
+          .filter((o) => o.contractId && !contractNumberLabel(o.contractNumber))
+          .map((o) => o.contractId)
+          .filter((id): id is string => Boolean(id));
         const lookupReq =
           nameResolve === "dashboardPreview" || nameResolve === "listLean"
-            ? { customerIds, serviceIds, userIds }
+            ? { customerIds, serviceIds, userIds, contractIds }
             : {
                 customerIds: mapped
                   .filter((o) => o.customerId && !hasHydratedName(o.customerName))
@@ -532,10 +539,7 @@ export async function applyRemoteData(
                   if (o.reviewerId && !hasHydratedName(o.reviewerName)) ids.push(o.reviewerId);
                   return ids;
                 }),
-                contractIds: mapped
-                  .filter((o) => o.contractId && o.contractNumber == null)
-                  .map((o) => o.contractId)
-                  .filter(Boolean) as string[],
+                contractIds,
                 ctvIds: mapped
                   .filter((o) => o.ctvId && !hasHydratedName(o.ctvName))
                   .map((o) => o.ctvId)
@@ -549,7 +553,8 @@ export async function applyRemoteData(
             (lookupReq.ctvIds?.length ?? 0) >
           0;
         if (!needsLookup) return;
-        await resolveEntityLookups(lookupReq, perms);
+        const lookup = await resolveEntityLookups(lookupReq, perms);
+        if (lookup.contractViewFailures > 0) options.onContractViewFailure?.();
         if (options.abandonIf?.()) return;
         applier.replaceOrders(
           orders.map((o) => ({
@@ -576,12 +581,9 @@ export async function applyRemoteData(
                 ? o.ctvName
                 : lookupCtvName(o.ctvId) || o.ctvName
               : o.ctvName,
-            contractNumber: (() => {
-              if (o.contractNumber != null) return o.contractNumber;
-              const raw = o.contractId ? lookupContractNumber(o.contractId) : undefined;
-              const n = raw != null ? Number(raw) : undefined;
-              return Number.isFinite(n) ? n : o.contractNumber;
-            })(),
+            contractNumber:
+              contractNumberLabel(o.contractId ? lookupContractNumber(o.contractId) : undefined) ??
+              contractNumberLabel(o.contractNumber),
           })),
         );
       })();

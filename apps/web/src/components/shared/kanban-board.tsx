@@ -91,7 +91,12 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                           ).tone,
                         });
                         return (
-                          <Draggable key={order.id} draggableId={order.id} index={idx}>
+                          <Draggable
+                            key={order.id}
+                            draggableId={order.id}
+                            index={idx}
+                            isDragDisabled={order.stage === "cancelled"}
+                          >
                             {(dragProvided) => (
                               <div
                                 ref={dragProvided.innerRef}

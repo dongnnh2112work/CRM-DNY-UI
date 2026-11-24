@@ -1,3 +1,4 @@
+import { contractNumberLabel } from "@/lib/contract-number";
 import { num } from "@/lib/http/message";
 import type { VatInvoice, VatInvoiceLine, VatStatus } from "@/lib/types";
 import type { ApiVatInvoice } from "@/modules/vat/api";
@@ -22,14 +23,18 @@ function mapLines(lines: unknown, fallbackAmount: number): VatInvoiceLine[] {
   });
 }
 
-export function mapApiVatToUi(v: ApiVatInvoice, orderNumber?: string, contractNumber?: number): VatInvoice {
+export function mapApiVatToUi(
+  v: ApiVatInvoice,
+  orderNumber?: string,
+  contractNumber?: string | number,
+): VatInvoice {
   const amount = num(v.netAmount);
   return {
     id: v.id,
     invoiceNumber: v.invoiceNumber,
     orderId: v.orderId,
     orderNumber: orderNumber ?? "",
-    contractNumber,
+    contractNumber: contractNumberLabel(contractNumber),
     customerName: v.customerName ?? "",
     taxCode: v.customerTaxCode ?? undefined,
     amount,

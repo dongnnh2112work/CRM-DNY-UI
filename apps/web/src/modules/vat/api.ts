@@ -46,6 +46,10 @@ export const vatApi = {
     customerName?: string;
     customerTaxCode?: string;
     vatRate?: number;
+    /**
+     * Optional in the FE doc. Live API rejects arrays (`lines must be an object`).
+     * Callers omit this until BE accepts an array. Do not send `{ items: [...] }`.
+     */
     lines?: unknown;
   }) {
     return apiRequest<ApiVatInvoice | { data: ApiVatInvoice }>("/vat-invoices", {

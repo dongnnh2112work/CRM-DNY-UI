@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { contractNumberLabel, numericContractNumber } from "@/lib/contract-number";
 import { tt } from "@/lib/i18n";
 import { isContractNumberTaken, nextDossierNumber, normalizeOrder } from "@/lib/order-helpers";
 import type { Order, OrderStage } from "@/lib/types";
@@ -33,7 +34,7 @@ export type NewOrderInput = {
   reviewerName?: string;
   notes?: string;
   needsVat: boolean;
-  contractNumber?: number;
+  contractNumber?: string | number;
   deadline?: string;
   vatIssueDeadline?: string;
 };
@@ -92,10 +93,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const addOrder = useCallback(
     (input: NewOrderInput) => {
       if (input.needsVat) {
-        if (input.contractNumber == null || input.contractNumber < 1) {
+        const hd = numericContractNumber(input.contractNumber);
+        if (hd == null) {
           throw new Error(tt("order.contractRequiredVat"));
         }
-        if (isContractNumberTaken(orders, input.contractNumber)) {
+        if (isContractNumberTaken(orders, hd)) {
           throw new Error(tt("order.contractTakenStore"));
         }
       }
@@ -132,7 +134,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         createdAt: `${y}-${m}-${d}`,
         month: `${y}-${m}`,
         needsVat: input.needsVat,
-        contractNumber: input.needsVat ? input.contractNumber : undefined,
+        contractNumber: input.needsVat ? contractNumberLabel(input.contractNumber) : undefined,
         deadline: input.deadline,
         vatIssueDeadline: input.needsVat ? input.vatIssueDeadline : undefined,
       };

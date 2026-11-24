@@ -335,14 +335,18 @@ export default function ProfilePage() {
                           <Form.Item
                             name="currentPassword"
                             label={t("profile.currentPassword")}
-                            rules={[{ required: true, message: t("profile.enterCurrentPassword") }]}
+                            extra={
+                              currentUser.authMethod === "google"
+                                ? t("profile.googleNoPassword")
+                                : t("profile.currentPasswordNotChecked")
+                            }
                           >
                             <Input.Password
-                              disabled={currentUser.authMethod === "google"}
+                              disabled
                               placeholder={
                                 currentUser.authMethod === "google"
                                   ? t("profile.googleNoPassword")
-                                  : "••••••••"
+                                  : t("profile.currentPasswordNotChecked")
                               }
                             />
                           </Form.Item>

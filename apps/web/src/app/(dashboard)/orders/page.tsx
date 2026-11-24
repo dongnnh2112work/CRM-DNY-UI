@@ -24,6 +24,7 @@ const KanbanBoard = dynamic(
     loading: () => <Skeleton active paragraph={{ rows: 10 }} style={{ padding: 16 }} />,
   },
 );
+import { compareContractNumbers, formatContractNumber } from "@/lib/contract-number";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import {
@@ -171,6 +172,10 @@ export default function OrdersPage() {
   const handleMove = async (orderId: string, newStage: OrderStage) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order || order.stage === newStage) return false;
+    if (order.stage === "cancelled") {
+      message.warning(t("order.cancelledLocked"));
+      return false;
+    }
 
     const prev = {
       stage: order.stage,
@@ -341,6 +346,7 @@ export default function OrdersPage() {
         <StatusSelect
           module="orderStage"
           value={s}
+          disabled={s === "cancelled"}
           options={stageOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
           onChange={(v) => requestStageChange(r, v as OrderStage)}
         />
@@ -350,8 +356,8 @@ export default function OrdersPage() {
       title: t("common.contractNo"),
       dataIndex: "contractNumber",
       align: "center",
-      sorter: (a, b) => (a.contractNumber ?? 0) - (b.contractNumber ?? 0),
-      render: (v?: number) => (v != null ? v : "—"),
+      sorter: (a, b) => compareContractNumbers(a.contractNumber, b.contractNumber),
+      render: (v?: string | number) => formatContractNumber(v),
     },
     {
       title: t("order.issueVat"),

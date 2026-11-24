@@ -34,4 +34,9 @@ export const contractsApi = {
   get(id: string) {
     return apiRequest<ApiContract>(`/contracts/${id}`);
   },
+
+  /** Soft-delete. Used only to drop a draft contract when order create failed before any order existed. */
+  remove(id: string) {
+    return apiRequest<void>(`/contracts/${id}`, { method: "DELETE" });
+  },
 };

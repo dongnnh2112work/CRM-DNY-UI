@@ -10,7 +10,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { App } from "antd";
 import { usePathname } from "next/navigation";
+import { useT } from "@/lib/use-t";
 import { useAppReminderConfig } from "@/lib/app-config-store";
 import { useCustomers } from "@/lib/customers-store";
 import { useCtvs } from "@/lib/ctvs-store";
@@ -51,6 +53,7 @@ const hydrateInflight = new Map<string, Promise<void>>();
 /** Lists whose on-screen totals are sums over every row, not the current page. */
 function aggregateFillScopes(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/payroll")) return ["orders", "payments", "expenses"];
+  if (pathname === "/orders/new" || pathname === "/vat/new") return ["orders"];
   if (pathname === "/orders") return ["payments", "expenses"];
   if (orderDetailListScopes(pathname).length) return ["orders", "payments"];
   if (pathname === "/dashboard") return ["orders", "payments", "expenses"];
@@ -306,6 +309,15 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
     ],
   );
 
+  const { message } = App.useApp();
+  const t = useT();
+  const contractViewWarned = useRef(false);
+  const onContractViewFailure = useCallback(() => {
+    if (contractViewWarned.current) return;
+    contractViewWarned.current = true;
+    message.warning(t("order.contractViewFailed"));
+  }, [message, t]);
+
   const filterAllowed = useCallback(
     (scopes: RefreshScope[]) =>
       scopes.filter(
@@ -340,6 +352,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
             () => snapshotRef.current,
             {
               ...options,
+              onContractViewFailure,
               onForbidden: (s) => {
                 forbiddenRef.current.add(s);
                 // End bootLoading so UI can show empty instead of spinning forever.
@@ -372,7 +385,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         endRefreshing();
       }
     },
-    [applier, status, user, beginRefreshing, endRefreshing, filterAllowed],
+    [applier, status, user, beginRefreshing, endRefreshing, filterAllowed, onContractViewFailure],
   );
 
   const refresh = useCallback(

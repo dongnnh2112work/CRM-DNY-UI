@@ -1,3 +1,4 @@
+import { contractNumberLabel } from "@/lib/contract-number";
 import { num } from "@/lib/http/message";
 import { entityDisplayName, normalizeCommissionPercent } from "@/lib/order-helpers";
 import type { ApprovalStatus, Order, OrderChannel } from "@/lib/types";
@@ -53,7 +54,7 @@ export function mapApiOrderToUi(
     submitterName?: string;
     reviewerName?: string;
     ctvName?: string;
-    contractNumber?: number;
+    contractNumber?: string | number;
   } = {},
 ): Order {
   const created = typeof o.createdAt === "string" ? o.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
@@ -87,7 +88,7 @@ export function mapApiOrderToUi(
     createdAt: created,
     month: created.slice(0, 7),
     needsVat: vatRate > 0 && num(o.totalGross) > num(o.totalNet),
-    contractNumber: names.contractNumber,
+    contractNumber: contractNumberLabel(names.contractNumber),
     commissionPercent: normalizeCommissionPercent(o.commissionPercent),
     deadline: mapDeadline(o.deadline),
     zaloGroupUrl: mapZaloUrl(o.zaloGroupUrl, o.zaloGroupLink),

@@ -1,3 +1,4 @@
+import { numericContractNumber } from "@/lib/contract-number";
 import { tt } from "@/lib/i18n";
 import { sameOrderGroup } from "@/lib/order-group";
 import type { Order, OrderAttachment } from "@/lib/types";
@@ -60,7 +61,10 @@ export function serviceDisplayName(
 }
 
 /** DNY + YY + MM + seq (vd DNY260856). Bỏ hậu tố -1, -2 của đơn con cùng HĐ. */
-export function nextDossierNumber(orders: Order[], from = new Date()): string {
+export function nextDossierNumber(
+  orders: Array<Pick<Order, "orderNumber">>,
+  from = new Date(),
+): string {
   const yy = String(from.getFullYear()).slice(-2);
   const mm = String(from.getMonth() + 1).padStart(2, "0");
   const prefix = `DNY${yy}${mm}`;
@@ -85,12 +89,11 @@ export function deadlineFromService(processingDays: number, from = new Date()): 
   return `${y}-${m}-${day}`;
 }
 
-export function nextContractNumber(orders: Order[]): number {
+export function nextContractNumber(orders: Array<Pick<Order, "contractNumber">>): number {
   let max = 0;
   for (const o of orders) {
-    if (typeof o.contractNumber === "number" && o.contractNumber > max) {
-      max = o.contractNumber;
-    }
+    const n = numericContractNumber(o.contractNumber);
+    if (n != null && n > max) max = n;
   }
   return max + 1;
 }
@@ -110,10 +113,7 @@ export function isContractNumberTaken(
     }
   }
   return orders.some(
-    (o) =>
-      !excludeIds.has(o.id) &&
-      typeof o.contractNumber === "number" &&
-      o.contractNumber === contractNumber,
+    (o) => !excludeIds.has(o.id) && numericContractNumber(o.contractNumber) === contractNumber,
   );
 }
 
