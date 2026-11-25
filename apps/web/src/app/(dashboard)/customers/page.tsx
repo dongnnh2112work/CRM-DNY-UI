@@ -32,7 +32,17 @@ import type { Customer, CustomerStatus } from "@/lib/types";
 import { useUsers } from "@/lib/users-store";
 import { customersApi } from "@/modules/customers/api";
 import { mapApiCustomerToUi, mapUiCustomerPatchToApi, mapUiCustomerToApi } from "@/modules/customers/map-to-ui";
-import { isBlankImportRow, validateCustomerImportRow } from "@/lib/customer-import";
+import {
+  CUSTOMER_IMPORT_TEMPLATE_ROW,
+  isBlankImportRow,
+  summarizeCustomerImport,
+  validateCustomerImportRow,
+} from "@/lib/customer-import";
+import {
+  buildCustomerDeleteWarning,
+  customerRelatedImpact,
+  sumCustomerRelatedImpact,
+} from "@/lib/customer-delete-warning";
 import { useT } from "@/lib/use-t";
 
 export default function CustomersPage() {
@@ -417,7 +427,23 @@ function CustomersPageContent() {
             </Button>
             <Popconfirm
               title={t("customer.deleteN", { count: selectedCount })}
-              description={t("common.applyCurrentPage")}
+              description={
+                buildCustomerDeleteWarning(
+                  sumCustomerRelatedImpact(
+                    selectedRowKeys.map((id) =>
+                      customerRelatedImpact(
+                        String(id),
+                        orders.map((order) => ({
+                          customerId: order.customerId,
+                          contractId: order.contractId,
+                          contractNumber: order.contractNumber,
+                        })),
+                      ),
+                    ),
+                  ),
+                  t("customer.deleteRelated"),
+                ) ?? t("common.applyCurrentPage")
+              }
               okText={t("common.delete")}
               cancelText={t("common.cancel")}
               okButtonProps={{ danger: true }}
@@ -445,7 +471,19 @@ function CustomersPageContent() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         expectedColumns={["Name", "Phone", "Email", "Company", "Tax Code"]}
+        onDownloadTemplate={() =>
+          exportRowsToXlsx("customers-template-TEST.xlsx", [CUSTOMER_IMPORT_TEMPLATE_ROW])
+        }
         onImport={async (rows) => {
+          const summary = summarizeCustomerImport(rows);
+          if (summary.blankName || summary.invalid) {
+            const text = t("import.keptOpen", {
+              blank: String(summary.blankName),
+              invalid: String(summary.invalid),
+            });
+            message.warning(text);
+            return { close: false, message: text };
+          }
           let empty = 0;
           let invalid = 0;
           const created: Customer[] = [];
@@ -486,9 +524,11 @@ function CustomersPageContent() {
                 invalid: String(invalid),
               }),
             );
-          } else {
-            message.warning(t("import.noneSaved", { empty: String(empty), invalid: String(invalid) }));
+            return { close: true };
           }
+          const failed = t("import.noneSaved", { empty: String(empty), invalid: String(invalid) });
+          message.warning(failed);
+          return { close: false, message: failed };
         }}
       />
       <Modal

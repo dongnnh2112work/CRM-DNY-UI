@@ -1,10 +1,10 @@
 "use client";
 
-import { AppstoreOutlined, BarsOutlined, BgColorsOutlined } from "@ant-design/icons";
+import { AppstoreOutlined, BarsOutlined, DownloadOutlined, SettingOutlined } from "@ant-design/icons";
 import { App, Button, Modal, Select, Segmented, Skeleton, Tag, type TableColumnsType } from "antd";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useMemo, useState, type Key } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore, type Key } from "react";
 import { CashflowAmounts } from "@/components/orders/cashflow-amounts";
 import { OrderStageSettingsDrawer } from "@/components/orders/order-stage-settings-drawer";
 import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
@@ -42,6 +42,12 @@ import {
   formatYearMonth,
   type OrderCashflow,
 } from "@/lib/order-cashflow";
+import {
+  loadOrdersViewMode,
+  saveOrdersViewMode,
+  subscribeOrdersViewMode,
+  type OrdersViewMode,
+} from "@/lib/orders-view-mode";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -86,7 +92,11 @@ export default function OrdersPage() {
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
   const canViewStages = Boolean(perms?.order_statuses?.view);
   const canEditStages = Boolean(perms?.order_statuses?.edit);
-  const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
+  const viewMode = useSyncExternalStore(
+    subscribeOrdersViewMode,
+    () => loadOrdersViewMode(apiUser?.id),
+    () => "kanban" as const,
+  );
   const [userFilter, setUserFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
@@ -223,6 +233,28 @@ export default function OrdersPage() {
         if (ok) message.success(t("order.stageUpdated"));
       },
     });
+  };
+
+  const exportVisible = async () => {
+    if (filtered.length === 0) {
+      message.warning(t("order.empty"));
+      return;
+    }
+    setExporting(true);
+    try {
+      const rows = filtered.map((o) => ({
+        [t("common.dossier")]: o.orderNumber,
+        [t("common.customer")]: o.customerName,
+        [t("common.service")]: o.serviceName,
+        [t("common.stage")]: o.stage,
+        [t("common.value")]: o.value,
+        [t("common.owner")]: o.assignedUserName,
+      }));
+      await exportRowsToXlsx("orders-visible.xlsx", rows);
+      message.success(t("order.exported", { count: rows.length }));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const bulkExport = async () => {
@@ -480,7 +512,8 @@ export default function OrdersPage() {
         <Segmented
           value={viewMode}
           onChange={(v) => {
-            setViewMode(v as "kanban" | "table");
+            const next = v as OrdersViewMode;
+            saveOrdersViewMode(next, apiUser?.id);
             clearSelection();
           }}
           options={[
@@ -488,8 +521,11 @@ export default function OrdersPage() {
             { value: "table", icon: <BarsOutlined /> },
           ]}
         />
+        <Button icon={<DownloadOutlined />} onClick={() => void exportVisible()}>
+          {t("common.export")}
+        </Button>
         {canViewStages ? (
-          <Button icon={<BgColorsOutlined />} onClick={() => setStageDrawerOpen(true)}>
+          <Button icon={<SettingOutlined />} onClick={() => setStageDrawerOpen(true)}>
             {t("nav.orderStatuses")}
           </Button>
         ) : null}

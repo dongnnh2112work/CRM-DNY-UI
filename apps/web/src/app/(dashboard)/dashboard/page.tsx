@@ -25,7 +25,7 @@ import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
 import { upcomingCollectionPayments } from "@/lib/payment-visibility";
-import { buildPayroll, getPayrollScope } from "@/lib/payroll";
+import { buildPayroll, getPayrollScope, payrollSlipActor } from "@/lib/payroll";
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useSession } from "@/lib/session/session-provider";
 import { ORDER_STAGE_CHART_COLORS, type Order } from "@/lib/types";
@@ -119,8 +119,9 @@ export default function DashboardPage() {
   );
   const thisMonthKey = currentYearMonth();
   const revenueThisMonth = revenueByMonth.find((item) => item.month === thisMonthKey)?.value ?? 0;
+  const payrollActor = payrollSlipActor({ storeUser: currentUser, sessionUser: apiUser });
   const payrollScope = getPayrollScope(
-    currentUser,
+    payrollActor,
     currentUser ? getEffectivePermissions(currentUser) : null,
     apiUser?.permissions,
   );
@@ -134,12 +135,12 @@ export default function DashboardPage() {
     if (!payrollReady) return 0;
     const rows = buildPayroll(orders, payments, expenses, thisMonthKey);
     if (payrollScope === "self") {
-      return rows.find((row) => row.userId === currentUser?.id)?.total ?? 0;
+      return rows.find((row) => row.userId === payrollActor?.id)?.total ?? 0;
     }
     return rows.reduce((sum, row) => sum + row.total, 0);
-  }, [payrollReady, orders, payments, expenses, thisMonthKey, payrollScope, currentUser?.id]);
+  }, [payrollReady, orders, payments, expenses, thisMonthKey, payrollScope, payrollActor?.id]);
   const payrollHref =
-    payrollScope === "self" && currentUser ? `/payroll/${currentUser.id}` : "/payroll";
+    payrollScope === "self" && payrollActor ? `/payroll/${payrollActor.id}` : "/payroll";
 
   const displayName = (value?: string) => {
     const text = value?.trim();
@@ -169,9 +170,8 @@ export default function DashboardPage() {
             {aggregatesReady ? (
               <StatCard
                 title={t("dash.revenueMonth")}
-                value={revenueThisMonth}
+                value={formatVndDisplay(revenueThisMonth)}
                 prefix={<DollarOutlined />}
-                suffix="₫"
                 accent={ds.primary}
               />
             ) : (
