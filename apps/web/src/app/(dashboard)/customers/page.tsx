@@ -1,7 +1,7 @@
 "use client";
 
 import { DownloadOutlined, UploadOutlined } from "@ant-design/icons";
-import { App, Button, Modal, Popconfirm, Select, Space } from "antd";
+import { App, Button, Modal, Popconfirm, Select, Skeleton, Space } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, type Key } from "react";
 import { UsedServiceTags } from "@/components/customers/used-service-tags";
@@ -14,12 +14,13 @@ import { StatusSelect } from "@/components/shared/status-select";
 import { useRemoteList } from "@/components/api-hydrator";
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import {
+  getCustomerOrders,
   getCustomerUsedServices,
   usedServiceNames,
   customerOwnerLabel,
 } from "@/lib/customer-helpers";
+import { lookupUserName, resolveEntityLookups } from "@/lib/entity-lookups";
 import { CUSTOMER_LOCKED_FIELD_KEYS, useCustomers } from "@/lib/customers-store";
-import { lookupUserName } from "@/lib/entity-lookups";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
@@ -47,13 +48,15 @@ function CustomersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { message } = App.useApp();
-  const { can } = useSession();
+  const { can, user } = useSession();
   const { customers, fieldDefs, saveFieldDefs, updateCustomer, deleteCustomer, addCustomers } = useCustomers();
   const { users, currentUser } = useUsers();
   const { orders } = useOrders();
   const { services } = useServices();
   const { getMeta, statusOptions, addStatus, updateStatus, removeStatus } = useCustomerStatusConfig();
   const customerRemote = useRemoteList("customers");
+  const ordersRemote = useRemoteList("orders");
+  const [ownerTick, setOwnerTick] = useState(0);
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -72,6 +75,30 @@ function CustomersPageContent() {
     const q = searchParams.get("q");
     if (q != null) setQuery(q);
   }, [searchParams]);
+
+  const ownerIds = useMemo(
+    () => [...new Set(customers.map((customer) => customer.owner).filter(Boolean))],
+    [customers],
+  );
+  const missingOwnerKey = ownerIds
+    .filter((id) => customerOwnerLabel(id, users, lookupUserName(id)) === "—")
+    .join("|");
+  const [settledOwnerKey, setSettledOwnerKey] = useState("");
+  const ownersPending = missingOwnerKey.length > 0 && settledOwnerKey !== missingOwnerKey;
+  useEffect(() => {
+    if (!missingOwnerKey) return;
+    let cancelled = false;
+    const ids = missingOwnerKey.split("|");
+    const key = missingOwnerKey;
+    void resolveEntityLookups({ userIds: ids }, user?.permissions).finally(() => {
+      if (cancelled) return;
+      setOwnerTick((n) => n + 1);
+      setSettledOwnerKey(key);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [missingOwnerKey, user?.permissions]);
 
   const usedByCustomer = useMemo(() => {
     const map = new Map<string, ReturnType<typeof getCustomerUsedServices>>();
@@ -280,17 +307,28 @@ function CustomersPageContent() {
         dataSource={filtered}
         rowKey="id"
         columnManagerKey="customers"
+        extra={[
+          {
+            title: t("customer.orderCount"),
+            key: "orderCount",
+            align: "center",
+            render: (_value, record) =>
+              ordersRemote.bootLoading ? "…" : getCustomerOrders(record.id, orders).length,
+          },
+        ]}
         statusModule="customer"
         remote={customerRemote}
         linkField={{ key: "name", onClick: (record) => router.push(`/customers/${record.id}`) }}
         columnOverrides={{
           owner: {
-            render: (value) =>
-              customerOwnerLabel(
-                value != null ? String(value) : "",
-                users,
-                lookupUserName(value != null ? String(value) : ""),
-              ),
+            render: (value) => {
+              const id = value != null ? String(value) : "";
+              const label = customerOwnerLabel(id, users, ownerTick >= 0 ? lookupUserName(id) : undefined);
+              if (label === "—" && id && ownersPending) {
+                return <Skeleton.Input active size="small" style={{ width: 96 }} />;
+              }
+              return label;
+            },
           },
           channel: {
             render: (value) => {
@@ -334,9 +372,12 @@ function CustomersPageContent() {
             width: 260,
             sorter: (a, b) =>
               (usedByCustomer.get(a.id)?.length ?? 0) - (usedByCustomer.get(b.id)?.length ?? 0),
-            render: (_value, record) => (
-              <UsedServiceTags services={usedByCustomer.get(record.id) ?? []} />
-            ),
+            render: (_value, record) =>
+              ordersRemote.bootLoading ? (
+                <Skeleton.Input active size="small" style={{ width: 120 }} />
+              ) : (
+                <UsedServiceTags services={usedByCustomer.get(record.id) ?? []} />
+              ),
           },
         }}
         enableRowSelection

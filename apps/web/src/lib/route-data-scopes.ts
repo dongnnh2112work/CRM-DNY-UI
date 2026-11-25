@@ -111,6 +111,16 @@ export function orderDetailListScopes(pathname: string): RefreshScope[] {
   return ["orders", "payments"];
 }
 
+/** Customer list and detail need orders (and service names) without visiting /orders first. */
+export function customerSurfaceScopes(pathname: string): RefreshScope[] {
+  if (!pathname.startsWith("/customers") || pathname === "/customers/new") return [];
+  return ["orders", "services"];
+}
+
+export function routeListScopes(pathname: string): RefreshScope[] {
+  return [...new Set([...scopesForPath(pathname), ...orderDetailListScopes(pathname), ...customerSurfaceScopes(pathname)])];
+}
+
 export function scopesForPath(pathname: string): RefreshScope[] {
   if (pathname.startsWith("/dashboard")) return [];
   // Detail pages use GET /:id or /:id/detail — skip list hydrate.

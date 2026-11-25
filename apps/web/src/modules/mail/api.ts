@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/http/client";
-import type { PageResult } from "@/lib/http/paging";
+import { parsePage } from "@/lib/page-result";
 
 export type EmailTemplate = {
   id: string;
@@ -79,22 +79,8 @@ function unwrapData(raw: unknown): unknown {
   return raw;
 }
 
-function asPage<T>(raw: unknown): PageResult<T> {
-  const body = unwrapData(raw);
-  if (Array.isArray(body)) {
-    return { items: body as T[], total: body.length, page: 1, pageSize: body.length || 20 };
-  }
-  if (body && typeof body === "object" && "items" in body) {
-    const page = body as Partial<PageResult<T>>;
-    const items = page.items ?? [];
-    return {
-      items,
-      total: page.total ?? items.length,
-      page: page.page ?? 1,
-      pageSize: page.pageSize ?? (items.length || 20),
-    };
-  }
-  return { items: [], total: 0, page: 1, pageSize: 20 };
+function asPage<T>(raw: unknown) {
+  return parsePage<T>(raw);
 }
 
 function asRecord<T>(raw: unknown): T {

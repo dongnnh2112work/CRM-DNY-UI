@@ -1,9 +1,10 @@
 "use client";
 
 import { InboxOutlined } from "@ant-design/icons";
-import { Button, Modal, Space, Table, Typography, Upload } from "antd";
+import { Alert, Button, Modal, Space, Table, Typography, Upload } from "antd";
 import { useState, useCallback } from "react";
 import { ds } from "@/lib/design-tokens";
+import { isLegacyXls, parseCsv, rowsFromXlsx } from "@/lib/spreadsheet";
 import { tableIndexColumn } from "@/lib/table-index-column";
 import { useT } from "@/lib/use-t";
 
@@ -19,30 +20,46 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
   const [allRows, setAllRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
   const preview = allRows.slice(0, 10);
 
-  const handleFile = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      void (async () => {
-        const XLSX = await import("xlsx");
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-        if (json.length > 0) {
-          setColumns(Object.keys(json[0]));
-          setAllRows(json);
-        }
-      })();
-    };
-    reader.readAsArrayBuffer(file);
-    return false;
-  }, []);
+  const handleFile = useCallback(
+    (file: File) => {
+      setReadError(null);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        void (async () => {
+          try {
+            const buffer = e.target?.result as ArrayBuffer;
+            const bytes = new Uint8Array(buffer);
+            if (isLegacyXls(file.name, bytes)) {
+              setReadError(t("import.xlsUnsupported"));
+              return;
+            }
+            const json = file.name.toLowerCase().endsWith(".csv")
+              ? parseCsv(new TextDecoder().decode(bytes))
+              : await rowsFromXlsx(buffer);
+            if (json.length > 0) {
+              setColumns(Object.keys(json[0]));
+              setAllRows(json);
+            } else {
+              setReadError(t("import.readFailed"));
+            }
+          } catch {
+            setReadError(t("import.readFailed"));
+          }
+        })();
+      };
+      reader.readAsArrayBuffer(file);
+      return false;
+    },
+    [t],
+  );
 
   const reset = () => {
     setAllRows([]);
     setColumns([]);
+    setReadError(null);
   };
 
   const handleConfirm = async () => {
@@ -74,8 +91,9 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
         </Space>
       }
     >
+      {readError ? <Alert type="error" showIcon style={{ marginBottom: 12 }} title={readError} /> : null}
       {allRows.length === 0 ? (
-        <Upload.Dragger beforeUpload={handleFile} accept=".xlsx,.xls,.csv" showUploadList={false}>
+        <Upload.Dragger beforeUpload={handleFile} accept=".xlsx,.csv" showUploadList={false}>
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">{t("import.drop")}</p>
           {expectedColumns && (

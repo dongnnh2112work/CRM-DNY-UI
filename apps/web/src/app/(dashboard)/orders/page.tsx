@@ -33,6 +33,7 @@ import {
   licenseWarnMonthsForOrder,
   serviceDisplayName,
 } from "@/lib/order-helpers";
+import { orderAssigneeOptions } from "@/lib/assignee-options";
 import { siblingOrders, allocatePaymentShare } from "@/lib/order-group";
 import {
   buildOrderCashflow,
@@ -464,9 +465,7 @@ export default function OrdersPage() {
           style={{ width: 180 }}
           options={[
             { value: "all", label: t("common.allStaff") },
-            ...staffUsers
-              .filter((u) => u.role === "staff" || u.role === "admin")
-              .map((u) => ({ value: u.id, label: u.name })),
+            ...orderAssigneeOptions(staffUsers, orders),
           ]}
         />
         <Select

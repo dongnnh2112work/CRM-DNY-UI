@@ -36,7 +36,7 @@ import {
   LIST_FILL_MAX_PAGES,
   orderDetailListScopes,
   primaryScopeForPath,
-  scopesForPath,
+  routeListScopes,
   staleMsFor,
 } from "@/lib/route-data-scopes";
 import { NOTIFICATION_PAGE_SIZE, ROUTE_PAGE_SIZE } from "@/lib/http/paging";
@@ -56,6 +56,7 @@ function aggregateFillScopes(pathname: string): RefreshScope[] {
   if (pathname === "/orders/new" || pathname === "/vat/new") return ["orders"];
   if (pathname === "/orders") return ["payments", "expenses"];
   if (orderDetailListScopes(pathname).length) return ["orders", "payments"];
+  if (pathname.startsWith("/customers") && pathname !== "/customers/new") return ["customers", "orders", "services"];
   if (pathname === "/dashboard") return ["orders", "payments", "expenses"];
   if (pathname === "/payments") return ["orders", "payments"];
   if (pathname === "/vat") return ["vat"];
@@ -70,7 +71,8 @@ function nameResolveForPath(pathname: string): ApplyRemoteOptions["nameResolve"]
     pathname.startsWith("/payments") ||
     pathname.startsWith("/expense") ||
     pathname.startsWith("/vat") ||
-    pathname.startsWith("/payroll")
+    pathname.startsWith("/payroll") ||
+    pathname.startsWith("/customers")
   ) {
     return "listLean";
   }
@@ -160,11 +162,13 @@ export function useApiHydrate() {
 
 export function useRemoteList(scope: RefreshScope) {
   const { listMeta, loadMore, refreshing } = useApiHydrate();
-  const { user } = useSession();
+  const { user, status } = useSession();
   const meta = listMeta[scope];
   const allowed = canLoadScope(scope, user?.permissions);
-  /** Waiting on first slice for a permitted scope — not empty-state. */
-  const bootLoading = allowed && meta == null;
+  const awaitingSession = status === "loading";
+  /** Count-only or not-yet-loaded slices must not look like a finished empty list. */
+  const bootLoading =
+    awaitingSession || (allowed && (meta == null || meta.provisional === true));
   const loaded = meta?.loaded ?? 0;
   return {
     loaded,
@@ -368,9 +372,10 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
               },
             },
           );
-          if (options?.countsOnly || options?.abandonIf?.()) return;
+          if (options?.abandonIf?.()) return;
           const now = Date.now();
           setLastSyncedAt(now);
+          if (options?.countsOnly) return;
           for (const s of allowed) {
             if (s === "all" || s === "core" || s === "deferred") continue;
             fetchedAtRef.current[s] = now;
@@ -426,7 +431,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       ]);
       return;
     }
-    const scopes = scopesForPath(pathname);
+    const scopes = routeListScopes(pathname);
     if (scopes.length === 0) {
       if (canLoadScope("notifications", user?.permissions)) {
         await run("notifications", { pageSize: NOTIFICATION_PAGE_SIZE });
@@ -439,7 +444,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const prefetchPath = useCallback(
     (path: string) => {
       if (status !== "authenticated" || isAwaitingAccess(user)) return;
-      const scopes = filterAllowed(scopesForPath(path));
+      const scopes = filterAllowed(routeListScopes(path));
       if (!scopes.length) return;
       const due = scopes.filter((scope) => {
         const at = fetchedAtRef.current[scope];
@@ -559,7 +564,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
         return;
       }
 
-      const pathScopes = filterAllowed(scopesForPath(pathnameRef.current));
+      const pathScopes = filterAllowed(routeListScopes(pathnameRef.current));
       if (pathScopes.length) {
         await run(pathScopes, {
           pageSize: ROUTE_PAGE_SIZE,
@@ -603,10 +608,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
       ]);
       return;
     }
-    const due = filterAllowed([
-      ...scopesForPath(pathname),
-      ...orderDetailListScopes(pathname),
-    ]).filter((scope, index, all) => all.indexOf(scope) === index).filter((scope) => {
+    const due = filterAllowed(routeListScopes(pathname)).filter((scope) => {
       const at = fetchedAtRef.current[scope];
       return at == null || Date.now() - at > staleMsFor(scope);
     });
@@ -663,7 +665,7 @@ export function ApiHydrator({ children }: { children: ReactNode }) {
   const dataFresh = useMemo(() => {
     const scopes = pathname.startsWith("/dashboard")
       ? (["orders", "payments"] as RefreshScope[])
-      : scopesForPath(pathname);
+      : routeListScopes(pathname);
     if (!scopes.length) return true;
     const now = Date.now();
     return scopes.every((s) => {
