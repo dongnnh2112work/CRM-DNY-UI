@@ -21,6 +21,7 @@ import { useApiHydrate, useRemoteList } from "@/components/api-hydrator";
 import { PageLoading } from "@/components/shared/page-loading";
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { isPaymentListOverdue } from "@/lib/overdue-highlight";
+import { paymentsForCollection } from "@/lib/payment-visibility";
 import { useSession } from "@/lib/session/session-provider";
 
 function compareText(a: string, b: string) {
@@ -50,7 +51,7 @@ export default function PaymentsPage() {
 
   const filtered = useMemo(() => {
     const createdByOrder = new Map(orders.map((o) => [o.id, o.createdAt]));
-    let list = [...payments];
+    let list = paymentsForCollection(payments, orders);
     if (statusFilter !== "all") list = list.filter((p) => p.status === statusFilter);
     if (dateRange?.[0] || dateRange?.[1]) {
       list = list.filter((p) =>
@@ -139,21 +140,21 @@ export default function PaymentsPage() {
         sorter: (a, b) => compareText(a.customerName, b.customerName),
       },
       {
-        title: t("payment.total"),
+        title: t("payment.contractTotal"),
         dataIndex: "totalAmount",
         align: "center",
         sorter: (a, b) => a.totalAmount - b.totalAmount,
         render: (v: number) => formatVndDisplay(v),
       },
       {
-        title: t("payment.paid"),
+        title: t("payment.contractPaid"),
         dataIndex: "paidAmount",
         align: "center",
         sorter: (a, b) => a.paidAmount - b.paidAmount,
         render: (v: number) => formatVndDisplay(v),
       },
       {
-        title: t("payment.remaining"),
+        title: t("payment.contractRemaining"),
         dataIndex: "remaining",
         align: "center",
         sorter: (a, b) => a.remaining - b.remaining,

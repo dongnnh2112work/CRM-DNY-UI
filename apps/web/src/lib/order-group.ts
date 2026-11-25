@@ -68,10 +68,62 @@ export function groupOrdersByContract(orders: Order[]): Order[][] {
   return [...map.values()].map((group) => [...group].sort(byDossier));
 }
 
-/** Đơn còn hiệu lực. Đơn hủy không nhận phần thu khi HĐ còn đơn khác. Hủy hết thì giữ nguyên cả nhóm. */
-function sharePool(siblings: Order[]): Order[] {
+/**
+ * Đơn còn hiệu lực — dùng cho nghĩa vụ HĐ và các đợt chưa xác minh.
+ * Hủy hết thì giữ nguyên cả nhóm (không làm tổng về 0).
+ * Đợt đã xác minh KHÔNG dùng pool này: xem `frozenPool`.
+ */
+function activePool(siblings: Order[]): Order[] {
   const active = siblings.filter((s) => s.stage !== "cancelled");
   return active.length > 0 ? active : siblings;
+}
+
+/** @deprecated name kept for call sites that mean the active obligation pool. */
+function sharePool(siblings: Order[]): Order[] {
+  return activePool(siblings);
+}
+
+function dayOf(iso?: string | null): string {
+  if (!iso) return "";
+  const day = iso.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+}
+
+/**
+ * Dịch vụ được giữ phần của một đợt ĐÃ xác minh.
+ * Gồm cả đơn đã hủy (tiền lịch sử không đổ sang đơn còn lại) và loại đơn tạo sau ngày thu.
+ * Thiếu ngày thì coi là đơn gốc — vẫn nằm trong pool, để dữ liệu cũ không đổi cách chia.
+ */
+function frozenPool(siblings: Order[], paidAt?: string | null): Order[] {
+  const paidDay = dayOf(paidAt);
+  const eligible = siblings.filter((order) => {
+    const created = dayOf(order.createdAt);
+    if (!paidDay || !created) return true;
+    return created <= paidDay;
+  });
+  return eligible.length > 0 ? eligible : siblings;
+}
+
+function poolForInstallment(siblings: Order[], installment: PaymentInstallment): Order[] {
+  if (installment.status === "paid") return frozenPool(siblings, installment.paidDate ?? installment.dueDate);
+  return activePool(siblings);
+}
+
+function poolKey(pool: Order[]): string {
+  return pool
+    .map((order) => order.id)
+    .sort()
+    .join("|");
+}
+
+function allocationTargets(pool: Order[]): AllocationTarget[] {
+  const weighted = pool.map((order) => weightOf(order.value));
+  const even = weighted.every((weight) => weight === 0);
+  return pool.map((order, index) => ({
+    weight: even ? 1 : weighted[index],
+    tieKey: String(order.orderNumber ?? ""),
+    id: String(order.id),
+  }));
 }
 
 /** Tổng giá HĐ (chưa VAT) của các đơn còn hiệu lực. Hủy hết thì tính cả nhóm. Giá âm coi là 0. */
@@ -79,17 +131,51 @@ export function groupContractTotal(siblings: Order[]): number {
   return sharePool(siblings).reduce((sum, o) => sum + weightOf(o.value), 0);
 }
 
-function paymentStatus(paidAmount: number, totalAmount: number, installments: PaymentInstallment[]): PaymentStatus {
-  if (totalAmount <= 0) return "unpaid";
-  if (paidAmount <= 0) {
-    const overdue = installments.some((i) => i.status === "overdue");
-    return overdue ? "overdue" : "unpaid";
-  }
-  if (paidAmount >= totalAmount) return "paid";
-  const overdue = installments.some(
-    (i) => i.status === "overdue" || (i.status === "pending" && i.dueDate < new Date().toISOString().slice(0, 10)),
+function installmentStillOpen(installment: PaymentInstallment, today: string): boolean {
+  return installment.status === "pending" || installment.status === "overdue" || (
+    installment.status !== "paid" && installment.status !== "cancelled" && installment.dueDate < today
   );
-  return overdue ? "overdue" : "partial";
+}
+
+/**
+ * "Đã thu đủ" chỉ khi đã thu đúng bằng tổng được phân và không còn đợt mở.
+ * Thu vượt tổng không được coi là đã thu đủ (UI hiện cảnh báo). Đợt pending/overdue chặn trạng thái paid.
+ */
+function paymentStatus(paidAmount: number, totalAmount: number, installments: PaymentInstallment[]): PaymentStatus {
+  const today = new Date().toISOString().slice(0, 10);
+  const open = installments.some((installment) => installmentStillOpen(installment, today));
+  const overdue = installments.some(
+    (installment) =>
+      installment.status === "overdue" ||
+      (installment.status === "pending" && installment.dueDate < today),
+  );
+  if (open) {
+    if (paidAmount <= 0) return overdue ? "overdue" : "unpaid";
+    return overdue ? "overdue" : "partial";
+  }
+  if (totalAmount <= 0) return paidAmount > 0 ? "partial" : "unpaid";
+  if (paidAmount <= 0) return "unpaid";
+  if (paidAmount === totalAmount) return "paid";
+  return "partial";
+}
+
+export type CollectionState = {
+  open: boolean;
+  overpaid: boolean;
+  collectedInFull: boolean;
+};
+
+/** Quyết định nhãn "Đã thu đủ" / cảnh báo thu vượt. Không dùng `remaining === 0` một mình. */
+export function collectionState(
+  paidAmount: number,
+  totalAmount: number,
+  installments: Pick<PaymentInstallment, "status">[],
+): CollectionState {
+  const open = installments.some((installment) => installment.status === "pending" || installment.status === "overdue");
+  const overpaid = totalAmount > 0 && paidAmount > totalAmount;
+  const collectedInFull =
+    !open && !overpaid && totalAmount > 0 && paidAmount === totalAmount;
+  return { open, overpaid, collectedInFull };
 }
 
 export function recalcPayment(record: PaymentRecord): PaymentRecord {
@@ -105,15 +191,67 @@ export function recalcPayment(record: PaymentRecord): PaymentRecord {
   };
 }
 
+function compareInstallments(a: PaymentInstallment, b: PaymentInstallment): number {
+  const byDue = String(a.dueDate ?? "").localeCompare(String(b.dueDate ?? ""));
+  if (byDue !== 0) return byDue;
+  return String(a.id).localeCompare(String(b.id), "en", { numeric: true });
+}
+
 /**
- * Chia thu thanh toán HĐ cho từng dịch vụ còn hiệu lực theo tỷ lệ giá (chưa VAT) của đơn.
- * Mỗi đợt chia theo tổng lũy kế bằng phần dư lớn nhất (xem payment-allocation.ts):
- * tổng các phần của một đợt luôn đúng số tiền đợt, không dồn phần dư vào đơn cuối.
+ * Phần của `order` trên từng đợt.
+ * Các đợt cùng một pool được chia lũy kế (giữ kết quả cũ khi mọi đơn còn hiệu lực).
+ * Đổi pool (hủy đơn, hoặc thêm dịch vụ sau ngày đã thu) thì không viết lại các đợt đã xác minh.
+ */
+function installmentShares(installments: PaymentInstallment[], order: Order, siblings: Order[]): number[] {
+  const amounts = installments.map(() => 0);
+  const group = siblings.length > 0 ? siblings : [order];
+  const live = installments
+    .map((installment, index) => ({ installment, index }))
+    .filter(({ installment }) => installment.status !== "cancelled")
+    .sort((a, b) => compareInstallments(a.installment, b.installment));
+
+  let cursor = 0;
+  while (cursor < live.length) {
+    const pool = poolForInstallment(group, live[cursor].installment);
+    const key = poolKey(pool);
+    let end = cursor + 1;
+    while (end < live.length && poolKey(poolForInstallment(group, live[end].installment)) === key) end += 1;
+    const segment = live.slice(cursor, end);
+    const targets = allocationTargets(pool);
+    const shares = allocateInstallmentsCumulative(
+      segment.map((item) => item.installment),
+      targets,
+    );
+    const orderIndex = pool.findIndex((row) => row.id === order.id);
+    segment.forEach((item, index) => {
+      amounts[item.index] = orderIndex < 0 ? 0 : (shares[index]?.[orderIndex] ?? 0);
+    });
+    cursor = end;
+  }
+
+  installments.forEach((installment, index) => {
+    if (installment.status !== "cancelled") return;
+    const pool = poolForInstallment(group, installment);
+    const shares = allocateLargestRemainder(installment.amount, allocationTargets(pool));
+    const orderIndex = pool.findIndex((row) => row.id === order.id);
+    amounts[index] = orderIndex < 0 ? 0 : (shares[orderIndex] ?? 0);
+  });
+  return amounts;
+}
+
+/**
+ * Chia thu của hợp đồng cho từng dịch vụ.
  *
- * - Đơn hủy (khi HĐ còn đơn khác): totalAmount 0, các đợt 0, remaining 0, status "cancelled".
- * - Tổng giá các đơn còn hiệu lực = 0 (và có từ 2 đơn): totalAmount mỗi đơn là 0; khoản thu được chia
- *   đều cho các đơn (không nhân đôi khoản thu cho từng đơn), nên tổng các đơn vẫn đúng số tiền thu.
- * - Chỉ đợt `paid` được tính là đã thu (do recalcPayment); đợt pending/cancelled vẫn có số chia để hiển thị.
+ * Đợt đã xác minh được đóng băng theo tập dịch vụ có mặt vào ngày thu (kể cả đơn sau đó bị hủy).
+ * Thêm dịch vụ không viết lại các đợt đã thu. Hủy một dịch vụ không chuyển khoản đã thu sang đơn còn lại,
+ * nên đơn còn lại không bị đánh "Đã thu đủ" chỉ vì kế thừa tiền, và lương không tăng vì chi biến mất còn thu dồn sang.
+ *
+ * Đợt chưa xác minh chỉ chia cho đơn còn hiệu lực (dịch vụ mới được nhận tiền thu sau này).
+ *
+ * - Đơn hủy khi HĐ còn đơn khác: giữ phần đã thu lịch sử, đợt chưa thu = 0, remaining 0, status "cancelled"
+ *   (không còn nợ mới; lương vẫn thấy khoản đã thu và chi đã duyệt).
+ * - Tổng giá = 0: totalAmount mỗi đơn là 0; khoản thu chia đều, không nhân đôi.
+ * - Chỉ đợt `paid` tính là đã thu.
  */
 export function allocatePaymentShare(
   groupPayment: PaymentRecord | undefined,
@@ -121,55 +259,33 @@ export function allocatePaymentShare(
   siblings: Order[],
 ): PaymentRecord | undefined {
   if (!groupPayment) return undefined;
-  const groupedOrderIds = siblings.map((s) => s.id);
-  const pool = sharePool(siblings);
-  const inPool = pool.some((s) => s.id === order.id);
-
-  if (!inPool) {
-    return {
-      ...recalcPayment({
-        ...groupPayment,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        totalAmount: 0,
-        groupedOrderIds,
-        installments: groupPayment.installments.map((installment) => ({ ...installment, amount: 0 })),
-      }),
-      remaining: 0,
-      status: "cancelled",
-    };
-  }
-
-  if (pool.length <= 1) {
-    return recalcPayment({
-      ...groupPayment,
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      totalAmount: weightOf(order.value),
-      groupedOrderIds,
-    });
-  }
-
-  const index = pool.findIndex((s) => s.id === order.id);
-  if (index < 0) return undefined;
-  const targets: AllocationTarget[] = pool.map((s) => ({
-    weight: weightOf(s.value),
-    tieKey: String(s.orderNumber ?? ""),
-    id: String(s.id),
-  }));
-  const poolTotal = groupContractTotal(pool);
-  // Tổng giá = 0 thì không có tỷ lệ: chia đều khoản thu để không mất và không nhân đôi tiền.
-  const installmentTargets =
-    poolTotal > 0 ? targets : targets.map((target) => ({ ...target, weight: 1 }));
-  const shares = allocateInstallmentsCumulative(groupPayment.installments, installmentTargets);
-  const installments = groupPayment.installments.map((installment, i) => ({
+  const group = siblings.length > 0 ? siblings : [order];
+  const groupedOrderIds = group.map((row) => row.id);
+  const survivors = group.filter((row) => row.stage !== "cancelled");
+  const active = activePool(group);
+  const heldOnCancelled = order.stage === "cancelled" && survivors.length > 0;
+  const amounts = installmentShares(groupPayment.installments, order, group);
+  const installments = groupPayment.installments.map((installment, index) => ({
     ...installment,
-    amount: shares[i]?.[index] ?? 0,
+    amount: amounts[index] ?? 0,
   }));
-  // Chia giá HĐ cho chính nó cho ra đúng giá từng đơn; tổng giá = 0 thì mọi đơn là 0.
-  const totalAmount = allocateLargestRemainder(poolTotal, targets)[index] ?? 0;
 
-  return recalcPayment({
+  let totalAmount = 0;
+  if (!heldOnCancelled && active.some((row) => row.id === order.id)) {
+    if (active.length <= 1) {
+      totalAmount = weightOf(order.value);
+    } else {
+      const targets = active.map((row) => ({
+        weight: weightOf(row.value),
+        tieKey: String(row.orderNumber ?? ""),
+        id: String(row.id),
+      }));
+      const index = active.findIndex((row) => row.id === order.id);
+      totalAmount = allocateLargestRemainder(groupContractTotal(active), targets)[index] ?? 0;
+    }
+  }
+
+  const share = recalcPayment({
     ...groupPayment,
     orderId: order.id,
     orderNumber: order.orderNumber,
@@ -177,4 +293,57 @@ export function allocatePaymentShare(
     groupedOrderIds,
     installments,
   });
+  if (!heldOnCancelled) return share;
+  return { ...share, totalAmount: 0, remaining: 0, status: "cancelled" };
+}
+
+export type ContractMoneyView = {
+  /** Nghĩa vụ của các đơn còn hiệu lực (không phải “đơn này còn nợ”). */
+  contractTotal: number;
+  /** Phần đã thu gắn với đơn còn hiệu lực — không tính tiền đang giữ trên đơn đã hủy. */
+  allocatedPaid: number;
+  /** Tổng tiền các đợt đã xác minh trên lịch HĐ. */
+  cashPaid: number;
+  contractRemaining: number;
+  open: boolean;
+  overpaid: boolean;
+  collectedInFull: boolean;
+};
+
+/** Số liệu HĐ để gắn nhãn trên dòng cha / màn thanh toán. Không viết lại từng đợt. */
+export function contractMoneyView(record: PaymentRecord, siblings: Order[]): ContractMoneyView {
+  const group = siblings.length > 0 ? siblings : [];
+  const active = group.length > 0 ? activePool(group) : [];
+  const contractTotal = group.length > 0 ? groupContractTotal(group) : record.totalAmount;
+  const cashPaid = record.installments
+    .filter((installment) => installment.status === "paid")
+    .reduce((sum, installment) => sum + installment.amount, 0);
+  const allocatedPaid = active.reduce((sum, order) => {
+    return sum + (allocatePaymentShare(record, order, group)?.paidAmount ?? 0);
+  }, 0);
+  const state = collectionState(allocatedPaid, contractTotal, record.installments);
+  return {
+    contractTotal,
+    allocatedPaid,
+    cashPaid,
+    contractRemaining: contractTotal - allocatedPaid,
+    ...state,
+  };
+}
+
+/**
+ * Dòng thanh toán HĐ (một record cho cả nhóm): paid/remaining/status theo phần của đơn còn hiệu lực,
+ * không theo việc dồn toàn bộ tiền đã thu sang đơn sống sót.
+ */
+export function presentGroupPayment(record: PaymentRecord, siblings: Order[]): PaymentRecord {
+  if (siblings.length === 0) return recalcPayment(record);
+  const view = contractMoneyView(record, siblings);
+  const remaining = Math.max(0, view.contractRemaining);
+  return {
+    ...record,
+    totalAmount: view.contractTotal,
+    paidAmount: view.allocatedPaid,
+    remaining,
+    status: paymentStatus(view.allocatedPaid, view.contractTotal, record.installments),
+  };
 }

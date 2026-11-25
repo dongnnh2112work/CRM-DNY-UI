@@ -15,6 +15,7 @@ import {
   groupContractTotal,
   groupOrdersByContract,
   pickPrimaryOrder,
+  presentGroupPayment,
   recalcPayment,
 } from "@/lib/order-group";
 import { isUuid } from "@/lib/http/message";
@@ -48,7 +49,13 @@ function paymentFromGroup(group: Order[], existing?: PaymentRecord): PaymentReco
         installments: [],
         groupedOrderIds: ids,
       };
-  return recalcPayment(base);
+  return presentGroupPayment(recalcPayment(base), group);
+}
+
+function finalizeRecord(record: PaymentRecord, orders: Order[]): PaymentRecord {
+  const ids = record.groupedOrderIds?.length ? record.groupedOrderIds : [record.orderId];
+  const group = orders.filter((order) => ids.includes(order.id));
+  return presentGroupPayment(recalcPayment(record), group);
 }
 
 function mergeInstallments(
@@ -196,7 +203,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             status: input.status ?? (input.paidDate ? "paid" : "pending"),
             voidable: input.voidable ?? Boolean(linked),
           };
-          return recalcPayment({ ...p, installments: [...p.installments, installment] });
+          return finalizeRecord({ ...p, installments: [...p.installments, installment] }, ordersRef.current);
         }),
       );
     },
@@ -223,7 +230,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       prev.map((p) => {
         if (p.id !== paymentId) return p;
         const installments = p.installments.map((row) => (row.id === installmentId ? next : row));
-        return recalcPayment({ ...p, installments });
+        return finalizeRecord({ ...p, installments }, ordersRef.current);
       }),
     );
   }, []);
@@ -262,7 +269,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
               voidable: true,
             };
           });
-          return recalcPayment({ ...p, installments });
+          return finalizeRecord({ ...p, installments }, ordersRef.current);
         }),
       );
     },

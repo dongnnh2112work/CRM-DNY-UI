@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Alert,
   App,
   Button,
   Checkbox,
@@ -30,7 +31,9 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
-import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { formatVndDisplay } from "@/lib/format-vnd";
+import { installmentAmountIssue, signedVndInputProps } from "@/lib/input-validators";
+import { allocatePaymentShare, collectionState, contractMoneyView } from "@/lib/order-group";
 import { isInstallmentVisuallyOverdue } from "@/lib/overdue-highlight";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
@@ -51,7 +54,7 @@ import {
   updateInstallmentPayment,
   verifyInstallmentPayment,
 } from "@/modules/payments/mark-paid";
-import type { PaymentInstallment } from "@/lib/types";
+import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
 import { useT } from "@/lib/use-t";
 
 export default function PaymentDetailPage() {
@@ -98,6 +101,17 @@ export default function PaymentDetailPage() {
 
   const payment = getById(id) ?? getByOrderId(id);
   const order = payment ? getOrder(payment.orderId) : undefined;
+  const linkedIds = payment?.groupedOrderIds?.length ? payment.groupedOrderIds : payment ? [payment.orderId] : [];
+  const linkedOrders = linkedIds
+    .map((oid) => orders.find((row) => row.id === oid))
+    .filter((row) => row != null);
+  const addInstallmentLocked = Boolean(
+    payment &&
+      (order?.stage === "cancelled" ||
+        (linkedOrders.length > 0 &&
+          linkedOrders.length === linkedIds.length &&
+          linkedOrders.every((row) => row.stage === "cancelled"))),
+  );
   const paymentsHydrated = Boolean(listMeta.payments) || (hydrateReady && ready);
   const paidCopy = useMemo(
     () => ({
@@ -273,16 +287,6 @@ export default function PaymentDetailPage() {
     );
   }
 
-  const linkedIds = payment.groupedOrderIds?.length ? payment.groupedOrderIds : [payment.orderId];
-  const linkedOrders = linkedIds
-    .map((oid) => orders.find((row) => row.id === oid))
-    .filter((row) => row != null);
-  const addInstallmentLocked =
-    orders.find((row) => row.id === payment.orderId)?.stage === "cancelled" ||
-    (linkedOrders.length > 0 &&
-      linkedOrders.length === linkedIds.length &&
-      linkedOrders.every((row) => row.stage === "cancelled"));
-
   return (
     <>
       <PageHeader breadcrumbs={[{ title: t("payment.breadcrumb"), href: "/payments" }, { title: payment.orderNumber }]}>
@@ -301,14 +305,12 @@ export default function PaymentDetailPage() {
             {payment.orderNumber}
           </Typography.Title>
           <StatusBadge module="payment" status={payment.status} />
-          {payment.remaining > 0 ? (
-            <Tag color={payment.status === "overdue" ? "error" : "warning"}>
-              {t("payment.remainingShort", { amount: formatVndDisplay(payment.remaining) })}
-            </Tag>
-          ) : (
-            <Tag color="success">{t("payment.paidInFull")}</Tag>
-          )}
+          <PaymentCollectionTags payment={payment} orders={linkedOrders} />
         </Space>
+        <PaymentCollectionAlerts payment={payment} orders={linkedOrders} />
+        {addInstallmentLocked ? (
+          <Alert type="info" showIcon style={{ marginBottom: 16 }} title={t("payment.cancelledLocked")} />
+        ) : null}
 
         <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
           <Descriptions.Item label={t("common.order")}>
@@ -336,11 +338,9 @@ export default function PaymentDetailPage() {
               <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
             </>
           ) : null}
-          <Descriptions.Item label={t("payment.total")}>{formatVndDisplay(payment.totalAmount)}</Descriptions.Item>
-          <Descriptions.Item label={t("payment.paid")}>{formatVndDisplay(payment.paidAmount)}</Descriptions.Item>
-          <Descriptions.Item label={t("payment.remaining")}>{formatVndDisplay(payment.remaining)}</Descriptions.Item>
           <Descriptions.Item label={t("payment.installments")}>{payment.installments.length}</Descriptions.Item>
         </Descriptions>
+        <PaymentMoneyDetails payment={payment} orders={linkedOrders} />
 
         <Typography.Title level={5} style={{ fontSize: ds.fontSize.body }}>
           {t("payment.installmentsSection")}
@@ -354,7 +354,13 @@ export default function PaymentDetailPage() {
           dateFilterField="dueDate"
           enableLocalSearch
           emptyDescription={t("payment.noInstallments")}
-          columns={installmentColumns}
+          columns={
+            addInstallmentLocked
+              ? installmentColumns.map((column) =>
+                  column.key === "action" ? { ...column, render: () => "—" } : column,
+                )
+              : installmentColumns
+          }
           onRow={(row) => {
             if (row.status === "cancelled") return { style: { opacity: 0.45 } };
             if (isInstallmentVisuallyOverdue(row)) return { className: "crm-row-overdue" };
@@ -398,11 +404,30 @@ export default function PaymentDetailPage() {
           layout="vertical"
           onFinish={async (values) => {
             if (savingRef.current) return;
+            if (addInstallmentLocked) {
+              message.error(t("payment.cancelledLocked"));
+              return;
+            }
+            const row = editingRef.current;
+            const amountIssue = installmentAmountIssue(
+              values.amount,
+              payment.remaining,
+              row ? { amount: row.amount, status: row.status } : undefined,
+            );
+            if (amountIssue) {
+              message.error(
+                amountIssue === "negative"
+                  ? t("payment.amountNegative")
+                  : amountIssue === "over_remaining"
+                    ? t("payment.overRemaining")
+                    : t("payment.amountPositive"),
+              );
+              return;
+            }
             savingRef.current = true;
             setSaving(true);
             let createdId: string | undefined;
             try {
-              const row = editingRef.current;
               if (row) {
                 if (values.markPaid && !canVerify) throw new Error(t("payment.markPaidForbidden"));
                 let previousPaymentId = knownPaymentId(row);
@@ -497,8 +522,27 @@ export default function PaymentDetailPage() {
             }
           }}
         >
-          <Form.Item name="amount" label={t("common.amount")} rules={[{ required: true, message: t("common.enterAmount") }]}>
-            <InputNumber {...vndInputProps} />
+          <Form.Item
+            name="amount"
+            label={t("common.amount")}
+            extra={editing ? t("payment.editVoids") : undefined}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = installmentAmountIssue(
+                    value,
+                    payment.remaining,
+                    editing ? { amount: editing.amount, status: editing.status } : undefined,
+                  );
+                  if (!issue) return;
+                  if (issue === "negative") throw new Error(t("payment.amountNegative"));
+                  if (issue === "over_remaining") throw new Error(t("payment.overRemaining"));
+                  throw new Error(t("payment.amountPositive"));
+                },
+              },
+            ]}
+          >
+            <InputNumber {...signedVndInputProps} />
           </Form.Item>
           <Form.Item
             name="dueDate"
@@ -539,5 +583,77 @@ export default function PaymentDetailPage() {
         </Form>
       </Drawer>
     </>
+  );
+}
+
+function PaymentCollectionTags({
+  payment,
+  orders,
+}: {
+  payment: PaymentRecord;
+  orders: Order[];
+}) {
+  const t = useT();
+  const money = contractMoneyView(payment, orders);
+  const state = collectionState(money.allocatedPaid, money.contractTotal, payment.installments);
+  if (state.overpaid || money.overpaid) return <Tag color="warning">{t("payment.overpaid")}</Tag>;
+  if (money.collectedInFull) return <Tag color="success">{t("payment.paidInFull")}</Tag>;
+  if (money.open && money.contractRemaining <= 0) return <Tag color="warning">{t("payment.pendingBlocksFull")}</Tag>;
+  if (money.contractRemaining > 0) {
+    return (
+      <Tag color={payment.status === "overdue" ? "error" : "warning"}>
+        {t("payment.contractRemaining")} {formatVndDisplay(money.contractRemaining)}
+      </Tag>
+    );
+  }
+  return null;
+}
+
+function PaymentCollectionAlerts({
+  payment,
+  orders,
+}: {
+  payment: PaymentRecord;
+  orders: Order[];
+}) {
+  const t = useT();
+  const money = contractMoneyView(payment, orders);
+  if (!money.overpaid) return null;
+  return <Alert type="warning" showIcon style={{ marginBottom: 16 }} title={t("payment.overpaid")} />;
+}
+
+function PaymentMoneyDetails({
+  payment,
+  orders,
+}: {
+  payment: PaymentRecord;
+  orders: Order[];
+}) {
+  const t = useT();
+  const money = contractMoneyView(payment, orders);
+  const shares = orders.map((sibling) => ({
+    sibling,
+    share: allocatePaymentShare(payment, sibling, orders),
+  }));
+  return (
+    <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} style={{ marginBottom: 16 }}>
+      <Descriptions.Item label={t("payment.contractTotal")}>{formatVndDisplay(money.contractTotal)}</Descriptions.Item>
+      <Descriptions.Item label={t("payment.contractPaid")}>{formatVndDisplay(money.allocatedPaid)}</Descriptions.Item>
+      <Descriptions.Item label={t("payment.contractRemaining")}>
+        {formatVndDisplay(money.contractRemaining)}
+      </Descriptions.Item>
+      {money.cashPaid !== money.allocatedPaid ? (
+        <Descriptions.Item label={t("payment.cashPaid")}>{formatVndDisplay(money.cashPaid)}</Descriptions.Item>
+      ) : null}
+      {shares.length > 1
+        ? shares.map(({ sibling, share }) => (
+            <Descriptions.Item key={sibling.id} label={`${t("payment.orderShare")} · ${sibling.orderNumber}`}>
+              {formatVndDisplay(share?.paidAmount ?? 0)} / {formatVndDisplay(share?.totalAmount ?? sibling.value)}
+              {" · "}
+              {t("payment.orderShareRemaining")} {formatVndDisplay(share?.remaining ?? 0)}
+            </Descriptions.Item>
+          ))
+        : null}
+    </Descriptions>
   );
 }

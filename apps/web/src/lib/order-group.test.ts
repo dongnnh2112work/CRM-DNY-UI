@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { allocatePaymentShare, groupContractTotal, recalcPayment } from "@/lib/order-group";
+import {
+  allocatePaymentShare,
+  collectionState,
+  contractMoneyView,
+  groupContractTotal,
+  presentGroupPayment,
+  recalcPayment,
+} from "@/lib/order-group";
 import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
 
 function order(id: string, orderNumber: string, value: number, stage = "processing"): Order {
@@ -88,7 +95,11 @@ describe("allocatePaymentShare — contract payment split", () => {
     const parts = siblings.map((s) => shareOf(pay, siblings, s));
     expect(parts.map((p) => p.installments[0].amount)).toEqual([1_166_667, 2_333_333, 3_500_000]);
     expect(sum(parts.map((p) => p.paidAmount))).toBe(7_000_000);
-    expect(parts.every((p) => p.remaining === 0 && p.status === "paid")).toBe(true);
+    expect(parts.every((p) => p.remaining === 0 && p.status !== "paid")).toBe(true);
+    expect(parts.every((p) => collectionState(p.paidAmount, p.totalAmount, p.installments).overpaid)).toBe(true);
+    expect(parts.every((p) => collectionState(p.paidAmount, p.totalAmount, p.installments).collectedInFull)).toBe(
+      false,
+    );
   });
 
   it("only paid installments count as paid; pending ones are still allocated", () => {
@@ -142,17 +153,26 @@ describe("cancelled orders in a multi-service contract", () => {
     expect(pay.remaining).toBe(600_000);
   });
 
-  it("cancelled order has remaining 0, status cancelled, and no share", () => {
-    const pay = groupPayment([A, B], [installment("i1", 400_000, "2026-01-10")]);
+  it("cancelled order keeps its historical paid share and the sibling is not collected in full", () => {
+    const pay = groupPayment([A, B], [installment("i1", 400_000, "2026-01-10", "paid")]);
     const b = shareOf(pay, [A, B], B);
+    expect(b.installments[0].amount).toBe(266_667);
+    expect(b.paidAmount).toBe(266_667);
     expect(b.totalAmount).toBe(0);
     expect(b.remaining).toBe(0);
-    expect(b.paidAmount).toBe(0);
     expect(b.status).toBe("cancelled");
     const a = shareOf(pay, [A, B], A);
-    expect(a.installments[0].amount).toBe(400_000);
+    expect(a.installments[0].amount).toBe(133_333);
     expect(a.totalAmount).toBe(1_000_000);
-    expect(a.remaining).toBe(600_000);
+    expect(a.paidAmount).toBe(133_333);
+    expect(a.remaining).toBe(1_000_000 - 133_333);
+    expect(collectionState(a.paidAmount, a.totalAmount, a.installments).collectedInFull).toBe(false);
+    const presented = presentGroupPayment(pay, [A, B]);
+    const view = contractMoneyView(pay, [A, B]);
+    expect(view.allocatedPaid).toBe(133_333);
+    expect(view.collectedInFull).toBe(false);
+    expect(presented.status).not.toBe("paid");
+    expect(presented.remaining).toBe(1_000_000 - 133_333);
   });
 
   it("when all orders are cancelled they are still split like active orders", () => {

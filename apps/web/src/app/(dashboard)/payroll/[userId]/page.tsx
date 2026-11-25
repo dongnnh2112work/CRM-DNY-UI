@@ -169,15 +169,17 @@ function PayrollStaffPageContent() {
         title: t("order.commissionPercent"),
         dataIndex: "commissionPercent",
         align: "center",
-        sorter: (a, b) => a.commissionPercent - b.commissionPercent,
-        render: (v: number) => `${v}%`,
+        sorter: (a, b) => (a.commissionPercent ?? -1) - (b.commissionPercent ?? -1),
+        render: (_v: number | null, row) =>
+          row.commissionMissing ? t("payroll.commissionMissing") : `${row.commissionPercent}%`,
       },
       {
         title: t("payroll.salary"),
         dataIndex: "salary",
         align: "right",
-        sorter: (a, b) => a.salary - b.salary,
-        render: (v: number) => <MoneyCell value={v} />,
+        sorter: (a, b) => (a.salary ?? 0) - (b.salary ?? 0),
+        render: (v: number | null, row) =>
+          row.commissionMissing || v == null ? t("payroll.commissionMissing") : <MoneyCell value={v} />,
       },
     ],
     [t],
@@ -211,23 +213,11 @@ function PayrollStaffPageContent() {
 
   const isOwn = Boolean(currentUser && currentUser.id === userId);
   const showCompanyList = scope === "all";
-
-  if (!staffName && nameTick === 0) {
-    return <PageLoading />;
-  }
-
-  if (!staffName) {
-    return (
-      <EmptyState
-        description={t("payroll.notFoundStaff")}
-        action={
-          showCompanyList
-            ? { label: t("common.back"), href: listHref }
-            : { label: t("nav.dashboard"), href: "/dashboard" }
-        }
-      />
-    );
-  }
+  const slipName =
+    staffName ||
+    (isOwn ? currentUser?.name : undefined) ||
+    (staffRow?.userName && staffRow.userName !== userId ? staffRow.userName : undefined) ||
+    userId;
 
   return (
     <>
@@ -236,9 +226,9 @@ function PayrollStaffPageContent() {
           showCompanyList
             ? [
                 { title: t("nav.payroll"), href: listHref },
-                { title: t("payroll.detailTitle", { name: staffName }) },
+                { title: t("payroll.detailTitle", { name: slipName }) },
               ]
-            : [{ title: isOwn ? t("payroll.myPay") : t("payroll.detailTitle", { name: staffName }) }]
+            : [{ title: isOwn ? t("payroll.myPay") : t("payroll.detailTitle", { name: slipName }) }]
         }
       >
         <Select

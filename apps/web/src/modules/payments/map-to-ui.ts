@@ -3,6 +3,7 @@ import {
   groupContractTotal,
   groupOrdersByContract,
   pickPrimaryOrder,
+  presentGroupPayment,
   recalcPayment,
 } from "@/lib/order-group";
 import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
@@ -97,19 +98,22 @@ export function mapPaymentsToRecords(
   const fromOrders = groupOrdersByContract(orders).map((group) => {
     const primary = pickPrimaryOrder(group);
     const installments = installmentsForOrders(group, byOrder, schedules);
-    return recalcPayment({
-      id: `pay-${primary.id}`,
-      orderId: primary.id,
-      orderNumber: primary.orderNumber,
-      customerId: primary.customerId,
-      customerName: primary.customerName,
-      totalAmount: groupContractTotal(group),
-      paidAmount: 0,
-      remaining: 0,
-      status: "unpaid",
-      installments,
-      groupedOrderIds: group.map((o) => o.id),
-    });
+    return presentGroupPayment(
+      recalcPayment({
+        id: `pay-${primary.id}`,
+        orderId: primary.id,
+        orderNumber: primary.orderNumber,
+        customerId: primary.customerId,
+        customerName: primary.customerName,
+        totalAmount: groupContractTotal(group),
+        paidAmount: 0,
+        remaining: 0,
+        status: "unpaid",
+        installments,
+        groupedOrderIds: group.map((o) => o.id),
+      }),
+      group,
+    );
   });
 
   // Payments route may load payments without the related orders in memory.
