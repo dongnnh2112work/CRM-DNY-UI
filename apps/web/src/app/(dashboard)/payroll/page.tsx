@@ -162,7 +162,7 @@ function PayrollPageContent() {
         render: (v: number) => <MoneyCell value={v} />,
       },
     ],
-    [t],
+    [t, month],
   );
 
   if (scope === "none" || !currentUser) {

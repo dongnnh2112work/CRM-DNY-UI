@@ -21,6 +21,35 @@ export function getPayrollScope(
   return "self";
 }
 
+export type PayrollSlipActor = {
+  id: string;
+  role: string;
+  name?: string;
+};
+
+/**
+ * Users-store record wins when it is already loaded. Otherwise the session
+ * (`/auth/me`) is enough to open a slip — the page must not stay on a spinner
+ * only because `useUsers().currentUser` is still empty.
+ */
+export function payrollSlipActor(input: {
+  storeUser?: { id: string; role: string; name?: string } | null;
+  sessionUser?: { id: string; displayName?: string | null; roleCodes?: string[] | null } | null;
+}): PayrollSlipActor | null {
+  if (input.storeUser?.id) {
+    return { id: input.storeUser.id, role: input.storeUser.role, name: input.storeUser.name };
+  }
+  const session = input.sessionUser;
+  if (!session?.id) return null;
+  const role = session.roleCodes?.find((code) => code.trim())?.trim() || "staff";
+  const name = session.displayName?.trim();
+  return { id: session.id, role, name: name || undefined };
+}
+
+export function mayRenderPayrollSlip(actor: PayrollSlipActor | null | undefined): actor is PayrollSlipActor {
+  return Boolean(actor?.id);
+}
+
 export type PayrollLine = {
   orderId: string;
   orderNumber: string;

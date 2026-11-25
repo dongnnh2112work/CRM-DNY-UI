@@ -19,7 +19,13 @@ import {
   vnTaxIssue,
 } from "@/lib/input-validators";
 import { parsePage, PageShapeError } from "@/lib/page-result";
-import { buildPayroll, orderSalary } from "@/lib/payroll";
+import {
+  buildPayroll,
+  getPayrollScope,
+  mayRenderPayrollSlip,
+  orderSalary,
+  payrollSlipActor,
+} from "@/lib/payroll";
 import { isCancelledOnlyPayment, paymentsForCollection, upcomingCollectionPayments } from "@/lib/payment-visibility";
 import { canReplaceRoleGroups, missingViewPermissions } from "@/lib/permission-consistency";
 import { expenseReviewBlock } from "@/lib/rbac";
@@ -344,5 +350,27 @@ describe("batch 2 validators and shell helpers", () => {
     const buffer = await rowsToXlsxBuffer([{ Name: "TEST Bee", Phone: "0900000001" }]);
     const rows = await rowsFromXlsx(buffer);
     expect(rows).toEqual([{ Name: "TEST Bee", Phone: "0900000001" }]);
+  });
+});
+
+describe("M20 payroll slip session actor", () => {
+  it("may render the slip from the session when the users store has no current user", () => {
+    expect(mayRenderPayrollSlip(payrollSlipActor({ storeUser: null, sessionUser: null }))).toBe(false);
+    const actor = payrollSlipActor({
+      storeUser: null,
+      sessionUser: { id: "user-test", displayName: "TEST Bee", roleCodes: ["SALES"] },
+    });
+    expect(mayRenderPayrollSlip(actor)).toBe(true);
+    expect(actor).toMatchObject({ id: "user-test", name: "TEST Bee" });
+    expect(getPayrollScope(actor, null, [])).toBe("self");
+    expect(getPayrollScope(actor, null, ["commission.view"])).toBe("all");
+  });
+
+  it("keeps the users-store identity when both the store and the session are present", () => {
+    const actor = payrollSlipActor({
+      storeUser: { id: "store-user", role: "admin", name: "TEST Store" },
+      sessionUser: { id: "session-user", displayName: "TEST Session", roleCodes: ["SUPER_ADMIN"] },
+    });
+    expect(actor).toMatchObject({ id: "store-user", name: "TEST Store", role: "admin" });
   });
 });
