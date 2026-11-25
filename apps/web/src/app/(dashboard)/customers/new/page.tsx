@@ -2,13 +2,14 @@
 
 import { Alert, App, Button, Form, Input, Select, Space } from "antd";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ExtraFormFields } from "@/components/shared/extra-form-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { collectCustomFields, getCustomerFormExtraFields } from "@/lib/customer-helpers";
-import { duplicatePhoneCustomer, vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
+import { duplicatePhoneCustomer, trimmedNameIssue, vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
+import { runExclusive } from "@/lib/save-lock";
 import { useCustomers } from "@/lib/customers-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useServices } from "@/lib/services-store";
@@ -26,6 +27,7 @@ export default function NewCustomerPage() {
   const { services } = useServices();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const watchedPhone = Form.useWatch("phone", form);
   const duplicatePhone =
     typeof watchedPhone === "string" ? duplicatePhoneCustomer(watchedPhone, customers) : undefined;
@@ -37,8 +39,10 @@ export default function NewCustomerPage() {
       <Form
         form={form}
         layout="vertical"
+        scrollToFirstError
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
         onFinish={async (values) => {
+          await runExclusive(savingRef, async () => {
           if (vnPhoneIssue(values.phone)) {
             message.error(t("customer.phoneInvalid"));
             return;
@@ -77,9 +81,20 @@ export default function NewCustomerPage() {
           } finally {
             setSaving(false);
           }
+          });
         }}
       >
-        <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
+        <Form.Item
+          name="name"
+          label={t("field.name")}
+          rules={[
+            {
+              validator: async (_, value) => {
+                if (trimmedNameIssue(value)) throw new Error(t("common.enterName"));
+              },
+            },
+          ]}
+        >
           <Input />
         </Form.Item>
         <Form.Item
@@ -128,7 +143,11 @@ export default function NewCustomerPage() {
         <Form.Item name="address" label={t("field.address")}>
           <Input.TextArea rows={2} />
         </Form.Item>
-        <Form.Item name="owner" label={t("field.owner")}>
+        <Form.Item
+          name="owner"
+          label={t("field.owner")}
+          rules={[{ required: true, message: t("customer.ownerRequired") }]}
+        >
           <Select options={users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name }))} />
         </Form.Item>
         <Form.Item name="channel" label={t("common.channel")}>
@@ -165,7 +184,7 @@ export default function NewCustomerPage() {
             {t("common.cancel")}
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            {t("common.createCustomer")}
+            {saving ? t("common.saving") : t("common.createCustomer")}
           </Button>
         </Space>
       </Form>

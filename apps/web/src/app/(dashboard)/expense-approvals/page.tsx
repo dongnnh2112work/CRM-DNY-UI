@@ -132,19 +132,15 @@ export default function ExpenseApprovalsPage() {
       { title: t("common.requester"), dataIndex: "requestedByName" },
       { title: t("expense.requestedAt"), dataIndex: "requestedAt" },
       {
+        title: t("common.reviewer"),
+        dataIndex: "reviewedByName",
+        render: (name?: string) => name || "—",
+      },
+      {
         title: t("common.actions"),
         key: "actions",
         render: (_, r) => {
-          if (r.status !== "pending") {
-            if (!r.reviewedByName) return "—";
-            const label =
-              r.status === "approved"
-                ? t("expense.approvedBy", { name: r.reviewedByName })
-                : r.status === "cancelled"
-                  ? t("expense.voidedBy", { name: r.reviewedByName })
-                  : t("expense.rejectedBy", { name: r.reviewedByName });
-            return <Tag>{label}</Tag>;
-          }
+          if (r.status !== "pending") return "—";
           if (!currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
           const block = expenseReviewBlock({
             hasExpenseApprovePermission: canApproveApi,

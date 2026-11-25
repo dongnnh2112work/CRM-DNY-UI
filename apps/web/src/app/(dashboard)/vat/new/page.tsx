@@ -117,6 +117,7 @@ function NewVatPageContent() {
       <Form
         form={form}
         layout="vertical"
+        scrollToFirstError
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
         initialValues={{
           taxRate: 10,

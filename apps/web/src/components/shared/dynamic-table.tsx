@@ -21,6 +21,7 @@ import { ReadMoreText } from "@/components/shared/read-more-text";
 import { useManagedColumns } from "@/components/shared/column-manager-drawer";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ds } from "@/lib/design-tokens";
+import { displayCategoryLabel } from "@/lib/service-category-label";
 import { translateSeedFieldLabel, translateStatusLabel } from "@/lib/i18n";
 import { tableColumnKey } from "@/lib/table-index-column";
 import { formatDisplayDate } from "@/lib/format-date";
@@ -225,6 +226,10 @@ export function DynamicTable<T extends object>({
               </Button>
             );
           }
+          if (def.key === "category") {
+            const text = displayCategoryLabel(value == null ? "" : String(value), t);
+            return text ? <ReadMoreText text={text} /> : "—";
+          }
           if (def.type === "checkbox") return value ? t("common.yes") : t("common.no");
           if (def.key === "status" && typeof value === "string") {
             if (statusModule) {
@@ -381,11 +386,7 @@ export function DynamicTable<T extends object>({
                 <Checkbox checked={def.visible} onChange={() => toggleVisibility(def.key)} />
                 <span style={{ flex: 1 }}>{translateSeedFieldLabel(def.label)}</span>
                 <Tag>{def.type}</Tag>
-                {isLocked ? (
-                  <Tooltip title={t("col.systemLocked")}>
-                    <Button size="small" type="text" disabled icon={<DeleteOutlined />} />
-                  </Tooltip>
-                ) : (
+                {isLocked ? null : (
                   <Popconfirm
                     title={t("col.deleteTitle", { label: def.label })}
                     description={t("col.deleteBody")}
@@ -416,9 +417,6 @@ export function DynamicTable<T extends object>({
               />
               <span style={{ flex: 1 }}>{item.label}</span>
               <Tag>{t("col.tableCol")}</Tag>
-              <Tooltip title={t("col.systemLocked")}>
-                <Button size="small" type="text" disabled icon={<DeleteOutlined />} />
-              </Tooltip>
             </div>
               ))
             : null}

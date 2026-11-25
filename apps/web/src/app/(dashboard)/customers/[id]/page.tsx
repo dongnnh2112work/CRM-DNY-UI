@@ -39,7 +39,12 @@ import {
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
 import { useRemoteList } from "@/components/api-hydrator";
 import { useCustomers } from "@/lib/customers-store";
-import { duplicatePhoneCustomer, vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
+import {
+  buildCustomerDeleteWarning,
+  customerRelatedImpact,
+} from "@/lib/customer-delete-warning";
+import { duplicatePhoneCustomer, trimmedNameIssue, vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
+import { runExclusive } from "@/lib/save-lock";
 import { formatDisplayDate } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -76,6 +81,7 @@ export default function CustomerDetailPage() {
   const screens = Grid.useBreakpoint();
   const descriptionColumns = screens.sm === false ? 1 : 2;
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [form] = Form.useForm();
   const watchedPhone = Form.useWatch("phone", form);
   const duplicatePhone =
@@ -269,6 +275,17 @@ export default function CustomerDetailPage() {
           )}
           <Popconfirm
             title={t("customer.deleteTitle")}
+            description={buildCustomerDeleteWarning(
+              customerRelatedImpact(
+                customer.id,
+                orders.map((order) => ({
+                  customerId: order.customerId,
+                  contractId: order.contractId,
+                  contractNumber: order.contractNumber,
+                })),
+              ),
+              t("customer.deleteRelated"),
+            )}
             okText={t("common.delete")}
             cancelText={t("common.cancel")}
             okButtonProps={{ danger: true }}
@@ -405,7 +422,9 @@ export default function CustomerDetailPage() {
         <Form
           form={form}
           layout="vertical"
+          scrollToFirstError
           onFinish={async (values) => {
+            await runExclusive(savingRef, async () => {
             if (vnPhoneIssue(values.phone)) {
               message.error(t("customer.phoneInvalid"));
               return;
@@ -446,9 +465,20 @@ export default function CustomerDetailPage() {
             } finally {
               setSaving(false);
             }
+            });
           }}
         >
-          <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t("field.name")}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (trimmedNameIssue(value)) throw new Error(t("common.enterName"));
+                },
+              },
+            ]}
+          >
             <Input />
           </Form.Item>
           <Form.Item
@@ -496,7 +526,11 @@ export default function CustomerDetailPage() {
           <Form.Item name="address" label={t("field.address")}>
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="owner" label={t("field.owner")} rules={[{ required: true }]}>
+          <Form.Item
+            name="owner"
+            label={t("field.owner")}
+            rules={[{ required: true, message: t("customer.ownerRequired") }]}
+          >
             <Select options={users.filter((u) => u.status === "active").map((u) => ({ value: u.id, label: u.name }))} />
           </Form.Item>
           <Form.Item name="channel" label={t("common.channel")}>
@@ -539,7 +573,7 @@ export default function CustomerDetailPage() {
               {t("common.cancel")}
             </Button>
             <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-              {t("common.save")}
+              {saving ? t("common.saving") : t("common.save")}
             </Button>
           </Space>
         </Form>

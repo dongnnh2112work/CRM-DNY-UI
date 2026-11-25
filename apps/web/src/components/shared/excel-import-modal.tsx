@@ -11,11 +11,20 @@ import { useT } from "@/lib/use-t";
 interface ExcelImportModalProps {
   open: boolean;
   onClose: () => void;
-  onImport: (rows: Record<string, unknown>[]) => void | Promise<void>;
+  onImport: (
+    rows: Record<string, unknown>[],
+  ) => void | Promise<void | { close?: boolean; message?: string }>;
+  onDownloadTemplate?: () => void | Promise<void>;
   expectedColumns?: string[];
 }
 
-export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: ExcelImportModalProps) {
+export function ExcelImportModal({
+  open,
+  onClose,
+  onImport,
+  onDownloadTemplate,
+  expectedColumns,
+}: ExcelImportModalProps) {
   const t = useT();
   const [allRows, setAllRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -65,7 +74,9 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
   const handleConfirm = async () => {
     setImporting(true);
     try {
-      await onImport(allRows);
+      const result = await onImport(allRows);
+      if (result?.message) setReadError(result.message);
+      if (result?.close === false) return;
       reset();
       onClose();
     } finally {
@@ -84,6 +95,9 @@ export function ExcelImportModal({ open, onClose, onImport, expectedColumns }: E
       width={720}
       footer={
         <Space>
+          {onDownloadTemplate ? (
+            <Button onClick={() => void onDownloadTemplate()}>{t("import.template")}</Button>
+          ) : null}
           <Button onClick={onClose}>{t("common.cancel")}</Button>
           <Button type="primary" disabled={allRows.length === 0} loading={importing} onClick={() => void handleConfirm()}>
             {t("import.rows", { count: allRows.length })}

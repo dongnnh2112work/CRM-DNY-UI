@@ -138,6 +138,7 @@ export function DataTable<T extends object>({
   const [pageState, setPageState] = useState({ current: 1, pageSize: DEFAULT_PAGINATION.pageSize });
   const [dateRange, setDateRange] = useState<DateRangeValue>(null);
   const [localQuery, setLocalQuery] = useState("");
+  const [columnVisible, setColumnVisible] = useState<number | null>(null);
 
   const managerItems: ColumnManagerItem[] = useMemo(
     () =>
@@ -219,6 +220,7 @@ export function DataTable<T extends object>({
         pageSize: pag.pageSize ?? pageState.pageSize,
       });
     }
+    setColumnVisible(extra.currentDataSource?.length ?? null);
     onChange?.(pag, filters, sorter, extra);
   };
 
@@ -304,6 +306,7 @@ export function DataTable<T extends object>({
         <RemoteListStatus
           loaded={remote.loaded}
           total={remote.total}
+          visible={columnVisible ?? rangedData.length}
           onLoadMore={remote.onLoadMore}
           loading={remote.loading}
         />

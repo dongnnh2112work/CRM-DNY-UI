@@ -10,6 +10,11 @@ import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/types";
 import type { ApiPayment } from "@/modules/payments/api";
 import type { ApiScheduleLine } from "@/modules/orders/api";
 
+function optionalNote(value: string | null | undefined) {
+  const text = value?.trim();
+  return text ? text : undefined;
+}
+
 function installmentStatus(p: ApiPayment): PaymentInstallment["status"] {
   if (p.verificationStatus === "VOIDED") return "cancelled";
   if (p.verificationStatus === "VERIFIED") return "paid";
@@ -58,6 +63,7 @@ function installmentsForOrders(
         dueDate: due,
         paidDate: pay?.verificationStatus === "VERIFIED" ? pay.recordedAt.slice(0, 10) : undefined,
         method: pay?.method,
+        note: optionalNote(pay?.note),
         status: pay ? installmentStatus(pay) : "pending",
         voidable: Boolean(pay && pay.verificationStatus !== "VOIDED"),
       });
@@ -74,6 +80,7 @@ function installmentsForOrders(
         dueDate: p.recordedAt.slice(0, 10),
         paidDate: p.verificationStatus === "VERIFIED" ? p.recordedAt.slice(0, 10) : undefined,
         method: p.method,
+        note: optionalNote(p.note),
         status: installmentStatus(p),
         voidable: p.verificationStatus !== "VOIDED",
       });

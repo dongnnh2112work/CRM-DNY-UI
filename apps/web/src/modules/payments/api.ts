@@ -14,6 +14,8 @@ export type ApiPayment = {
   scheduleLineId: string | null;
   amount: string;
   method: PaymentMethod;
+  /** Present on some list/detail payloads. POST /payments does not send this field. */
+  note?: string | null;
   recordedAt: string;
   verificationStatus: PaymentVerificationStatus;
   createdAt: string;

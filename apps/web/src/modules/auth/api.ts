@@ -38,6 +38,15 @@ export const authApi = {
     });
   },
 
+  forgotPassword(email: string) {
+    return apiRequest<{ success?: boolean }>("/auth/forgot-password", {
+      method: "POST",
+      skipAuth: true,
+      skipRefresh: true,
+      body: JSON.stringify({ email }),
+    });
+  },
+
   signup(input: { email: string; password: string; displayName: string }) {
     return apiRequest<SignupResponse>("/auth/signup", {
       method: "POST",

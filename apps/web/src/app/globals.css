@@ -332,6 +332,16 @@ a:active .crm-dash-card.ant-card {
   }
 }
 
+.crm-dash-chart {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.crm-dash-chart .recharts-wrapper,
+.crm-dash-chart .recharts-surface {
+  max-width: 100%;
+}
+
 .crm-dash-stat-icon {
   display: inline-flex;
   align-items: center;

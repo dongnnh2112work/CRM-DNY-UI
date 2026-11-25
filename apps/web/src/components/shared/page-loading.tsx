@@ -7,7 +7,7 @@ export function PageLoading() {
   const { token } = theme.useToken();
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="crm-page-loading" style={{ padding: 24, minHeight: "100%", width: "100%", boxSizing: "border-box" }}>
       <Skeleton
         active
         title={{ width: 200 }}

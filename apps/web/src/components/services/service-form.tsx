@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { ServiceCategorySelect } from "@/components/services/service-category-select";
 import { ServiceExtraFormFields } from "@/components/services/service-extra-form-fields";
 import { ds } from "@/lib/design-tokens";
+import { trimmedNameIssue } from "@/lib/input-validators";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { DEFAULT_LICENSE_WARN_MONTHS, MAX_LICENSE_WARN_MONTHS, licenseWarnMonthsOf } from "@/lib/order-helpers";
 import { getServiceFormExtraFields, splitServiceFormValues } from "@/lib/service-fields";
@@ -61,12 +62,23 @@ export function ServiceForm({
     <Form
       form={form}
       layout="vertical"
+      scrollToFirstError
       onFinish={async (values) => {
         const { core, customFields } = splitServiceFormValues(values, extraFields);
         await onSubmit({ ...core, customFields });
       }}
     >
-      <Form.Item name="name" label={t("service.name")} rules={[{ required: true, message: t("common.enterName") }]}>
+      <Form.Item
+        name="name"
+        label={t("service.name")}
+        rules={[
+          {
+            validator: async (_, value) => {
+              if (trimmedNameIssue(value)) throw new Error(t("service.nameBlank"));
+            },
+          },
+        ]}
+      >
         <Input />
       </Form.Item>
       <Form.Item

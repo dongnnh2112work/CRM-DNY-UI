@@ -1,3 +1,5 @@
+import { tt } from "@/lib/i18n";
+import { displayCategoryLabel } from "@/lib/service-category-label";
 import { getStatusMeta } from "@/lib/status-config";
 import { matchesTableQuery } from "@/lib/table-search";
 import { licenseWarnMonthsOf } from "@/lib/order-helpers";
@@ -30,6 +32,7 @@ export function serviceMatchesQuery(service: Service, query: string): boolean {
     service.name,
     service.code,
     service.category,
+    displayCategoryLabel(service.category, tt),
     service.status,
     getStatusMeta("service", service.status).label,
     service.unitPrice,

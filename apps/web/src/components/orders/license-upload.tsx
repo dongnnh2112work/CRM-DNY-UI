@@ -11,7 +11,7 @@ import { UploadJobsBar, type UploadJob } from "@/components/orders/upload-jobs-b
 import type { OrderAttachment } from "@/lib/types";
 import { ds } from "@/lib/design-tokens";
 import { DISPLAY_DATE_FORMAT, formatDisplayDate } from "@/lib/format-date";
-import { ACCEPT_FILE_TYPES, getAttachmentType } from "@/lib/order-workflow";
+import { getAttachmentType } from "@/lib/order-workflow";
 import { apiErrorMessage } from "@/lib/http/message";
 import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
@@ -53,7 +53,7 @@ export function LicenseUpload({
     }
     const type = getAttachmentType(file.name);
     if (type === "other") {
-      message.error(t("file.allowedTypes"));
+      message.error(t("file.unsupported"));
       return Upload.LIST_IGNORE;
     }
     setPendingFile(file);
@@ -160,7 +160,7 @@ export function LicenseUpload({
   return (
     <div>
       <Upload.Dragger
-        accept={ACCEPT_FILE_TYPES}
+        accept={undefined}
         beforeUpload={beforeUpload}
         fileList={[]}
         showUploadList={false}

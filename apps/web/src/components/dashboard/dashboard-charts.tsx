@@ -84,17 +84,18 @@ export function DashboardCharts({
   );
 
   return (
-    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-      <Col xs={24} lg={14}>
+    <Row gutter={[16, 16]} style={{ marginTop: 16, minWidth: 0 }}>
+      <Col xs={24} lg={14} style={{ minWidth: 0, maxWidth: "100%" }}>
         <Card title={t("dash.revenueByMonth")} size="small" className="crm-dash-card">
           <div
-            style={{ width: "100%", height: 280, position: "relative" }}
+            className="crm-dash-chart"
+            style={{ width: "100%", maxWidth: "100%", minWidth: 0, height: 280, position: "relative", overflowX: "auto" }}
             role="img"
             aria-label={t("dash.revenueByMonth")}
           >
             {ready ? (
               <>
-                <ResponsiveContainer>
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={revenueData} margin={{ top: 20, right: 8, left: 8, bottom: 0 }}>
                     <CartesianGrid
                       strokeDasharray="3 3"
@@ -168,17 +169,18 @@ export function DashboardCharts({
         </Card>
       </Col>
 
-      <Col xs={24} lg={10}>
+      <Col xs={24} lg={10} style={{ minWidth: 0, maxWidth: "100%" }}>
         <Card title={t("dash.ordersByStatus")} size="small" className="crm-dash-card">
           <div
-            style={{ width: "100%", height: 280, position: "relative" }}
+            className="crm-dash-chart"
+            style={{ width: "100%", maxWidth: "100%", minWidth: 0, height: 280, position: "relative", overflowX: "auto" }}
             role="img"
             aria-label={t("dash.ordersByStatus")}
           >
             {ready ? (
               <>
                 <div style={{ width: "100%", height: 220 }}>
-                  <ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={orderStatusData}

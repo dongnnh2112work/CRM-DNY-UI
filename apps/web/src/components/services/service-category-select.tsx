@@ -4,6 +4,7 @@ import { CheckOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { App, Button, Divider, Input, Select, Space, theme } from "antd";
 import { useMemo, useState, type MouseEvent } from "react";
 import { ds } from "@/lib/design-tokens";
+import { displayCategoryLabel } from "@/lib/service-category-label";
 import { useServiceCategoryConfig } from "@/lib/service-category-store";
 import { useT } from "@/lib/use-t";
 
@@ -31,13 +32,17 @@ export function ServiceCategorySelect({
   const [open, setOpen] = useState(false);
 
   const options = useMemo(() => {
-    const base = categories.map((c) => ({ key: c.key, value: c.label, label: c.label }));
+    const base = categories.map((c) => ({
+      key: c.key,
+      value: c.label,
+      label: displayCategoryLabel(c.label, t),
+    }));
     const v = value?.trim();
     if (v && !base.some((o) => o.value === v)) {
-      base.push({ key: `orphan:${v}`, value: v, label: v });
+      base.push({ key: `orphan:${v}`, value: v, label: displayCategoryLabel(v, t) });
     }
     return base;
-  }, [categories, value]);
+  }, [categories, t, value]);
 
   const stop = (e: MouseEvent) => {
     e.stopPropagation();

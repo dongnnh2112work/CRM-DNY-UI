@@ -39,6 +39,8 @@ import {
 } from "@/lib/order-helpers";
 import { allocatePaymentShare, contractMoneyView, nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { commissionIssue, moneyAmountIssue, signedVndInputProps } from "@/lib/input-validators";
+import { countLabel } from "@/lib/count-label";
+import { runExclusive } from "@/lib/save-lock";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -55,7 +57,7 @@ import { applyOrderDetailFinance, reloadOrderFinance } from "@/lib/load-api-data
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useExpenses } from "@/lib/expenses-store";
 import { ordersApi } from "@/modules/orders/api";
-import { mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
+import { deadlineOmittedOnCreate, mapApiOrderToUi, mapUiOrderToCreateApi, mapUiOrderToUpdateApi } from "@/modules/orders/map-to-ui";
 import { orderUpdateErrorMessage } from "@/modules/orders/save-error";
 import { placeholderContractNumber } from "@/modules/orders/dossier-catalog";
 import {
@@ -210,6 +212,7 @@ export default function OrderDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [addServiceOpen, setAddServiceOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [addingService, setAddingService] = useState(false);
   const [form] = Form.useForm();
   const [addServiceForm] = Form.useForm();
@@ -573,17 +576,18 @@ export default function OrderDetailPage() {
         submitterName: submitter.name,
         contractNumber: order.contractNumber,
       });
+      const typedDeadline = toStorageDate(values.deadline);
       const created = {
         ...mapped,
         contractId,
         commissionPercent: mapped.commissionPercent ?? formCommission,
         zaloGroupUrl: order.zaloGroupUrl,
-        deadline: toStorageDate(values.deadline),
         needsVat: order.needsVat,
       };
       upsertOrder(created);
       if (assigned.id !== sessionUser?.id) refreshInbox();
       message.success(t("order.addedService", { number: created.orderNumber, service: service.name }));
+      if (deadlineOmittedOnCreate(typedDeadline)) message.warning(t("order.deadlineNotOnCreate"));
       setAddServiceOpen(false);
     } catch (err) {
       message.error(apiErrorMessage(err, t("order.createFailed")));
@@ -712,9 +716,17 @@ export default function OrderDetailPage() {
             {licenseSummary.label}
             {licenseSummary.earliestExpiresAt ? ` · ${licenseSummary.earliestExpiresAt}` : ""}
           </Tag>
-          <Tag>{t("order.workFilesTag", { count: workFileCount })}</Tag>
+          <Tag>
+            {countLabel(workFileCount, t("order.workFilesTagOne"), t("order.workFilesTag", { count: workFileCount }))}
+          </Tag>
           {licenseFileCount > 0 && (
-            <Tag color="green">{t("order.licenseCountTag", { count: licenseFileCount })}</Tag>
+            <Tag color="green">
+              {countLabel(
+                licenseFileCount,
+                t("order.licenseCountTagOne"),
+                t("order.licenseCountTag", { count: licenseFileCount }),
+              )}
+            </Tag>
           )}
         </Space>
 
@@ -811,7 +823,9 @@ export default function OrderDetailPage() {
         <Form
           form={form}
           layout="vertical"
+          scrollToFirstError
           onFinish={async (values) => {
+            await runExclusive(savingRef, async () => {
             const customer = resolveCatalogEntity(customers, values.customerId, {
               id: order.customerId,
               name: order.customerName,
@@ -961,6 +975,7 @@ export default function OrderDetailPage() {
             } finally {
               setSaving(false);
             }
+            });
           }}
         >
           <Form.Item name="customerId" label={t("common.customer")} rules={[{ required: true }]}>
@@ -1033,7 +1048,7 @@ export default function OrderDetailPage() {
           <Form.Item name="confirmZeroCommission" valuePropName="checked">
             <Checkbox>{t("order.commissionZeroConfirm")}</Checkbox>
           </Form.Item>
-          <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
+          <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true, message: t("order.selectOwner") }]}>
             <Select
               showSearch
               optionFilterProp="label"
@@ -1114,7 +1129,7 @@ export default function OrderDetailPage() {
               {t("common.cancel")}
             </Button>
             <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-              {t("common.save")}
+              {saving ? t("common.saving") : t("common.save")}
             </Button>
           </Space>
         </Form>
@@ -1129,7 +1144,12 @@ export default function OrderDetailPage() {
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">{t("order.addServiceToContractHint")}</Typography.Paragraph>
-        <Form form={addServiceForm} layout="vertical" onFinish={(values) => void addServiceToContract(values)}>
+        <Form
+          form={addServiceForm}
+          layout="vertical"
+          scrollToFirstError
+          onFinish={(values) => void addServiceToContract(values)}
+        >
           <Form.Item
             name="serviceId"
             label={t("common.service")}
@@ -1186,7 +1206,7 @@ export default function OrderDetailPage() {
           <Form.Item name="confirmZeroCommission" valuePropName="checked">
             <Checkbox>{t("order.commissionZeroConfirm")}</Checkbox>
           </Form.Item>
-          <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
+          <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true, message: t("order.selectOwner") }]}>
             <Select
               showSearch
               optionFilterProp="label"
