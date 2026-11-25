@@ -4,7 +4,7 @@ import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Select, Space, Typography } from "antd";
 import dayjs from "dayjs";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { useApiHydrate } from "@/components/api-hydrator";
 import { PageHeader } from "@/components/shared/page-header";
 import { PageLoading } from "@/components/shared/page-loading";
@@ -16,6 +16,7 @@ import { rememberContractNumber } from "@/lib/entity-lookups";
 import { DISPLAY_DATE_FORMAT, toStorageDate } from "@/lib/format-date";
 import { commissionIssue, moneyAmountIssue, signedVndInputProps } from "@/lib/input-validators";
 import { apiErrorMessage } from "@/lib/http/message";
+import { runExclusive } from "@/lib/save-lock";
 import { deadlineFromService, nextContractNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
@@ -37,7 +38,7 @@ import {
   proposeDossierNumbers,
   shouldDeleteOrphanContract,
 } from "@/modules/orders/dossier-catalog";
-import { mapApiOrderToUi, mapUiOrderToCreateApi } from "@/modules/orders/map-to-ui";
+import { deadlineOmittedOnCreate, mapApiOrderToUi, mapUiOrderToCreateApi } from "@/modules/orders/map-to-ui";
 import { useT } from "@/lib/use-t";
 import type { Order } from "@/lib/types";
 
@@ -73,6 +74,7 @@ function NewOrderPageContent() {
   const activeUsers = users.filter((u) => u.status === "active");
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const catalogs = useOrderFormCatalogs(true);
   const knownPrefill = customers.find((customer) => customer.id === prefillCustomerId);
   const prefillCustomer = usePrefillCustomerOption(prefillCustomerId, knownPrefill?.name);
@@ -105,10 +107,13 @@ function NewOrderPageContent() {
           customerId: prefillCustomerId,
           lines: [{}],
         }}
+        scrollToFirstError
         onFinish={async (values) => {
+          await runExclusive(savingRef, async () => {
           setSaving(true);
           let createdContractId: string | undefined;
           let createdOrderCount = 0;
+          let omittedDeadline = false;
           try {
             const customer = resolveCatalogEntity(customers, values.customerId, prefillCustomer
               ? { id: prefillCustomer.value, name: prefillCustomer.label }
@@ -213,11 +218,12 @@ function NewOrderPageContent() {
                   submitterName: submitter.name,
                   contractNumber: savedContractNumber,
                 });
+                const typedDeadline = toStorageDate(line.deadline);
+                if (deadlineOmittedOnCreate(typedDeadline)) omittedDeadline = true;
                 created.push({
                   ...mapped,
                   commissionPercent: mapped.commissionPercent ?? formCommission,
                   zaloGroupUrl: values.zaloGroupUrl?.trim() || undefined,
-                  deadline: toStorageDate(line.deadline),
                   needsVat: Boolean(values.needsVat),
                 });
               }
@@ -238,6 +244,7 @@ function NewOrderPageContent() {
                 t("order.createdGroup", { count: created.length, numbers: numbers.join(", ") }),
               );
             }
+            if (omittedDeadline) message.warning(t("order.deadlineNotOnCreate"));
             router.push(`/orders/${created[0].id}`);
           } catch (err) {
             let suffix = "";
@@ -256,6 +263,7 @@ function NewOrderPageContent() {
           } finally {
             setSaving(false);
           }
+          });
         }}
       >
         {ordersCatalogReady ? null : (
@@ -375,7 +383,7 @@ function NewOrderPageContent() {
         <Form.Item name="confirmZeroCommission" valuePropName="checked">
           <Checkbox>{t("order.commissionZeroConfirm")}</Checkbox>
         </Form.Item>
-        <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
+        <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true, message: t("order.selectOwner") }]}>
           <Select
             showSearch
             optionFilterProp="label"
@@ -446,7 +454,7 @@ function NewOrderPageContent() {
             {t("common.cancel")}
           </Button>
           <Button type="primary" htmlType="submit" loading={saving} disabled={saving}>
-            {t("common.createOrder")}
+            {saving ? t("common.saving") : t("common.createOrder")}
           </Button>
         </Space>
       </Form>

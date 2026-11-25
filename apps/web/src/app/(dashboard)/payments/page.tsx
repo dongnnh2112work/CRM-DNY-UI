@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { exportRowsToXlsx } from "@/lib/export-xlsx";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { activeInstallmentCount, installmentCountLabel } from "@/lib/payment-display";
 import { earliestDate, isInDateRange, type DateRangeValue } from "@/lib/date-range";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
@@ -74,7 +75,7 @@ export default function PaymentsPage() {
           p.remaining,
           p.status,
           getStatusMeta("payment", p.status).label,
-          p.installments.length,
+          activeInstallmentCount(p.installments).active,
         ]),
       );
     }
@@ -170,8 +171,11 @@ export default function PaymentsPage() {
         title: t("payment.installments"),
         key: "inst",
         align: "center",
-        sorter: (a, b) => a.installments.length - b.installments.length,
-        render: (_, r) => r.installments.length,
+        sorter: (a, b) => activeInstallmentCount(a.installments).active - activeInstallmentCount(b.installments).active,
+        render: (_, r) =>
+          installmentCountLabel(r.installments, (active, total) =>
+            t("payment.installmentActiveOf", { active, total }),
+          ),
       },
     ],
     [t],

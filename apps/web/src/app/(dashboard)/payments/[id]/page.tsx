@@ -32,6 +32,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { installmentCountLabel, paymentMethodMessageKey } from "@/lib/payment-display";
 import { installmentAmountIssue, signedVndInputProps } from "@/lib/input-validators";
 import { allocatePaymentShare, collectionState, contractMoneyView } from "@/lib/order-group";
 import { isInstallmentVisuallyOverdue } from "@/lib/overdue-highlight";
@@ -138,7 +139,14 @@ export default function PaymentDetailPage() {
       },
       { title: t("payment.dueDate"), dataIndex: "dueDate" },
       { title: t("payment.paidDate"), dataIndex: "paidDate", render: (v?: string) => v ?? "—" },
-      { title: t("payment.method"), dataIndex: "method", render: (v?: string) => v ?? "—" },
+      {
+        title: t("payment.method"),
+        dataIndex: "method",
+        render: (v?: string) => {
+          const key = paymentMethodMessageKey(v);
+          return key ? t(key) : v?.trim() || "—";
+        },
+      },
       {
         title: t("common.status"),
         dataIndex: "status",
@@ -242,6 +250,11 @@ export default function PaymentDetailPage() {
                     setVoidingId(row.id);
                     try {
                       await paymentsApi.void(apiPaymentId);
+                      replaceInstallment(record.id, row.id, {
+                        ...row,
+                        status: "cancelled",
+                        voidable: false,
+                      });
                       await reloadFinance(record.orderId, { force: true });
                       message.success(t("payment.voided"));
                     } catch (err) {
@@ -273,6 +286,7 @@ export default function PaymentDetailPage() {
       paidCopy,
       payment,
       reloadFinance,
+      replaceInstallment,
       voidingId,
     ],
   );
@@ -338,7 +352,11 @@ export default function PaymentDetailPage() {
               <Descriptions.Item label={t("common.owner")}>{order.assignedUserName}</Descriptions.Item>
             </>
           ) : null}
-          <Descriptions.Item label={t("payment.installments")}>{payment.installments.length}</Descriptions.Item>
+          <Descriptions.Item label={t("payment.installments")}>
+            {installmentCountLabel(payment.installments, (active, total) =>
+              t("payment.installmentActiveOf", { active, total }),
+            )}
+          </Descriptions.Item>
         </Descriptions>
         <PaymentMoneyDetails payment={payment} orders={linkedOrders} />
 
@@ -568,7 +586,7 @@ export default function PaymentDetailPage() {
               options={[
                 { value: "BANK_TRANSFER", label: t("payment.bankTransfer") },
                 { value: "CASH", label: t("payment.cash") },
-                { value: "QR_PAYMENT", label: "QR" },
+                { value: "QR_PAYMENT", label: t("payment.qr") },
               ]}
             />
           </Form.Item>
