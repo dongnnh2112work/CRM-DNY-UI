@@ -10,6 +10,8 @@ export type ApiNote = {
   authorName: string;
   mentionedUserIds: string[];
   mentionedUserNames: string[];
+  /** Present only when the API stores a reply parent. Today this is always null. */
+  parentId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,6 +40,11 @@ function fields(value: unknown): Fields | null {
 function readString(source: Fields, key: string) {
   const value = source[key];
   return typeof value === "string" ? value : "";
+}
+
+function parentIdOf(data: Fields): string | null {
+  const value = readString(data, "parentId") || readString(data, "parentNoteId");
+  return isUuid(value) ? value : null;
 }
 
 function stringList(value: unknown): string[] {
@@ -107,6 +114,7 @@ export function normalizeNote(raw: unknown): ApiNote | null {
     authorName: readString(data, "authorName"),
     mentionedUserIds: stringList(data.mentionedUserIds),
     mentionedUserNames: stringList(data.mentionedUserNames),
+    parentId: parentIdOf(data),
     createdAt,
     updatedAt: readString(data, "updatedAt") || createdAt,
   };

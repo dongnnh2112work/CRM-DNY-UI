@@ -1,6 +1,6 @@
 "use client";
 
-import { SendOutlined } from "@ant-design/icons";
+import { LoadingOutlined, SendOutlined } from "@ant-design/icons";
 import { Button, Spin, theme } from "antd";
 import { memo, useEffect, useId, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -222,11 +222,15 @@ const MentionEditor = memo(function MentionEditor({
   placeholder,
   label,
   handlersRef,
+  onFocus,
+  onBlur,
 }: {
   editorRef: RefObject<HTMLDivElement | null>;
   placeholder: string;
   label: string;
   handlersRef: RefObject<Handlers>;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   useEffect(() => {
     const root = editorRef.current;
@@ -258,15 +262,19 @@ const MentionEditor = memo(function MentionEditor({
       aria-label={label}
       data-placeholder={placeholder}
       suppressContentEditableWarning
+      onFocus={onFocus}
+      onBlur={onBlur}
       style={{
-        minHeight: 24,
+        flex: "1 1 auto",
+        minWidth: 0,
+        minHeight: 22,
         maxHeight: 120,
         overflowY: "auto",
         outline: "none",
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
         fontSize: ds.fontSize.bodySm,
-        lineHeight: 1.45,
+        lineHeight: "22px",
       }}
     />
   );
@@ -282,6 +290,10 @@ export function MentionComposer({
   onCancel,
   autoFocus = false,
   showAvatar = true,
+  avatarSize = 32,
+  purpose = "post",
+  placeholder,
+  frozen = false,
 }: {
   canCompose: boolean;
   submitting: boolean;
@@ -292,6 +304,12 @@ export function MentionComposer({
   onCancel?: () => void;
   autoFocus?: boolean;
   showAvatar?: boolean;
+  avatarSize?: number;
+  /** post and reply keep the send icon inside the pill. edit uses Save / Cancel. */
+  purpose?: "post" | "reply" | "edit";
+  placeholder?: string;
+  /** Another composer is submitting. Blocks input without a spinner. */
+  frozen?: boolean;
 }) {
   const t = useT();
   const { token } = theme.useToken();
@@ -308,9 +326,11 @@ export function MentionComposer({
   const [searching, setSearching] = useState(false);
   const [problem, setProblem] = useState<HttpProblem | null>(null);
   const [index, setIndex] = useState(0);
+  const [focused, setFocused] = useState(false);
   const requestId = useRef(0);
   const active = options.length === 0 ? 0 : Math.min(index, options.length - 1);
-  const placeholder = t("order.discussionPlaceholder");
+  const fieldPlaceholder = placeholder ?? (purpose === "reply" ? t("order.discussionReplyPlaceholder") : t("order.discussionPlaceholder"));
+  const editing = purpose === "edit";
 
   useEffect(() => {
     const root = editorRef.current;
@@ -358,7 +378,7 @@ export function MentionComposer({
 
   const submit = () => {
     const root = editorRef.current;
-    if (!root || submitting || !canCompose) return;
+    if (!root || submitting || frozen || !canCompose) return;
     const read = readMentionEditor(root);
     if (!read.content.trim()) return;
     void onSubmit(read.content, read.mentions);
@@ -383,6 +403,11 @@ export function MentionComposer({
       if (open && event.key === "Escape") {
         event.preventDefault();
         setMenuQuery(null);
+        return;
+      }
+      if (!open && event.key === "Escape" && onCancel) {
+        event.preventDefault();
+        onCancel();
         return;
       }
       if (open && ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")) {
@@ -465,8 +490,8 @@ export function MentionComposer({
 
   useEffect(() => {
     const root = editorRef.current;
-    if (root) root.contentEditable = submitting ? "false" : "true";
-  }, [submitting]);
+    if (root) root.contentEditable = submitting || frozen ? "false" : "true";
+  }, [frozen, submitting]);
 
   const emptyLabel =
     problem === "forbidden"
@@ -556,8 +581,11 @@ export function MentionComposer({
         )
       : null;
 
+  const hintOffset = showAvatar ? avatarSize + 8 : 0;
+  const pillFill = token.colorBgContainer === "#ffffff" ? "#f0f2f5" : token.colorFillSecondary;
+
   return (
-    <div>
+    <div className="crm-composer">
       <style>{`
         .crm-mention { color: ${ds.primary}; font-weight: 700; }
         .crm-mention-input.is-empty:before {
@@ -567,54 +595,106 @@ export function MentionComposer({
           float: left;
           height: 0;
         }
+        .crm-send-btn {
+          width: 32px;
+          height: 32px;
+          border: 0;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          background: transparent;
+          color: ${token.colorTextQuaternary};
+          cursor: default;
+          padding: 0;
+          font-size: 16px;
+        }
+        .crm-send-btn.is-ready {
+          background: ${ds.primary};
+          color: #fff;
+          cursor: pointer;
+        }
+        .crm-send-btn.is-ready:hover { background: ${ds.primaryActive}; }
+        .crm-send-btn:focus-visible {
+          outline: 2px solid ${ds.focusRing};
+          outline-offset: 2px;
+        }
+        .crm-composer-hint {
+          margin-top: 4px;
+          padding-left: 14px;
+          color: ${token.colorTextSecondary};
+          font-size: 12px;
+          line-height: 16px;
+        }
       `}</style>
-      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-        {showAvatar ? <PersonAvatar name={authorName || "?"} seed={authorName} /> : null}
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <div
-            style={{
-              borderRadius: 20,
-              background: token.colorFillTertiary,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              padding: "8px 12px",
-            }}
-          >
-            {canCompose ? (
-              <MentionEditor editorRef={editorRef} placeholder={placeholder} label={placeholder} handlersRef={handlersRef} />
-            ) : (
-              <div style={{ color: token.colorTextSecondary, fontSize: ds.fontSize.bodySm, lineHeight: 1.45 }}>
-                {t("order.discussionNeedUpdate")}
-              </div>
-            )}
-          </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {showAvatar ? <PersonAvatar name={authorName || "?"} seed={authorName} size={avatarSize} /> : null}
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            minHeight: 40,
+            borderRadius: 20,
+            background: focused ? token.colorBgContainer : pillFill,
+            border: `1px solid ${focused ? ds.primary : "transparent"}`,
+            boxShadow: focused ? `0 0 0 3px ${ds.focusRing}` : "none",
+            padding: editing ? "6px 14px" : "4px 4px 4px 14px",
+          }}
+        >
           {canCompose ? (
-            <div style={{ marginTop: 4, paddingInline: 12, color: token.colorTextSecondary, fontSize: ds.fontSize.caption }}>
-              {t("order.discussionHint")}
+            <MentionEditor
+              editorRef={editorRef}
+              placeholder={fieldPlaceholder}
+              label={fieldPlaceholder}
+              handlersRef={handlersRef}
+                onFocus={() => {
+                  setFocused(true);
+                  window.requestAnimationFrame(() => {
+                    window.requestAnimationFrame(() => {
+                      editorRef.current?.closest(".crm-composer")?.scrollIntoView({ block: "nearest" });
+                    });
+                  });
+                }}
+              onBlur={() => setFocused(false)}
+            />
+          ) : (
+            <div style={{ flex: 1, color: token.colorTextSecondary, fontSize: ds.fontSize.bodySm, lineHeight: "22px" }}>
+              {t("order.discussionNeedUpdate")}
             </div>
-          ) : null}
-          {onCancel && canCompose ? (
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <Button size="small" onClick={onCancel} disabled={submitting}>
-                {t("common.cancel")}
-              </Button>
-              <Button size="small" type="primary" loading={submitting} disabled={!hasText || submitting} onClick={submit}>
-                {t("common.save")}
-              </Button>
-            </div>
+          )}
+          {canCompose && !editing ? (
+            <button
+              type="button"
+                className={hasText && !submitting && !frozen ? "crm-send-btn is-ready" : "crm-send-btn"}
+                aria-label={t("order.discussionSend")}
+                disabled={!hasText || submitting || frozen}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={submit}
+            >
+              {submitting ? <LoadingOutlined /> : <SendOutlined />}
+            </button>
           ) : null}
         </div>
-        {canCompose && !onCancel ? (
-          <Button
-            type="primary"
-            shape="circle"
-            aria-label={t("order.discussionSend")}
-            icon={<SendOutlined />}
-            loading={submitting}
-            disabled={!hasText || submitting}
-            onClick={submit}
-          />
-        ) : null}
       </div>
+      {canCompose && focused ? (
+        <div className="crm-composer-hint" style={{ marginLeft: hintOffset }}>
+          {t("order.discussionHint")}
+        </div>
+      ) : null}
+      {editing && canCompose ? (
+        <div style={{ display: "flex", gap: 8, marginTop: 8, marginLeft: hintOffset, paddingLeft: 14 }}>
+          <Button size="small" onClick={onCancel} disabled={submitting || frozen}>
+            {t("common.cancel")}
+          </Button>
+          <Button size="small" type="primary" loading={submitting} disabled={!hasText || submitting || frozen} onClick={submit}>
+            {t("common.save")}
+          </Button>
+        </div>
+      ) : null}
       {menu}
     </div>
   );

@@ -35,7 +35,8 @@ import {
   nextContractNumber,
   serviceDisplayName,
 } from "@/lib/order-helpers";
-import { resolveOrderDetailTab } from "@/lib/order-detail-tab";
+import { ds } from "@/lib/design-tokens";
+import { isOrderDiscussionDeepLink, resolveOrderDetailTab } from "@/lib/order-detail-tab";
 import { allocatePaymentShare, nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
@@ -164,7 +165,9 @@ function OrderDetailPage() {
   const { status: sessionStatus, can, user: sessionUser } = useSession();
   const canViewDiscussion = can(PERMISSION.orderView);
   const requestedTab = searchParams.get("tab");
-  const activeTab = resolveOrderDetailTab(requestedTab, canViewDiscussion);
+  const activeTab = resolveOrderDetailTab(requestedTab);
+  const discussionRef = useRef<HTMLElement>(null);
+  const [discussionHighlight, setDiscussionHighlight] = useState(false);
   const { listMeta } = useApiHydrate();
   const financeListsReady =
     isListSliceSettled(listMeta.orders, canLoadScope("orders", sessionUser?.permissions)) &&
@@ -204,7 +207,7 @@ function OrderDetailPage() {
   );
 
   const setOrderTab = (key: string) => {
-    const next = resolveOrderDetailTab(key, canViewDiscussion);
+    const next = resolveOrderDetailTab(key);
     const params = new URLSearchParams(searchParams.toString());
     if (next === "expenses") params.delete("tab");
     else params.set("tab", next);
@@ -214,12 +217,24 @@ function OrderDetailPage() {
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
-    if (requestedTab !== "notes" || canViewDiscussion) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("tab");
-    const qs = params.toString();
-    router.replace(qs ? `/orders/${id}?${qs}` : `/orders/${id}`, { scroll: false });
-  }, [canViewDiscussion, id, requestedTab, router, searchParams, sessionStatus]);
+    if (!isOrderDiscussionDeepLink(requestedTab)) return;
+    if (!canViewDiscussion) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("tab");
+      const qs = params.toString();
+      router.replace(qs ? `/orders/${id}?${qs}` : `/orders/${id}`, { scroll: false });
+      return;
+    }
+    if (!order?.id) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const node = discussionRef.current;
+    if (node) {
+      node.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    }
+    setDiscussionHighlight(true);
+    const timer = window.setTimeout(() => setDiscussionHighlight(false), reduceMotion ? 1200 : 2200);
+    return () => window.clearTimeout(timer);
+  }, [canViewDiscussion, id, order?.id, requestedTab, router, searchParams, sessionStatus]);
 
   const catalogsRef = useRef({ users, customers, services });
   catalogsRef.current = { users, customers, services };
@@ -707,6 +722,29 @@ function OrderDetailPage() {
           )}
         </Descriptions>
 
+        {canViewDiscussion ? (
+          <section
+            id="order-discussion"
+            ref={discussionRef}
+            aria-labelledby="order-discussion-heading"
+            style={{
+              marginBottom: 16,
+              padding: 16,
+              borderRadius: ds.radius.md,
+              border: `1px solid ${ds.hairline}`,
+              background: discussionHighlight ? ds.selected : ds.surface,
+              boxShadow: discussionHighlight ? `0 0 0 3px ${ds.focusRing}` : "none",
+              transition: "background-color 0.4s ease, box-shadow 0.4s ease",
+              scrollMarginTop: 24,
+            }}
+          >
+            <Typography.Title id="order-discussion-heading" level={5} style={{ margin: "0 0 12px", fontSize: ds.fontSize.body, fontWeight: 600 }}>
+              {t("order.discussionTab")}
+            </Typography.Title>
+            <OrderDiscussion orderId={order.id} canCompose={can(PERMISSION.orderUpdate)} />
+          </section>
+        ) : null}
+
         <Tabs
           activeKey={activeTab}
           onChange={setOrderTab}
@@ -743,18 +781,6 @@ function OrderDetailPage() {
                 </div>
               ),
             },
-            ...(canViewDiscussion
-              ? [
-                  {
-                    key: "notes",
-                    label: t("order.discussionTab"),
-                    children:
-                      activeTab === "notes" ? (
-                        <OrderDiscussion orderId={order.id} canCompose={can(PERMISSION.orderUpdate)} />
-                      ) : null,
-                  },
-                ]
-              : []),
           ]}
         />
       </div>

@@ -20,6 +20,7 @@ function note(partial: Partial<ApiNote> & Pick<ApiNote, "id" | "createdAt">): Ap
     authorName: "Hùng",
     mentionedUserIds: [],
     mentionedUserNames: [],
+    parentId: null,
     updatedAt: partial.createdAt,
     ...partial,
   };
@@ -86,8 +87,30 @@ describe("note list", () => {
       },
     ]);
     expect(parsed?.mentionedUserIds).toEqual([]);
+    expect(parsed?.parentId).toBeNull();
     expect(parsed?.authorName).toBe("");
     expect(normalizeWrapped()).toMatchObject({ id: "n1", content: "Xin chào", authorName: "Mai" });
+  });
+
+  it("keeps a parent id when the server sends one", () => {
+    const [parsed] = unwrapNotes([
+      {
+        id: "child",
+        content: "reply",
+        createdAt: "2026-11-20T04:00:00.000Z",
+        parentId: MAI,
+      },
+    ]);
+    expect(parsed?.parentId).toBe(MAI);
+    const [ignored] = unwrapNotes([
+      {
+        id: "child",
+        content: "reply",
+        createdAt: "2026-11-20T04:00:00.000Z",
+        parentId: "not-a-uuid",
+      },
+    ]);
+    expect(ignored?.parentId).toBeNull();
   });
 
   it("marks a note edited only when updatedAt moves", () => {
