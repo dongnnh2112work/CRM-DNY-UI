@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Alert,
   App,
   Button,
   Descriptions,
@@ -36,7 +37,9 @@ import {
   type CustomerUsedService,
 } from "@/lib/customer-helpers";
 import { useCustomerStatusConfig } from "@/lib/customer-status-store";
+import { useRemoteList } from "@/components/api-hydrator";
 import { useCustomers } from "@/lib/customers-store";
+import { duplicatePhoneCustomer, vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
 import { formatDisplayDate } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -61,6 +64,8 @@ export default function CustomerDetailPage() {
   const { customers, getById, ready, updateCustomer, deleteCustomer, fieldDefs } = useCustomers();
   const { users } = useUsers();
   const { orders } = useOrders();
+  const ordersRemote = useRemoteList("orders");
+  const ordersLoading = ordersRemote.bootLoading;
   const { services } = useServices();
   const mockCustomer = getById(id);
   const [liveCustomer, setLiveCustomer] = useState<Customer | null>(null);
@@ -72,6 +77,11 @@ export default function CustomerDetailPage() {
   const descriptionColumns = screens.sm === false ? 1 : 2;
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  const watchedPhone = Form.useWatch("phone", form);
+  const duplicatePhone =
+    customer && typeof watchedPhone === "string"
+      ? duplicatePhoneCustomer(watchedPhone, customers, customer.id)
+      : undefined;
 
   const relatedOrders = useMemo(
     () => (customer ? getCustomerOrders(customer.id, orders) : []),
@@ -335,7 +345,7 @@ export default function CustomerDetailPage() {
             {formatDisplayDate(customer.createdAt)}
           </Descriptions.Item>
           <Descriptions.Item label={t("customer.usedServices")} span={descriptionColumns}>
-            <UsedServiceTags services={usedServices} max={8} />
+            {ordersLoading ? t("shell.syncing") : <UsedServiceTags services={usedServices} max={8} />}
           </Descriptions.Item>
         </Descriptions>
 
@@ -343,12 +353,15 @@ export default function CustomerDetailPage() {
           items={[
             {
               key: "orders",
-              label: t("customer.ordersN", { count: relatedOrders.length }),
+              label: ordersLoading
+                ? t("shell.syncing")
+                : t("customer.ordersN", { count: relatedOrders.length }),
               children: (
                 <DataTable<Order>
                   rowKey="id"
                   columns={orderColumns}
                   dataSource={relatedOrders}
+                  loading={ordersLoading}
                   padded={false}
                   dateFilterField="createdAt"
                   enableLocalSearch
@@ -359,11 +372,14 @@ export default function CustomerDetailPage() {
             },
             {
               key: "services",
-              label: t("customer.usedServicesN", { count: usedServices.length }),
+              label: ordersLoading
+                ? t("shell.syncing")
+                : t("customer.usedServicesN", { count: usedServices.length }),
               children: (
                 <DataTable<CustomerUsedService>
                   rowKey="serviceId"
                   padded={false}
+                  loading={ordersLoading}
                   dataSource={usedServices}
                   dateFilterField="lastOrderAt"
                   enableLocalSearch
@@ -390,6 +406,14 @@ export default function CustomerDetailPage() {
           form={form}
           layout="vertical"
           onFinish={async (values) => {
+            if (vnPhoneIssue(values.phone)) {
+              message.error(t("customer.phoneInvalid"));
+              return;
+            }
+            if (values.taxCode && vnTaxIssue(values.taxCode)) {
+              message.error(t("customer.taxInvalid"));
+              return;
+            }
             setSaving(true);
             try {
               const updated = await customersApi.update(
@@ -427,16 +451,46 @@ export default function CustomerDetailPage() {
           <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="phone" label={t("field.phone")}>
+          <Form.Item
+            name="phone"
+            label={t("field.phone")}
+            rules={[
+              { required: true, message: t("customer.phoneInvalid") },
+              {
+                validator: async (_, value) => {
+                  if (vnPhoneIssue(value)) throw new Error(t("customer.phoneInvalid"));
+                },
+              },
+            ]}
+          >
             <Input />
           </Form.Item>
+          {duplicatePhone ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              title={t("customer.phoneDuplicate", { name: duplicatePhone.name || "TEST" })}
+            />
+          ) : null}
           <Form.Item name="email" label={t("field.email")} rules={[{ type: "email" }]}>
             <Input />
           </Form.Item>
           <Form.Item name="company" label={t("field.company")}>
             <Input />
           </Form.Item>
-          <Form.Item name="taxCode" label={t("field.taxCode")}>
+          <Form.Item
+            name="taxCode"
+            label={t("field.taxCode")}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (value == null || String(value).trim() === "") return;
+                  if (vnTaxIssue(value)) throw new Error(t("customer.taxInvalid"));
+                },
+              },
+            ]}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="address" label={t("field.address")}>

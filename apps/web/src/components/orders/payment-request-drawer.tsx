@@ -1,10 +1,16 @@
 "use client";
 
-import { App, AutoComplete, Button, Drawer, Form, Input, InputNumber } from "antd";
+import { Alert, App, AutoComplete, Button, Drawer, Form, Input, InputNumber } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
-import { vndInputProps } from "@/lib/format-vnd";
+import {
+  duplicatePendingExpense,
+  expensePayeeIssue,
+  moneyAmountIssue,
+  orderFinanceLocked,
+  signedVndInputProps,
+} from "@/lib/input-validators";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
@@ -36,7 +42,7 @@ export function PaymentRequestDrawer({
   open: boolean;
   onClose: () => void;
   /** Khi tạo từ hồ sơ — không chọn dự án */
-  lockedOrder?: Pick<Order, "id" | "orderNumber" | "customerName">;
+  lockedOrder?: Pick<Order, "id" | "orderNumber" | "customerName" | "stage">;
 }) {
   const t = useT();
   const { message, modal } = App.useApp();
@@ -62,7 +68,10 @@ export function PaymentRequestDrawer({
       seen.add(v.toLowerCase());
       options.push({ value: v });
     };
-    for (const o of orders) push(orderProjectLabel(o));
+    for (const o of orders) {
+      if (o.stage === "cancelled") continue;
+      push(orderProjectLabel(o));
+    }
     for (const e of expenses) {
       const label = expenseProjectLabel(e);
       if (label !== "—") push(label);
@@ -75,6 +84,30 @@ export function PaymentRequestDrawer({
     onClose();
   };
 
+  const watchedAmount = Form.useWatch("amount", form);
+  const watchedPayee = Form.useWatch("payeeName", form);
+  const watchedProject = Form.useWatch("project", form);
+  const duplicate = useMemo(() => {
+    const amount = Number(watchedAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return undefined;
+    let orderId = lockedOrder?.id;
+    if (!orderId && watchedProject) {
+      const typed = String(watchedProject).trim();
+      orderId = orders.find(
+        (row) =>
+          row.stage !== "cancelled" &&
+          (row.id === typed || row.orderNumber === typed || orderProjectLabel(row).toLowerCase() === typed.toLowerCase()),
+      )?.id;
+    }
+    if (!orderId) return undefined;
+    return duplicatePendingExpense(expenses, {
+      orderId,
+      amount,
+      payeeName: typeof watchedPayee === "string" ? watchedPayee : undefined,
+    });
+  }, [expenses, lockedOrder?.id, orders, watchedAmount, watchedPayee, watchedProject]);
+  const lockedCancelled = Boolean(lockedOrder && orderFinanceLocked(lockedOrder));
+
   return (
     <Drawer
       title={t("expense.create")}
@@ -85,7 +118,7 @@ export function PaymentRequestDrawer({
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button onClick={() => confirmDiscardIfDirty(modal, form, close)}>{t("common.cancel")}</Button>
-          <Button type="primary" loading={saving} disabled={saving} onClick={() => form.submit()}>
+          <Button type="primary" loading={saving} disabled={saving || lockedCancelled} onClick={() => form.submit()}>
             {t("expense.sendRequest")}
           </Button>
         </div>
@@ -131,11 +164,51 @@ export function PaymentRequestDrawer({
             }
           }
 
-          const title =
-            values.title?.trim() || projectName || t("expense.fallbackProject");
+          const matchedOrder = orderId ? orders.find((row) => row.id === orderId) : undefined;
+          if (lockedCancelled || (matchedOrder && orderFinanceLocked(matchedOrder))) {
+            message.error(t("payment.cancelledLocked"));
+            savingRef.current = false;
+            setSaving(false);
+            return;
+          }
           const payeeName = values.payeeName?.trim() ?? "";
           const bankAccount = values.bankAccount?.trim() ?? "";
           const bankName = values.bankName?.trim() ?? "";
+          const payeeIssue = expensePayeeIssue({ payeeName, bankAccount, bankName });
+          if (payeeIssue === "payee") {
+            message.error(t("expense.payeeRequired"));
+            savingRef.current = false;
+            setSaving(false);
+            return;
+          }
+          if (payeeIssue === "account") {
+            message.error(t("expense.bankRequired"));
+            savingRef.current = false;
+            setSaving(false);
+            return;
+          }
+          if (payeeIssue === "bank") {
+            message.error(t("expense.bankNameRequired"));
+            savingRef.current = false;
+            setSaving(false);
+            return;
+          }
+          const amountIssue = moneyAmountIssue(values.amount);
+          if (amountIssue) {
+            message.error(amountIssue === "negative" ? t("payment.amountNegative") : t("payment.amountPositive"));
+            savingRef.current = false;
+            setSaving(false);
+            return;
+          }
+          if (duplicatePendingExpense(expenses, { orderId, amount: Number(values.amount), payeeName })) {
+            message.warning(t("expense.duplicatePending"));
+            savingRef.current = false;
+            setSaving(false);
+            return;
+          }
+
+          const title =
+            values.title?.trim() || projectName || t("expense.fallbackProject");
           const description = [bankName, bankAccount].filter(Boolean).join(" · ") || undefined;
 
           try {
@@ -180,6 +253,12 @@ export function PaymentRequestDrawer({
           }
         }}
       >
+        {lockedCancelled ? (
+          <Alert type="error" showIcon style={{ marginBottom: 12 }} title={t("payment.cancelledLocked")} />
+        ) : null}
+        {duplicate ? (
+          <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("expense.duplicatePending")} />
+        ) : null}
         <Form.Item label={t("common.requester")}>
           <Input value={currentUser?.name ?? ""} disabled />
         </Form.Item>
@@ -200,13 +279,25 @@ export function PaymentRequestDrawer({
             />
           </Form.Item>
         )}
-        <Form.Item name="payeeName" label={t("common.payee")}>
+        <Form.Item
+          name="payeeName"
+          label={t("common.payee")}
+          rules={[{ required: true, whitespace: true, message: t("expense.payeeRequired") }]}
+        >
           <Input placeholder={t("expense.payeePlaceholder")} />
         </Form.Item>
-        <Form.Item name="bankAccount" label={t("expense.accountNo")}>
+        <Form.Item
+          name="bankAccount"
+          label={t("expense.accountNo")}
+          rules={[{ required: true, whitespace: true, message: t("expense.bankRequired") }]}
+        >
           <Input placeholder={t("expense.accountPlaceholder")} />
         </Form.Item>
-        <Form.Item name="bankName" label={t("common.bank")}>
+        <Form.Item
+          name="bankName"
+          label={t("common.bank")}
+          rules={[{ required: true, whitespace: true, message: t("expense.bankNameRequired") }]}
+        >
           <Input placeholder={t("expense.bankPlaceholder")} />
         </Form.Item>
         <Form.Item name="title" label={t("common.content")}>
@@ -215,9 +306,18 @@ export function PaymentRequestDrawer({
         <Form.Item
           name="amount"
           label={t("common.amount")}
-          rules={[{ required: true, message: t("common.enterAmount") }]}
+          rules={[
+            {
+              validator: async (_, value) => {
+                const issue = moneyAmountIssue(value);
+                if (!issue) return;
+                if (issue === "negative") throw new Error(t("payment.amountNegative"));
+                throw new Error(issue === "not_positive" ? t("payment.amountPositive") : t("common.enterAmount"));
+              },
+            },
+          ]}
         >
-          <InputNumber {...vndInputProps} />
+          <InputNumber {...signedVndInputProps} />
         </Form.Item>
         <Form.Item name="note" label={t("common.note")}>
           <Input.TextArea rows={2} />

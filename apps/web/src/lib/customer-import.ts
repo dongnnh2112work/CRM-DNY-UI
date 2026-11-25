@@ -1,3 +1,5 @@
+import { vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
+
 export function isBlankImportRow(row: Record<string, unknown>) {
   const name = String(row.Name ?? row.name ?? "").trim();
   const phone = String(row.Phone ?? row.phone ?? "").trim();
@@ -7,7 +9,6 @@ export function isBlankImportRow(row: Record<string, unknown>) {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^[0-9+()\-\s]{8,20}$/;
 
 export function validateCustomerImportRow(row: Record<string, unknown>): string | null {
   if (isBlankImportRow(row)) return "empty";
@@ -16,6 +17,8 @@ export function validateCustomerImportRow(row: Record<string, unknown>): string 
   const email = String(row.Email ?? row.email ?? "").trim();
   if (email && !EMAIL_RE.test(email)) return "email";
   const phone = String(row.Phone ?? row.phone ?? "").trim();
-  if (phone && !PHONE_RE.test(phone)) return "phone";
+  if (phone && vnPhoneIssue(phone)) return "phone";
+  const tax = String(row["Tax Code"] ?? row.taxCode ?? "").trim();
+  if (tax && vnTaxIssue(tax)) return "tax";
   return null;
 }

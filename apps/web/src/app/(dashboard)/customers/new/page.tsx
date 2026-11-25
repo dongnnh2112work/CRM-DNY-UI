@@ -1,6 +1,6 @@
 "use client";
 
-import { App, Button, Form, Input, Select, Space } from "antd";
+import { Alert, App, Button, Form, Input, Select, Space } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ExtraFormFields } from "@/components/shared/extra-form-fields";
@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { confirmDiscardIfDirty } from "@/lib/confirm-discard";
 import { ds } from "@/lib/design-tokens";
 import { collectCustomFields, getCustomerFormExtraFields } from "@/lib/customer-helpers";
+import { duplicatePhoneCustomer, vnPhoneIssue, vnTaxIssue } from "@/lib/input-validators";
 import { useCustomers } from "@/lib/customers-store";
 import { apiErrorMessage } from "@/lib/http/message";
 import { useServices } from "@/lib/services-store";
@@ -20,11 +21,14 @@ export default function NewCustomerPage() {
   const t = useT();
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const { addCustomers, fieldDefs } = useCustomers();
+  const { addCustomers, customers, fieldDefs } = useCustomers();
   const { users } = useUsers();
   const { services } = useServices();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const watchedPhone = Form.useWatch("phone", form);
+  const duplicatePhone =
+    typeof watchedPhone === "string" ? duplicatePhoneCustomer(watchedPhone, customers) : undefined;
   const extraFields = getCustomerFormExtraFields(fieldDefs);
 
   return (
@@ -35,6 +39,14 @@ export default function NewCustomerPage() {
         layout="vertical"
         style={{ maxWidth: ds.formPageMaxWidth, padding: 24 }}
         onFinish={async (values) => {
+          if (vnPhoneIssue(values.phone)) {
+            message.error(t("customer.phoneInvalid"));
+            return;
+          }
+          if (values.taxCode && vnTaxIssue(values.taxCode)) {
+            message.error(t("customer.taxInvalid"));
+            return;
+          }
           setSaving(true);
           try {
             const created = await customersApi.create(
@@ -70,16 +82,47 @@ export default function NewCustomerPage() {
         <Form.Item name="name" label={t("field.name")} rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="phone" label={t("field.phone")}>
+        <Form.Item
+          name="phone"
+          label={t("field.phone")}
+          rules={[
+            { required: true, message: t("customer.phoneInvalid") },
+            {
+              validator: async (_, value) => {
+                const issue = vnPhoneIssue(value);
+                if (issue) throw new Error(t("customer.phoneInvalid"));
+              },
+            },
+          ]}
+        >
           <Input />
         </Form.Item>
+        {duplicatePhone ? (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            title={t("customer.phoneDuplicate", { name: duplicatePhone.name || "TEST" })}
+          />
+        ) : null}
         <Form.Item name="email" label={t("field.email")} rules={[{ type: "email" }]}>
           <Input />
         </Form.Item>
         <Form.Item name="company" label={t("field.company")}>
           <Input />
         </Form.Item>
-        <Form.Item name="taxCode" label={t("field.taxCode")}>
+        <Form.Item
+          name="taxCode"
+          label={t("field.taxCode")}
+          rules={[
+            {
+              validator: async (_, value) => {
+                if (value == null || String(value).trim() === "") return;
+                if (vnTaxIssue(value)) throw new Error(t("customer.taxInvalid"));
+              },
+            },
+          ]}
+        >
           <Input />
         </Form.Item>
         <Form.Item name="address" label={t("field.address")}>
