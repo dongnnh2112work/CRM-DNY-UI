@@ -361,7 +361,8 @@ export type AppNotificationType =
   | "user_pending"
   | "user_approved"
   | "email_sent"
-  | "email_failed";
+  | "email_failed"
+  | "order_mentioned";
 
 export interface AppNotification {
   id: string;
