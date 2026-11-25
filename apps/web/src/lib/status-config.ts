@@ -62,6 +62,7 @@ export const STATUS_CONFIG: Record<StatusModule, Record<string, StatusMeta>> = {
   user: {
     active: { label: "Hoạt động", color: "success" },
     inactive: { label: "Ngừng", color: "default" },
+    pending_approval: { label: "Chờ duyệt", color: "processing" },
   },
   ctv: {
     active: { label: "Hoạt động", color: "success" },

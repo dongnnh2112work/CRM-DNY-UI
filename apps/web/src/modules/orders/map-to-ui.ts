@@ -95,6 +95,14 @@ export function mapApiOrderToUi(
   };
 }
 
+/**
+ * CreateOrderBody has no `deadline`. A value the user typed cannot be sent.
+ * Callers must say so instead of storing the date as if the API kept it.
+ */
+export function deadlineOmittedOnCreate(value: string | null | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
 export function mapUiOrderToCreateApi(input: {
   orderNumber: string;
   contractId: string;

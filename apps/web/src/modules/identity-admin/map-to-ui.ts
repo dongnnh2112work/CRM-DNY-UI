@@ -106,7 +106,8 @@ export function roleGroupCodes(role: IdentityRole | undefined | null): string[] 
   return [];
 }
 
-export function uiStatusToApi(status: UserStatus | undefined): "ACTIVE" | "SUSPENDED" {
+export function uiStatusToApi(status: UserStatus | undefined): "ACTIVE" | "SUSPENDED" | undefined {
+  if (status === "pending_approval") return undefined;
   return status === "inactive" ? "SUSPENDED" : "ACTIVE";
 }
 
@@ -133,9 +134,15 @@ function mapRole(codes: string[] | undefined): UserRole {
   return mapApiRoleCodeToUi(list[0]);
 }
 
-function mapStatus(status: string | undefined): UserStatus {
+export function identityStatusToUi(status: string | undefined): UserStatus {
   const s = (status ?? "").toUpperCase();
-  return s === "ACTIVE" || s === "INVITED" ? "active" : "inactive";
+  if (s === "ACTIVE" || s === "INVITED") return "active";
+  if (s === "PENDING_APPROVAL" || s === "PENDING" || s === "WAITING_APPROVAL") return "pending_approval";
+  return "inactive";
+}
+
+function mapStatus(status: string | undefined): UserStatus {
+  return identityStatusToUi(status);
 }
 
 export function mapIdentityUserToUi(u: IdentityUser): AppUser {

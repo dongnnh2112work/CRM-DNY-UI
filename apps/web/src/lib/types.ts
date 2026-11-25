@@ -22,7 +22,7 @@ export type BuiltInUserRole = "super_admin" | "admin" | "staff" | "accountant" |
 /** Role key — built-in or custom (e.g. `custom_sales_lead`) */
 export type UserRole = BuiltInUserRole | (string & {});
 
-export type UserStatus = "active" | "inactive";
+export type UserStatus = "active" | "inactive" | "pending_approval";
 
 export interface RoleDefinition {
   key: string;

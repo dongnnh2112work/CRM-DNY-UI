@@ -48,6 +48,20 @@ export function commissionIssue(value: unknown, confirmedZero = false): Commissi
   return null;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function emailAddressIssue(input: unknown): "empty" | "invalid" | null {
+  const raw = String(input ?? "").trim();
+  if (!raw) return "empty";
+  if (raw.length > 254 || !EMAIL_RE.test(raw)) return "invalid";
+  return null;
+}
+
+/** Empty and whitespace-only names are the same rejection. */
+export function trimmedNameIssue(input: unknown): "empty" | null {
+  return String(input ?? "").trim() ? null : "empty";
+}
+
 const MOBILE_PREFIX = /^(3|5|7|8|9)\d{8}$/;
 const LANDLINE_PREFIX = /^2\d{8,9}$/;
 
