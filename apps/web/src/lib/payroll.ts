@@ -21,6 +21,35 @@ export function getPayrollScope(
   return "self";
 }
 
+export type PayrollSlipActor = {
+  id: string;
+  role: string;
+  name?: string;
+};
+
+/**
+ * Users-store record wins when it is already loaded. Otherwise the session
+ * (`/auth/me`) is enough to open a slip — the page must not stay on a spinner
+ * only because `useUsers().currentUser` is still empty.
+ */
+export function payrollSlipActor(input: {
+  storeUser?: { id: string; role: string; name?: string } | null;
+  sessionUser?: { id: string; displayName?: string | null; roleCodes?: string[] | null } | null;
+}): PayrollSlipActor | null {
+  if (input.storeUser?.id) {
+    return { id: input.storeUser.id, role: input.storeUser.role, name: input.storeUser.name };
+  }
+  const session = input.sessionUser;
+  if (!session?.id) return null;
+  const role = session.roleCodes?.find((code) => code.trim())?.trim() || "staff";
+  const name = session.displayName?.trim();
+  return { id: session.id, role, name: name || undefined };
+}
+
+export function mayRenderPayrollSlip(actor: PayrollSlipActor | null | undefined): actor is PayrollSlipActor {
+  return Boolean(actor?.id);
+}
+
 export type PayrollLine = {
   orderId: string;
   orderNumber: string;
@@ -29,8 +58,11 @@ export type PayrollLine = {
   thu: number;
   chi: number;
   net: number;
-  commissionPercent: number;
-  salary: number;
+  /** null khi đơn chưa nhập %. Không dùng 0 im lặng. */
+  commissionPercent: number | null;
+  commissionMissing: boolean;
+  /** null khi thiếu %. Âm giữ nguyên — không kẹp về 0. */
+  salary: number | null;
 };
 
 export type StaffPayroll = {
@@ -46,9 +78,10 @@ export function monthNet(flow: OrderCashflow, month: string): number {
   return row.thu - row.chi;
 }
 
-export function orderSalary(percent: number | undefined, net: number): number {
-  const p = typeof percent === "number" && Number.isFinite(percent) ? percent : 0;
-  return Math.round((p / 100) * net);
+/** Thiếu % → null (UI hiện "chưa nhập %"). 0% là số đã nhập. Net âm vẫn ra lương âm. */
+export function orderSalary(percent: number | null | undefined, net: number): number | null {
+  if (typeof percent !== "number" || !Number.isFinite(percent)) return null;
+  return Math.round((percent / 100) * net);
 }
 
 export function collectPayrollMonths(
@@ -103,7 +136,8 @@ export function buildPayroll(
   const byStaff = new Map<string, StaffPayroll>();
 
   for (const order of orders) {
-    if (order.stage === "cancelled") continue;
+    // Đơn hủy vẫn giữ thu đã xác minh và chi đã duyệt. Bỏ qua sẽ làm lương tăng
+    // (chi rơi khỏi phiếu, thu bị dồn sang đơn còn lại).
     const siblings = siblingOrders(orders, order);
     const groupPay = payments.find(
       (p) => p.orderId === order.id || p.groupedOrderIds?.includes(order.id),
@@ -116,7 +150,11 @@ export function buildPayroll(
     if (row.thu === 0 && row.chi === 0) continue;
 
     const net = row.thu - row.chi;
-    const commissionPercent = order.commissionPercent ?? 0;
+    const rawPercent = order.commissionPercent;
+    const commissionPercent =
+      typeof rawPercent === "number" && Number.isFinite(rawPercent) ? rawPercent : null;
+    const commissionMissing = commissionPercent == null;
+    const salary = orderSalary(commissionPercent, net);
     const line: PayrollLine = {
       orderId: order.id,
       orderNumber: order.orderNumber,
@@ -126,7 +164,8 @@ export function buildPayroll(
       chi: row.chi,
       net,
       commissionPercent,
-      salary: orderSalary(commissionPercent, net),
+      commissionMissing,
+      salary,
     };
 
     const displayName = staffDisplayName(order.assignedUserId, order.assignedUserName, nameById);
@@ -142,7 +181,7 @@ export function buildPayroll(
       current.userName = displayName;
     }
     current.lines.push(line);
-    current.total += line.salary;
+    if (line.salary != null) current.total += line.salary;
     current.orderCount = current.lines.length;
     byStaff.set(order.assignedUserId, current);
   }

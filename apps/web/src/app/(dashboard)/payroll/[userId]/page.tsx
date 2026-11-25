@@ -16,7 +16,14 @@ import { formatVndDisplay } from "@/lib/format-vnd";
 import { currentYearMonth, formatYearMonth } from "@/lib/order-cashflow";
 import { useOrders } from "@/lib/orders-store";
 import { usePayments } from "@/lib/payments-store";
-import { buildPayroll, collectPayrollMonths, getPayrollScope, type PayrollLine } from "@/lib/payroll";
+import {
+  buildPayroll,
+  collectPayrollMonths,
+  getPayrollScope,
+  mayRenderPayrollSlip,
+  payrollSlipActor,
+  type PayrollLine,
+} from "@/lib/payroll";
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
@@ -60,8 +67,9 @@ function PayrollStaffPageContent() {
     isListSliceSettled(listMeta.payments, canLoadScope("payments", apiPerms)) &&
     isListSliceSettled(listMeta.expenses, canLoadScope("expenses", apiPerms));
 
+  const actor = payrollSlipActor({ storeUser: currentUser, sessionUser: apiUser });
   const perms = currentUser ? getEffectivePermissions(currentUser) : null;
-  const scope = getPayrollScope(currentUser, perms, apiUser?.permissions);
+  const scope = getPayrollScope(actor, perms, apiUser?.permissions);
   const lookupPerms = apiUser?.permissions;
 
   const month = isYearMonth(searchParams.get("month")) ? searchParams.get("month")! : currentYearMonth();
@@ -88,6 +96,9 @@ function PayrollStaffPageContent() {
     }
     const looked = lookupUserName(userId);
     if (looked && looked !== userId) map.set(userId, looked);
+    if (apiUser?.id && apiUser.displayName && apiUser.displayName !== apiUser.id) {
+      map.set(apiUser.id, apiUser.displayName);
+    }
     for (const o of orders) {
       const n = lookupUserName(o.assignedUserId);
       if (n && n !== o.assignedUserId) map.set(o.assignedUserId, n);
@@ -97,7 +108,7 @@ function PayrollStaffPageContent() {
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users, orders, userId, nameTick]);
+  }, [users, orders, userId, nameTick, apiUser]);
 
   const months = useMemo(
     () => collectPayrollMonths(orders, payments, expenses, [currentYearMonth(), month]),
@@ -169,21 +180,23 @@ function PayrollStaffPageContent() {
         title: t("order.commissionPercent"),
         dataIndex: "commissionPercent",
         align: "center",
-        sorter: (a, b) => a.commissionPercent - b.commissionPercent,
-        render: (v: number) => `${v}%`,
+        sorter: (a, b) => (a.commissionPercent ?? -1) - (b.commissionPercent ?? -1),
+        render: (_v: number | null, row) =>
+          row.commissionMissing ? t("payroll.commissionMissing") : `${row.commissionPercent}%`,
       },
       {
         title: t("payroll.salary"),
         dataIndex: "salary",
         align: "right",
-        sorter: (a, b) => a.salary - b.salary,
-        render: (v: number) => <MoneyCell value={v} />,
+        sorter: (a, b) => (a.salary ?? 0) - (b.salary ?? 0),
+        render: (v: number | null, row) =>
+          row.commissionMissing || v == null ? t("payroll.commissionMissing") : <MoneyCell value={v} />,
       },
     ],
     [t],
   );
 
-  if (!currentUser) {
+  if (!mayRenderPayrollSlip(actor)) {
     return <PageLoading />;
   }
 
@@ -196,11 +209,11 @@ function PayrollStaffPageContent() {
     );
   }
 
-  if (scope === "self" && currentUser.id !== userId) {
+  if (scope === "self" && actor.id !== userId) {
     return (
       <EmptyState
         description={t("payroll.forbiddenOther")}
-        action={{ label: t("payroll.myPay"), href: `/payroll/${currentUser.id}?month=${month}` }}
+        action={{ label: t("payroll.myPay"), href: `/payroll/${actor.id}?month=${month}` }}
       />
     );
   }
@@ -209,25 +222,13 @@ function PayrollStaffPageContent() {
     return <PageLoading />;
   }
 
-  const isOwn = Boolean(currentUser && currentUser.id === userId);
+  const isOwn = actor.id === userId;
   const showCompanyList = scope === "all";
-
-  if (!staffName && nameTick === 0) {
-    return <PageLoading />;
-  }
-
-  if (!staffName) {
-    return (
-      <EmptyState
-        description={t("payroll.notFoundStaff")}
-        action={
-          showCompanyList
-            ? { label: t("common.back"), href: listHref }
-            : { label: t("nav.dashboard"), href: "/dashboard" }
-        }
-      />
-    );
-  }
+  const slipName =
+    staffName ||
+    (isOwn ? actor.name : undefined) ||
+    (staffRow?.userName && staffRow.userName !== userId ? staffRow.userName : undefined) ||
+    userId;
 
   return (
     <>
@@ -236,9 +237,9 @@ function PayrollStaffPageContent() {
           showCompanyList
             ? [
                 { title: t("nav.payroll"), href: listHref },
-                { title: t("payroll.detailTitle", { name: staffName }) },
+                { title: t("payroll.detailTitle", { name: slipName }) },
               ]
-            : [{ title: isOwn ? t("payroll.myPay") : t("payroll.detailTitle", { name: staffName }) }]
+            : [{ title: isOwn ? t("payroll.myPay") : t("payroll.detailTitle", { name: slipName }) }]
         }
       >
         <Select

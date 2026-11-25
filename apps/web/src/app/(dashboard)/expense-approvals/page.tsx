@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UrlQuerySync } from "@/components/shared/url-query-sync";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { expenseReadyToApprove } from "@/lib/input-validators";
 import { expenseProjectLabel, useExpenses } from "@/lib/expenses-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { PERMISSION, expenseReviewBlock } from "@/lib/rbac";
@@ -54,7 +55,7 @@ export default function ExpenseApprovalsPage() {
   const filtered = useMemo(() => {
     let list = [...expenses];
     if (statusFilter === "pending") {
-      list = list.filter((e) => e.status === "pending" || e.status === "cancelled");
+      list = list.filter((e) => e.status === "pending");
     } else if (statusFilter !== "all") {
       list = list.filter((e) => e.status === statusFilter);
     }
@@ -147,6 +148,8 @@ export default function ExpenseApprovalsPage() {
           if (!currentUser) return <Tag>{t("common.viewOnly")}</Tag>;
           const block = expenseReviewBlock({
             hasExpenseApprovePermission: canApproveApi,
+            currentUserId: currentUser.id,
+            requestedById: r.requestedById,
           });
           const canVoid = block === "ok" || r.requestedById === currentUser.id;
           const voidAction = canVoid ? (
@@ -169,8 +172,24 @@ export default function ExpenseApprovalsPage() {
               <Button size="small">{t("expense.void")}</Button>
             </Popconfirm>
           ) : null;
+          if (block === "own_request") {
+            return (
+              <Space>
+                <Tag>{t("expense.ownRequest")}</Tag>
+                {voidAction}
+              </Space>
+            );
+          }
           if (block !== "ok") {
             return voidAction ?? <Tag>{t("expense.needApprovePerm")}</Tag>;
+          }
+          if (!expenseReadyToApprove(r)) {
+            return (
+              <Space>
+                <Tag>{t("expense.missingPayee")}</Tag>
+                {voidAction}
+              </Space>
+            );
           }
           return (
             <Space>

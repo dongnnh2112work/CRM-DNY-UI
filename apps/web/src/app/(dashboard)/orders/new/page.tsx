@@ -14,7 +14,7 @@ import { ds } from "@/lib/design-tokens";
 import { useCustomers } from "@/lib/customers-store";
 import { rememberContractNumber } from "@/lib/entity-lookups";
 import { DISPLAY_DATE_FORMAT, toStorageDate } from "@/lib/format-date";
-import { vndInputProps } from "@/lib/format-vnd";
+import { commissionIssue, moneyAmountIssue, signedVndInputProps } from "@/lib/input-validators";
 import { apiErrorMessage } from "@/lib/http/message";
 import { deadlineFromService, nextContractNumber } from "@/lib/order-helpers";
 import { useOrders } from "@/lib/orders-store";
@@ -125,8 +125,20 @@ function NewOrderPageContent() {
               const service = services.find((s) => s.id === line.serviceId);
               return { line, service, value: Number(line.value) };
             });
-            if (resolved.some((r) => !r.service || !Number.isFinite(r.value))) {
-              message.error(t("order.enterListPrice"));
+            if (resolved.some((r) => !r.service || moneyAmountIssue(r.line.value))) {
+              const negative = resolved.some((r) => moneyAmountIssue(r.line.value) === "negative");
+              message.error(negative ? t("order.valueNegative") : t("order.valuePositive"));
+              return;
+            }
+            const commissionProblem = commissionIssue(values.commissionPercent, Boolean(values.confirmZeroCommission));
+            if (commissionProblem) {
+              message.error(
+                commissionProblem === "zero_unconfirmed"
+                  ? t("order.commissionZeroConfirm")
+                  : commissionProblem === "range"
+                    ? t("order.commissionRange")
+                    : t("order.commissionRequired"),
+              );
               return;
             }
 
@@ -318,10 +330,18 @@ function NewOrderPageContent() {
                   <Form.Item
                     name={[field.name, "value"]}
                     label={t("order.listPriceVnd")}
-                    rules={[{ required: true, message: t("order.enterListPrice") }]}
+                    rules={[
+                      {
+                        validator: async (_, value) => {
+                          const issue = moneyAmountIssue(value);
+                          if (!issue) return;
+                          throw new Error(issue === "negative" ? t("order.valueNegative") : t("order.valuePositive"));
+                        },
+                      },
+                    ]}
                     extra={t("order.listPriceExtra")}
                   >
-                    <InputNumber {...vndInputProps} />
+                    <InputNumber {...signedVndInputProps} />
                   </Form.Item>
                   <Form.Item name={[field.name, "deadline"]} label={t("order.deadlineLabel")}>
                     <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
@@ -338,8 +358,22 @@ function NewOrderPageContent() {
           name="commissionPercent"
           label={t("order.commissionPercent")}
           extra={t("order.commissionPercentExtra")}
+          rules={[
+            {
+              validator: async (_, value) => {
+                const issue = commissionIssue(value, Boolean(form.getFieldValue("confirmZeroCommission")));
+                if (!issue) return;
+                if (issue === "range") throw new Error(t("order.commissionRange"));
+                if (issue === "zero_unconfirmed") throw new Error(t("order.commissionZeroConfirm"));
+                throw new Error(t("order.commissionRequired"));
+              },
+            },
+          ]}
         >
-          <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
+          <InputNumber precision={2} addonAfter="%" style={{ width: "100%" }} />
+        </Form.Item>
+        <Form.Item name="confirmZeroCommission" valuePropName="checked">
+          <Checkbox>{t("order.commissionZeroConfirm")}</Checkbox>
         </Form.Item>
         <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
           <Select

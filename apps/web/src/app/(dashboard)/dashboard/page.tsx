@@ -24,6 +24,7 @@ import { useExpenses } from "@/lib/expenses-store";
 import { useOrders } from "@/lib/orders-store";
 import { useOrderStatusConfig } from "@/lib/order-status-store";
 import { usePayments } from "@/lib/payments-store";
+import { upcomingCollectionPayments } from "@/lib/payment-visibility";
 import { buildPayroll, getPayrollScope } from "@/lib/payroll";
 import { canLoadScope, isListSliceSettled } from "@/lib/route-data-scopes";
 import { useSession } from "@/lib/session/session-provider";
@@ -108,7 +109,7 @@ export default function DashboardPage() {
     isListSliceSettled(listMeta.payments, canLoadScope("payments", apiUser?.permissions));
   const previewReady = listMeta.orders != null || listMeta.payments != null;
   const recentOrders = orders.slice(0, 5);
-  const upcomingPayments = payments.filter((p) => p.status !== "paid").slice(0, 5);
+  const upcomingPayments = upcomingCollectionPayments(payments, orders).slice(0, 5);
   const orderStatusData = aggregatesReady ? buildOrderStatusChart(orders, stageOptions) : [];
   const totalOrders = listMeta.orders?.total ?? 0;
   const totalCustomers = listMeta.customers?.total ?? 0;
@@ -306,8 +307,8 @@ export default function DashboardPage() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {displayName(p.customerName)} ·{" "}
-                            {t("dash.remaining", { amount: formatVndDisplay(p.remaining) })}
+                            {displayName(p.customerName)} · {t("payment.contractRemaining")}{" "}
+                            {formatVndDisplay(p.remaining)}
                           </div>
                         </div>
                         <StatusBadge module="payment" status={p.status} />

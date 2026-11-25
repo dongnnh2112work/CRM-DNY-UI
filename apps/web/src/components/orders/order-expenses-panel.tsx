@@ -10,6 +10,7 @@ import {
   Skeleton,
   Tag,
   Typography,
+  theme,
 } from "antd";
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { PaymentRequestDrawer } from "@/components/orders/payment-request-drawer";
@@ -21,6 +22,7 @@ import { lookupUserName, resolveEntityLookups } from "@/lib/entity-lookups";
 import { useExpenses } from "@/lib/expenses-store";
 import { rangePickerFormat } from "@/lib/format-date";
 import { formatVndDisplay } from "@/lib/format-vnd";
+import { expenseReadyToApprove } from "@/lib/input-validators";
 import { apiErrorMessage } from "@/lib/http/message";
 import { buildOrderCashflow, formatYearMonth } from "@/lib/order-cashflow";
 import { allocatePaymentShare, siblingOrders } from "@/lib/order-group";
@@ -52,6 +54,7 @@ function StatBlock({
   color?: string;
   ready: boolean;
 }) {
+  const { token } = theme.useToken();
   return (
     <div
       style={{
@@ -59,13 +62,23 @@ function StatBlock({
         minWidth: 0,
         padding: "10px 12px",
         borderRadius: ds.radius.md,
-        background: ds.canvasSoft,
+        background: token.colorFillAlter,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        color: token.colorText,
       }}
     >
       <Typography.Text type="secondary" style={{ fontSize: ds.fontSize.caption, display: "block" }}>
         {label}
       </Typography.Text>
-      <div style={{ fontWeight: 600, color, minHeight: 24, marginTop: 2, wordBreak: "break-word" }}>
+      <div
+        style={{
+          fontWeight: 600,
+          color: color ?? token.colorText,
+          minHeight: 24,
+          marginTop: 2,
+          wordBreak: "break-word",
+        }}
+      >
         {ready ? formatVndDisplay(value) : <Skeleton.Input active size="small" style={{ width: 96 }} />}
       </div>
     </div>
@@ -80,6 +93,7 @@ export function OrderExpensesPanel({
   financeReady?: boolean;
 }) {
   const t = useT();
+  const { token } = theme.useToken();
   const searchId = useId();
   const dateId = useId();
   const { message } = App.useApp();
@@ -103,10 +117,9 @@ export function OrderExpensesPanel({
   const rows = getExpenses(order.id);
   const flow = useMemo(() => buildOrderCashflow(payment, rows), [payment, rows]);
   const canApproveApi = can(PERMISSION.expenseApprove);
-  const reviewBlock = expenseReviewBlock({
+  const canReview = expenseReviewBlock({
     hasExpenseApprovePermission: canApproveApi,
-  });
-  const canReview = reviewBlock === "ok";
+  }) === "ok";
 
   useEffect(() => {
     const userIds = rows.flatMap((r) => {
@@ -147,10 +160,12 @@ export function OrderExpensesPanel({
         title: t("order.diff"),
         key: "net",
         align: "right" as const,
-        render: (_: unknown, r: { thu: number; chi: number }) => formatVndDisplay(r.thu - r.chi),
+        render: (_: unknown, r: { thu: number; chi: number }) => (
+          <span style={{ color: token.colorText }}>{formatVndDisplay(r.thu - r.chi)}</span>
+        ),
       },
     ],
-    [t],
+    [t, token.colorText],
   );
 
   const runApprove = async (r: OrderExpense) => {
@@ -219,8 +234,29 @@ export function OrderExpensesPanel({
       </Popconfirm>
     ) : null;
 
-    if (!canReview) {
+    const rowBlock = expenseReviewBlock({
+      hasExpenseApprovePermission: canApproveApi,
+      currentUserId: currentUser.id,
+      requestedById: r.requestedById,
+    });
+    if (rowBlock === "own_request") {
+      return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <Tag>{t("expense.ownRequest")}</Tag>
+          {voidAction}
+        </div>
+      );
+    }
+    if (rowBlock !== "ok") {
       return voidAction ?? <Tag>{t("expense.needApprovePerm")}</Tag>;
+    }
+    if (!expenseReadyToApprove(r)) {
+      return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <Tag>{t("expense.missingPayee")}</Tag>
+          {voidAction}
+        </div>
+      );
     }
 
     return (
@@ -367,11 +403,11 @@ export function OrderExpensesPanel({
           marginBottom: 24,
         }}
       >
-        <StatBlock label={t("order.totalThu")} value={flow.thu} color={ds.accentGreen} ready={financeReady} />
+        <StatBlock label={t("order.totalThu")} value={flow.thu} color={token.colorSuccess} ready={financeReady} />
         <StatBlock
           label={t("order.totalChiApproved")}
           value={flow.chi}
-          color={ds.danger}
+          color={token.colorError}
           ready={financeReady}
         />
         <StatBlock label={t("order.diff")} value={flow.net} ready={financeReady} />

@@ -24,6 +24,7 @@ function apiOrigin() {
 export const metadata: Metadata = {
   title: "DNY CRM",
   description: "Hệ thống quản lý văn phòng luật",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({

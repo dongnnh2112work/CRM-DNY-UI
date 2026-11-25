@@ -66,14 +66,19 @@ export function canSeeMenuPage(args: {
   return true;
 }
 
-export type ExpenseReviewBlock = "ok" | "no_permission";
+export type ExpenseReviewBlock = "ok" | "no_permission" | "own_request";
 
 export function expenseReviewBlock(args: {
   hasExpenseApprovePermission: boolean;
   currentUserId?: string;
+  /** Người tạo đề nghị. Trùng người đang đăng nhập thì không được duyệt. */
+  requestedById?: string;
   reviewerId?: string;
 }): ExpenseReviewBlock {
   if (!args.hasExpenseApprovePermission) return "no_permission";
+  if (args.currentUserId && args.requestedById && args.currentUserId === args.requestedById) {
+    return "own_request";
+  }
   return "ok";
 }
 

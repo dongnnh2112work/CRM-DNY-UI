@@ -96,7 +96,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     [router, prefetchPath],
   );
   const { forUser, unreadCount, markRead, markAllRead, counts, markCategoriesRead } = useNotifications();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 991px)").matches;
+  });
   const [mobile, setMobile] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(["users-group"]);
   const navSyncKey = `${pathname}:${mobile ? "m" : "d"}`;
@@ -296,6 +299,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }, [pathname, menuItems]);
 
+  const siderUserId = apiUser?.id ?? currentUser?.id;
+  const [siderPrefUser, setSiderPrefUser] = useState<string | null>(null);
+  if (siderUserId && siderPrefUser !== siderUserId && typeof window !== "undefined") {
+    setSiderPrefUser(siderUserId);
+    if (!window.matchMedia("(max-width: 991px)").matches) {
+      const stored = window.localStorage.getItem(`dny-crm-sider:${siderUserId}`);
+      if (stored === "1") setCollapsed(true);
+      else if (stored === "0") setCollapsed(false);
+    }
+  }
   useEffect(() => {
     const media = window.matchMedia("(max-width: 991px)");
     const apply = () => {
@@ -355,7 +368,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         collapsedWidth={mobile ? 0 : 80}
         zeroWidthTriggerStyle={{ display: "none" }}
         onCollapse={setCollapsed}
-        width={280}
+        width={240}
         theme={isDark ? "dark" : "light"}
         style={{
           background: token.colorBgContainer,
@@ -421,7 +434,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => {
+              const next = !collapsed;
+              setCollapsed(next);
+              if (!mobile && siderUserId) {
+                window.localStorage.setItem(`dny-crm-sider:${siderUserId}`, next ? "1" : "0");
+              }
+            }}
             style={{ borderRadius: token.borderRadius }}
           />
           <Input.Search
@@ -434,11 +453,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
           <Space style={{ marginLeft: "auto" }} size={8}>
             <Typography.Text className="crm-sync" type="secondary" style={{ fontSize: ds.fontSize.caption, whiteSpace: "nowrap" }}>
-              {lastSyncedAt
-                ? t("shell.lastSynced", {
-                    time: formatDisplayDateTime(lastSyncedAt),
-                  })
-                : t("shell.lastSyncedNever")}
+              {!lastSyncedAt && refreshing
+                ? t("shell.syncing")
+                : lastSyncedAt
+                  ? t("shell.lastSynced", {
+                      time: formatDisplayDateTime(lastSyncedAt),
+                    })
+                  : t("shell.lastSyncedNever")}
             </Typography.Text>
             <Button
               type="text"

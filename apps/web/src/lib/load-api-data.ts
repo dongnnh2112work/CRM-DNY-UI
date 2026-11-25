@@ -65,6 +65,8 @@ export type ListSliceMeta = {
   page: number;
   pageSize: number;
   loaded: number;
+  /** Count-only preview. Rows are not in the store yet — do not paint an empty list. */
+  provisional?: boolean;
 };
 
 export type ApplyRemoteOptions = {
@@ -353,6 +355,7 @@ export async function applyRemoteData(
         page: 0,
         pageSize: 1,
         loaded: 0,
+        provisional: true,
       });
     };
     publishCount("orders", apiOrders);

@@ -27,6 +27,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDisplayDateTime } from "@/lib/format-date";
 import { apiErrorMessage } from "@/lib/http/message";
+import { PageShapeError } from "@/lib/page-result";
 import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
 import { useUsers } from "@/lib/users-store";
@@ -258,16 +259,24 @@ function TemplatesPanel() {
   const { message } = App.useApp();
   const [rows, setRows] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<EmailTemplate | null | "new">(null);
   const [preview, setPreview] = useState<EmailTemplate | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const result = await mailApi.listTemplates({ pageSize: 50 });
       setRows(result.items);
     } catch (err) {
-      message.error(apiErrorMessage(err, t("email.emptyTemplates")));
+      const text =
+        err instanceof PageShapeError
+          ? t("email.templatesParseError")
+          : apiErrorMessage(err, t("email.emptyTemplates"));
+      setRows([]);
+      setLoadError(text);
+      message.error(text);
     } finally {
       setLoading(false);
     }
@@ -330,6 +339,7 @@ function TemplatesPanel() {
         <Button type="primary" onClick={() => setEditing("new")}>
           {t("email.newTemplate")}
         </Button>
+        {loadError ? <Alert type="error" showIcon title={loadError} /> : null}
         <Table
           rowKey="id"
           loading={loading}

@@ -26,7 +26,7 @@ import {
   resolveEntityLookups,
 } from "@/lib/entity-lookups";
 import { DISPLAY_DATE_FORMAT, formatDisplayDate, toStorageDate } from "@/lib/format-date";
-import { formatVndDisplay, vndInputProps } from "@/lib/format-vnd";
+import { formatVndDisplay } from "@/lib/format-vnd";
 import {
   deadlineFromService,
   getOrderLicenseExpirySummary,
@@ -37,7 +37,8 @@ import {
   nextContractNumber,
   serviceDisplayName,
 } from "@/lib/order-helpers";
-import { allocatePaymentShare, nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
+import { allocatePaymentShare, contractMoneyView, nextSiblingDossierNumber, siblingOrders } from "@/lib/order-group";
+import { commissionIssue, moneyAmountIssue, signedVndInputProps } from "@/lib/input-validators";
 import { useOrders } from "@/lib/orders-store";
 import { useNotifications } from "@/lib/notifications-store";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -473,6 +474,7 @@ export default function OrderDetailPage() {
   );
   const siblings = siblingOrders(orders, order);
   const servicePay = allocatePaymentShare(payment, order, siblings);
+  const contractMoney = payment ? contractMoneyView(payment, siblings) : null;
   const activeServices = services.filter((s) => s.status === "active");
   const canAddService = can(PERMISSION.orderCreate) && order.stage !== "cancelled";
 
@@ -497,6 +499,7 @@ export default function OrderDetailPage() {
     assignedUserId?: string;
     submitterId?: string;
     commissionPercent?: number | string;
+    confirmZeroCommission?: boolean;
   }) => {
     const service = resolveCatalogEntity(services, values.serviceId);
     const assigned = resolveCatalogEntity(activeUsers, values.assignedUserId, {
@@ -508,6 +511,22 @@ export default function OrderDetailPage() {
       name: order.submitterName,
     });
     const value = Number(values.value);
+    const valueIssue = moneyAmountIssue(values.value);
+    const commissionProblem = commissionIssue(values.commissionPercent, Boolean(values.confirmZeroCommission));
+    if (valueIssue || commissionProblem) {
+      message.error(
+        valueIssue === "negative"
+          ? t("order.valueNegative")
+          : valueIssue
+            ? t("order.valuePositive")
+            : commissionProblem === "zero_unconfirmed"
+              ? t("order.commissionZeroConfirm")
+              : commissionProblem === "range"
+                ? t("order.commissionRange")
+                : t("order.commissionRequired"),
+      );
+      return;
+    }
     if (!service || !assigned || !submitter || !Number.isFinite(value)) {
       message.error(t("common.requiredMissing"));
       return;
@@ -628,12 +647,17 @@ export default function OrderDetailPage() {
             >
               {t("order.payment")}
               {financeReady && servicePay
-                ? t("order.remainingAmount", { amount: formatVndDisplay(servicePay.remaining) })
+                ? t("order.shareRemainingLabel", { amount: formatVndDisplay(servicePay.remaining) })
                 : financeReady
                   ? ""
                   : " …"}
             </Button>
           )}
+          {financeReady && contractMoney && siblings.length > 1 ? (
+            <Tag>
+              {t("payment.contractRemaining")} {formatVndDisplay(contractMoney.contractRemaining)}
+            </Tag>
+          ) : null}
           {cancelledOrder ? null : (
             <Tooltip title={!orderHasContractNumber(order) ? t("order.vatNeedsContract") : undefined}>
               <span>
@@ -703,7 +727,7 @@ export default function OrderDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label={t("order.listPriceVnd")}>{formatVndDisplay(order.value)}</Descriptions.Item>
           <Descriptions.Item label={t("order.commissionPercent")}>
-            {order.commissionPercent != null ? `${order.commissionPercent}%` : "—"}
+            {order.commissionPercent != null ? `${order.commissionPercent}%` : t("payroll.commissionMissing")}
           </Descriptions.Item>
           <Descriptions.Item label={t("common.zaloGroup")}>
             {order.zaloGroupUrl ? (
@@ -822,6 +846,22 @@ export default function OrderDetailPage() {
             }
 
             const value = Number(values.value);
+            const valueIssue = moneyAmountIssue(values.value);
+            const commissionProblem = commissionIssue(values.commissionPercent, Boolean(values.confirmZeroCommission));
+            if (valueIssue || commissionProblem) {
+              message.error(
+                valueIssue === "negative"
+                  ? t("order.valueNegative")
+                  : valueIssue
+                    ? t("order.valuePositive")
+                    : commissionProblem === "zero_unconfirmed"
+                      ? t("order.commissionZeroConfirm")
+                      : commissionProblem === "range"
+                        ? t("order.commissionRange")
+                        : t("order.commissionRequired"),
+              );
+              return;
+            }
             const vatRate = values.needsVat ? 10 : 0;
             const formCommission =
               values.commissionPercent != null && values.commissionPercent !== ""
@@ -957,15 +997,41 @@ export default function OrderDetailPage() {
               )}
             />
           </Form.Item>
-          <Form.Item name="value" label={t("common.listPrice")} rules={[{ required: true }]}>
-            <InputNumber {...vndInputProps} />
+          <Form.Item
+            name="value"
+            label={t("common.listPrice")}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = moneyAmountIssue(value);
+                  if (!issue) return;
+                  throw new Error(issue === "negative" ? t("order.valueNegative") : t("order.valuePositive"));
+                },
+              },
+            ]}
+          >
+            <InputNumber {...signedVndInputProps} />
           </Form.Item>
           <Form.Item
             name="commissionPercent"
             label={t("order.commissionPercent")}
             extra={t("order.commissionPercentExtra")}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = commissionIssue(value, Boolean(form.getFieldValue("confirmZeroCommission")));
+                  if (!issue) return;
+                  if (issue === "range") throw new Error(t("order.commissionRange"));
+                  if (issue === "zero_unconfirmed") throw new Error(t("order.commissionZeroConfirm"));
+                  throw new Error(t("order.commissionRequired"));
+                },
+              },
+            ]}
           >
-            <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
+            <InputNumber precision={2} addonAfter="%" style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="confirmZeroCommission" valuePropName="checked">
+            <Checkbox>{t("order.commissionZeroConfirm")}</Checkbox>
           </Form.Item>
           <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
             <Select
@@ -1084,9 +1150,17 @@ export default function OrderDetailPage() {
           <Form.Item
             name="value"
             label={t("order.listPriceVnd")}
-            rules={[{ required: true, message: t("order.enterListPrice") }]}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = moneyAmountIssue(value);
+                  if (!issue) return;
+                  throw new Error(issue === "negative" ? t("order.valueNegative") : t("order.valuePositive"));
+                },
+              },
+            ]}
           >
-            <InputNumber {...vndInputProps} />
+            <InputNumber {...signedVndInputProps} />
           </Form.Item>
           <Form.Item name="deadline" label={t("order.deadlineLabel")}>
             <DatePicker style={{ width: "100%" }} format={DISPLAY_DATE_FORMAT} />
@@ -1095,8 +1169,22 @@ export default function OrderDetailPage() {
             name="commissionPercent"
             label={t("order.commissionPercent")}
             extra={t("order.commissionPercentExtra")}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = commissionIssue(value, Boolean(addServiceForm.getFieldValue("confirmZeroCommission")));
+                  if (!issue) return;
+                  if (issue === "range") throw new Error(t("order.commissionRange"));
+                  if (issue === "zero_unconfirmed") throw new Error(t("order.commissionZeroConfirm"));
+                  throw new Error(t("order.commissionRequired"));
+                },
+              },
+            ]}
           >
-            <InputNumber min={0} max={100} precision={2} addonAfter="%" style={{ width: "100%" }} />
+            <InputNumber precision={2} addonAfter="%" style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="confirmZeroCommission" valuePropName="checked">
+            <Checkbox>{t("order.commissionZeroConfirm")}</Checkbox>
           </Form.Item>
           <Form.Item name="assignedUserId" label={t("common.owner")} rules={[{ required: true }]}>
             <Select

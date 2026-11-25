@@ -46,5 +46,6 @@ export function uiSecurityHeaders(
       key: "Permissions-Policy",
       value: "camera=(), microphone=(), geolocation=(), payment=()",
     },
+    { key: "X-Robots-Tag", value: "noindex, nofollow" },
   ];
 }

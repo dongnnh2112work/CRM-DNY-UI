@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { PermissionGroupEditor } from "@/components/users/permission-group-editor";
 import { ReassignPendingConfirmModal } from "@/components/users/reassign-pending-confirm";
 import { ALL_PERMISSION_CODES, permissionTitle } from "@/lib/permission-catalog";
+import { canReplaceRoleGroups, formatViewGaps, missingViewPermissions } from "@/lib/permission-consistency";
 import { ds } from "@/lib/design-tokens";
 import { fetchAllPages, unwrapList, type PageResult } from "@/lib/http/paging";
 import { apiErrorMessage } from "@/lib/http/message";
@@ -229,6 +230,16 @@ export function RolePermissionGroupsAdmin({
 
   const onSave = async () => {
     if (!selected) return;
+    if (
+      !canReplaceRoleGroups({
+        groupsKnown,
+        draftCodes,
+        loadedCodes,
+      })
+    ) {
+      message.warning(t("user.saveNeedsGroups"));
+      return;
+    }
     setSaving(true);
     try {
       await identityAdminApi.setRolePermissionGroups(selected.id, draftCodes);
@@ -418,7 +429,7 @@ export function RolePermissionGroupsAdmin({
     <Button
       type="primary"
       loading={saving}
-      disabled={!canManageRoles || !selected || loading}
+      disabled={!canManageRoles || !selected || loading || !groupsKnown}
       onClick={() => void onSave()}
     >
       {t("user.saveRoleGroups")}
@@ -518,6 +529,7 @@ export function RolePermissionGroupsAdmin({
               >
                 {groups.map((group) => {
                   const codes = permissionCodesOf(group);
+                  const gaps = missingViewPermissions(codes);
                   return (
                     <div
                       key={group.id}
@@ -544,6 +556,11 @@ export function RolePermissionGroupsAdmin({
                               </Tag>
                             ))}
                           </Space>
+                        ) : null}
+                        {gaps.length ? (
+                          <Typography.Text type="warning" style={{ fontSize: ds.fontSize.caption }}>
+                            {t("user.groupViewGap", { detail: formatViewGaps(gaps) })}
+                          </Typography.Text>
                         ) : null}
                       </Space>
                       {canManageGroups ? (

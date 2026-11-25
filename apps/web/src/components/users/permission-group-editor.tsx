@@ -14,6 +14,7 @@ import {
   type IdentityPermissionGroup,
 } from "@/modules/identity-admin/api";
 import { groupPermissionCodes, permissionMatchesQuery, permissionResourceTitleKey } from "@/lib/permission-catalog";
+import { formatViewGaps, missingViewPermissions } from "@/lib/permission-consistency";
 import { permissionCodesOf, unwrapIdentityEntity } from "@/modules/identity-admin/map-to-ui";
 import { PermissionLabel } from "@/components/users/permission-label";
 
@@ -94,6 +95,7 @@ export function PermissionGroupEditor({
       .finally(() => setLoadingDetail(false));
   }, [open, group]);
 
+  const viewGaps = useMemo(() => missingViewPermissions(picked), [picked]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return permissions.filter((item) => {
@@ -170,6 +172,14 @@ export function PermissionGroupEditor({
     >
       {!canManage ? (
         <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t("user.groupNeedPermManage")} />
+      ) : null}
+      {viewGaps.length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title={t("user.groupViewGap", { detail: formatViewGaps(viewGaps) })}
+        />
       ) : null}
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <div>

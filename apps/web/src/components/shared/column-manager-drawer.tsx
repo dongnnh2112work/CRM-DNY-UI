@@ -9,6 +9,7 @@ import {
   saveColumnVisibility,
   type ColumnVisibility,
 } from "@/lib/column-visibility";
+import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 
 export type ColumnManagerItem = {
@@ -21,6 +22,8 @@ function visEqual(a: ColumnVisibility, b: ColumnVisibility) {
 }
 
 export function useManagedColumns(managerId: string | undefined, items: ColumnManagerItem[]) {
+  const { user } = useSession();
+  const userId = user?.id ?? null;
   const keysSig = items.map((i) => i.key).join("|");
   const keys = useMemo(() => (keysSig ? keysSig.split("|") : []), [keysSig]);
   const [committed, setCommitted] = useState<ColumnVisibility>(() =>
@@ -32,11 +35,11 @@ export function useManagedColumns(managerId: string | undefined, items: ColumnMa
       setCommitted(Object.fromEntries(keys.map((k) => [k, true])));
       return;
     }
-    setCommitted(loadColumnVisibility(managerId, keys));
-  }, [managerId, keys, keysSig]);
+    setCommitted(loadColumnVisibility(managerId, keys, userId));
+  }, [managerId, keys, keysSig, userId]);
 
   const save = (next: ColumnVisibility) => {
-    if (managerId) saveColumnVisibility(managerId, next);
+    if (managerId) saveColumnVisibility(managerId, next, userId);
     setCommitted(next);
   };
 

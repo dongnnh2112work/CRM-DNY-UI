@@ -2,8 +2,10 @@ import { loadJson, saveJson } from "@/lib/demo-storage";
 
 export type ColumnVisibility = Record<string, boolean>;
 
-export function columnPrefsKey(id: string) {
-  return `dny-crm-columns:${id}`;
+/** Per-user key so two people on one browser do not share column visibility. */
+export function columnPrefsKey(id: string, userId?: string | null) {
+  const who = userId?.trim() || "anonymous";
+  return `dny-crm-columns:${who}:${id}`;
 }
 
 export function mergeColumnVisibility(
@@ -17,10 +19,10 @@ export function mergeColumnVisibility(
   return next;
 }
 
-export function loadColumnVisibility(id: string, keys: string[]): ColumnVisibility {
-  return mergeColumnVisibility(loadJson<ColumnVisibility>(columnPrefsKey(id)), keys);
+export function loadColumnVisibility(id: string, keys: string[], userId?: string | null): ColumnVisibility {
+  return mergeColumnVisibility(loadJson<ColumnVisibility>(columnPrefsKey(id, userId)), keys);
 }
 
-export function saveColumnVisibility(id: string, value: ColumnVisibility) {
-  saveJson(columnPrefsKey(id), value);
+export function saveColumnVisibility(id: string, value: ColumnVisibility, userId?: string | null) {
+  saveJson(columnPrefsKey(id, userId), value);
 }

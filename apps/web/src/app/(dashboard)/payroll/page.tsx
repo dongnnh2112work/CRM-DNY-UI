@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert, Select, Typography, type TableColumnsType } from "antd";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useApiHydrate } from "@/components/api-hydrator";
@@ -141,7 +142,11 @@ function PayrollPageContent() {
         title: t("payroll.staff"),
         dataIndex: "userName",
         sorter: (a, b) => a.userName.localeCompare(b.userName, "vi"),
-        render: (name: string, row) => (name && name !== row.userId ? name : "—"),
+        render: (name: string, row) => (
+          <Link href={`/payroll/${row.userId}?month=${month}`} onClick={(event) => event.stopPropagation()}>
+            {name && name !== row.userId ? name : "—"}
+          </Link>
+        ),
       },
       {
         title: t("payroll.orderCount"),
@@ -157,7 +162,7 @@ function PayrollPageContent() {
         render: (v: number) => <MoneyCell value={v} />,
       },
     ],
-    [t],
+    [t, month],
   );
 
   if (scope === "none" || !currentUser) {
