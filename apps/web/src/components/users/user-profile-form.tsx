@@ -244,6 +244,7 @@ export function UserProfileForm({
             options={[
               { value: "active", label: t("status.user.active") },
               { value: "inactive", label: t("status.user.inactive") },
+              { value: "pending_approval", label: t("status.user.pending_approval") },
             ]}
           />
         </Form.Item>

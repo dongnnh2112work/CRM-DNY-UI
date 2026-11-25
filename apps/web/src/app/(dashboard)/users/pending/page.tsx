@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { formatDisplayDate } from "@/lib/format-date";
 import { apiErrorMessage } from "@/lib/http/message";
 import { unwrapList } from "@/lib/http/paging";
+import { useNotifications } from "@/lib/notifications-store";
 import { useSession } from "@/lib/session/session-provider";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/use-t";
@@ -36,6 +37,7 @@ export default function PendingUsersPage() {
   const t = useT();
   const { message } = App.useApp();
   const { can } = useSession();
+  const { refreshInbox } = useNotifications();
   const allowed = can("user.manage");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<IdentityUser[]>([]);
@@ -68,6 +70,7 @@ export default function PendingUsersPage() {
       await identityAdminApi.setUserRoles(approving.id, [roleCode]);
       await identityAdminApi.updateUser(approving.id, { status: "ACTIVE" });
       message.success(t("user.approvedToast"));
+      refreshInbox();
       setApproving(null);
       setRoleCode("SALES");
       await load();
@@ -82,6 +85,7 @@ export default function PendingUsersPage() {
     try {
       await identityAdminApi.updateUser(user.id, { status: "SUSPENDED" });
       message.success(t("user.rejectedToast"));
+      refreshInbox();
       await load();
     } catch (err) {
       message.error(apiErrorMessage(err, t("user.approveFailed")));

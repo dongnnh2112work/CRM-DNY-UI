@@ -416,7 +416,7 @@ export function OrderExpensesPanel({
       <Typography.Title level={5} style={{ fontSize: ds.fontSize.body, margin: "0 0 8px" }}>
         {t("order.byMonth")}
       </Typography.Title>
-      <div style={{ marginBottom: 24, maxWidth: isCompact ? "100%" : 560, minWidth: 0 }}>
+      <div style={{ marginBottom: 24, width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "auto" }}>
         {financeReady ? (
           <DataTable
             rowKey="month"

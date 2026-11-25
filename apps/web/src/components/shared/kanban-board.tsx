@@ -1,10 +1,11 @@
 "use client";
 
 import { HolderOutlined } from "@ant-design/icons";
-import { Card, Tag, Typography, theme } from "antd";
+import { Card, Tag, Tooltip, Typography, theme } from "antd";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ZaloGroupLink } from "@/components/orders/zalo-group-link";
+import { countLabel } from "@/lib/count-label";
 import { ds } from "@/lib/design-tokens";
 import { formatVndDisplay } from "@/lib/format-vnd";
 import { entityDisplayName, getOrderLicenseExpirySummary, licenseWarnMonthsForOrder, serviceDisplayName } from "@/lib/order-helpers";
@@ -101,9 +102,11 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                               <div
                                 ref={dragProvided.innerRef}
                                 {...dragProvided.draggableProps}
+                                {...dragProvided.dragHandleProps}
                                 style={{
                                   ...dragProvided.draggableProps.style,
                                   borderRadius: token.borderRadius,
+                                  cursor: order.stage === "cancelled" ? "default" : "grab",
                                 }}
                               >
                                 <Card
@@ -125,30 +128,25 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                   }}
                                 >
                                   <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-                                    <button
-                                      type="button"
-                                      {...dragProvided.dragHandleProps}
-                                      aria-label={t("order.dragHandle")}
-                                      className="crm-pressable"
-                                      style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        width: 32,
-                                        height: 32,
-                                        margin: "-4px 0 0 -4px",
-                                        padding: 0,
-                                        border: "none",
-                                        borderRadius: token.borderRadiusSM,
-                                        background: "transparent",
-                                        color: token.colorTextTertiary,
-                                        cursor: "grab",
-                                        touchAction: "none",
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      <HolderOutlined />
-                                    </button>
+                                    <Tooltip title={t("order.dragHandle")}>
+                                      <span
+                                        aria-hidden
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          width: 28,
+                                          minHeight: 36,
+                                          borderRadius: token.borderRadiusSM,
+                                          border: `1px dashed ${token.colorPrimary}`,
+                                          background: token.colorPrimaryBg,
+                                          color: token.colorPrimary,
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        <HolderOutlined />
+                                      </span>
+                                    </Tooltip>
                                     <Link
                                       href={`/orders/${order.id}`}
                                       style={{ textDecoration: "none", color: "inherit", flex: 1, minWidth: 0 }}
@@ -181,18 +179,19 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                       >
                                         {entityDisplayName(order.customerName)}
                                       </div>
-                                      <div
-                                        style={{
-                                          fontSize: ds.fontSize.caption,
-                                          marginTop: 4,
-                                          color: token.colorText,
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          whiteSpace: "nowrap",
-                                        }}
-                                      >
-                                        {serviceDisplayName(order, services)}
-                                      </div>
+                                      <Tooltip title={serviceDisplayName(order, services)}>
+                                        <div
+                                          style={{
+                                            fontSize: ds.fontSize.caption,
+                                            marginTop: 4,
+                                            color: token.colorText,
+                                            whiteSpace: "normal",
+                                            overflowWrap: "anywhere",
+                                          }}
+                                        >
+                                          {serviceDisplayName(order, services)}
+                                        </div>
+                                      </Tooltip>
                                       {order.zaloGroupUrl ? (
                                         <div style={{ marginTop: 6 }}>
                                           <ZaloGroupLink url={order.zaloGroupUrl} variant="tag" />
@@ -213,19 +212,20 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                         <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                                           {formatVndDisplay(order.value)}
                                         </span>
-                                        <Tag
-                                          style={{
-                                            fontSize: ds.fontSize.caption,
-                                            marginInlineEnd: 0,
-                                            maxWidth: 120,
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            whiteSpace: "nowrap",
-                                          }}
-                                          title={entityDisplayName(order.assignedUserName)}
-                                        >
-                                          {entityDisplayName(order.assignedUserName)}
-                                        </Tag>
+                                        <Tooltip title={entityDisplayName(order.assignedUserName)}>
+                                          <Tag
+                                            style={{
+                                              fontSize: ds.fontSize.caption,
+                                              marginInlineEnd: 0,
+                                              maxWidth: "100%",
+                                              height: "auto",
+                                              whiteSpace: "normal",
+                                              overflowWrap: "anywhere",
+                                            }}
+                                          >
+                                            {entityDisplayName(order.assignedUserName)}
+                                          </Tag>
+                                        </Tooltip>
                                       </div>
                                       {fileCount > 0 ? (
                                         <div
@@ -235,7 +235,11 @@ export function KanbanBoard({ orders, groupOrders, onMove }: KanbanBoardProps) {
                                             color: token.colorTextTertiary,
                                           }}
                                         >
-                                          {t("order.fileCount", { count: fileCount })}
+                                          {countLabel(
+                                            fileCount,
+                                            t("order.fileCountOne"),
+                                            t("order.fileCount", { count: fileCount }),
+                                          )}
                                         </div>
                                       ) : null}
                                     </Link>

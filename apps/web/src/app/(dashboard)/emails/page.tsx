@@ -27,6 +27,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDisplayDateTime } from "@/lib/format-date";
 import { apiErrorMessage } from "@/lib/http/message";
+import { emailAddressIssue } from "@/lib/input-validators";
 import { PageShapeError } from "@/lib/page-result";
 import { PERMISSION } from "@/lib/rbac";
 import { useSession } from "@/lib/session/session-provider";
@@ -210,13 +211,27 @@ function OutboundPanel() {
       dataIndex: "createdAt",
       render: (value?: string) => (value ? formatDisplayDateTime(value) : "—"),
     },
-    { title: t("email.recipients"), dataIndex: "to", render: (value?: string) => value || "—" },
+    {
+      title: t("email.recipients"),
+      dataIndex: "to",
+      render: (value?: string) =>
+        String(value ?? "").trim() ? (
+          value
+        ) : (
+          <Typography.Text type="danger">{t("email.toMissing")}</Typography.Text>
+        ),
+    },
     { title: t("email.templateKey"), dataIndex: "templateKey", render: (value?: string) => value || "—" },
     { title: t("email.subject"), dataIndex: "subject", ellipsis: true, render: (value?: string) => value || "—" },
     {
       title: t("common.status"),
       dataIndex: "status",
-      render: (value?: string) => <StatusBadge module="email" status={logStatus(value)} />,
+      render: (value: string | undefined, row: OutboundEmailLog) =>
+        String(row.to ?? "").trim() ? (
+          <StatusBadge module="email" status={logStatus(value)} />
+        ) : (
+          <Typography.Text type="danger">{t("email.toMissing")}</Typography.Text>
+        ),
     },
     { title: t("email.providerId"), dataIndex: "providerMessageId", render: (value?: string) => value || "—" },
     { title: t("email.errorCol"), key: "reason", ellipsis: true, render: (_, row) => logReason(row) },
@@ -535,7 +550,18 @@ function SendPanel({
             }
           }}
         >
-          <Form.Item name="to" rules={[{ required: true, type: "email", message: t("email.toRequired") }]}>
+          <Form.Item
+            name="to"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = emailAddressIssue(value);
+                  if (issue === "empty") throw new Error(t("email.toRequired"));
+                  if (issue === "invalid") throw new Error(t("email.toInvalid"));
+                },
+              },
+            ]}
+          >
             <Input placeholder="you@example.com" style={{ width: 280 }} />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={testing}>
@@ -586,7 +612,19 @@ function SendPanel({
             }}
           />
         </Form.Item>
-        <Form.Item name="to" label={t("email.recipients")} rules={[{ required: true, type: "email", message: t("email.toRequired") }]}>
+        <Form.Item
+          name="to"
+          label={t("email.recipients")}
+          rules={[
+            {
+              validator: async (_, value) => {
+                const issue = emailAddressIssue(value);
+                if (issue === "empty") throw new Error(t("email.toRequired"));
+                if (issue === "invalid") throw new Error(t("email.toInvalid"));
+              },
+            },
+          ]}
+        >
           <Input />
         </Form.Item>
         <Form.Item label={t("email.variables")} extra={t("email.placeholderVars")}>

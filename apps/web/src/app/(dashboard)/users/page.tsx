@@ -282,10 +282,11 @@ export default function UsersPage() {
             setSaving(true);
             try {
               if (editUser) {
+                const nextStatus = uiStatusToApi(values.status);
                 const updated = await identityAdminApi.updateUser(editUser.id, {
                   displayName: values.name,
                   phone: values.phone,
-                  status: uiStatusToApi(values.status),
+                  ...(nextStatus ? { status: nextStatus } : {}),
                 });
                 const nextRoleCodes = values.role
                   ? uiRoleToApiCodes(values.role)

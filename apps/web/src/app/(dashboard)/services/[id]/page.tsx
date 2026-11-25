@@ -10,6 +10,7 @@ import { PageLoading } from "@/components/shared/page-loading";
 import { ReadMoreText } from "@/components/shared/read-more-text";
 import { ServiceForm } from "@/components/services/service-form";
 import { ds } from "@/lib/design-tokens";
+import { displayCategoryLabel } from "@/lib/service-category-label";
 import { getServiceFormExtraFields } from "@/lib/service-fields";
 import { useServices } from "@/lib/services-store";
 import { useT } from "@/lib/use-t";
@@ -83,7 +84,9 @@ export default function ServiceDetailPage() {
               label: t("service.info"),
               children: (
                 <Descriptions bordered column={1} size="small" style={{ maxWidth: 560 }}>
-                  <Descriptions.Item label={t("common.category")}>{service.category}</Descriptions.Item>
+                  <Descriptions.Item label={t("common.category")}>
+                    {displayCategoryLabel(service.category, t) || "—"}
+                  </Descriptions.Item>
                   <Descriptions.Item label={t("common.processingTime")}>
                     {t("common.days", { n: service.processingDays })}
                   </Descriptions.Item>
