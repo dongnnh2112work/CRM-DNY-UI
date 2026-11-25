@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { PageLoading } from "@/components/shared/page-loading";
 import { isAwaitingAccess } from "@/lib/access-gate";
+import { rememberReturnPath, safeReturnPath } from "@/lib/safe-return-path";
 import { useSession } from "@/lib/session/session-provider";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -14,7 +15,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (status === "anonymous") {
-      router.replace("/login");
+      const next = safeReturnPath(`${pathname}${window.location.search}`);
+      if (next) rememberReturnPath(next);
+      router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
     }
   }, [status, router, pathname]);
 

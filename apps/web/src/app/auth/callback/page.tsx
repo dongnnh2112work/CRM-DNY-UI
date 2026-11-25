@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button } from "antd";
-import { destinationForUser } from "@/lib/access-gate";
+import { clearReturnPath, pathAfterLogin, peekReturnPath } from "@/lib/safe-return-path";
 import { isDevDebugEnabled } from "@/lib/dev-debug";
 import { writeAuthNotice, type AuthNoticeKind } from "@/lib/http/auth-notice";
 import { classifyApiError, classifyOAuthError, isPendingMeError, placeholderPendingUser } from "@/lib/http/error-kind";
@@ -85,7 +85,9 @@ export default function AuthCallbackPage() {
         const me = await authApi.me();
         consumeOAuthLoginInProgress();
         applyProfile(me);
-        router.replace(destinationForUser(me));
+        const next = pathAfterLogin(me, peekReturnPath());
+        clearReturnPath();
+        router.replace(next);
       } catch (err) {
         const kind = classifyApiError(err);
         if (kind !== "blocked" && (isPendingMeError(err) || kind === "forbidden" || kind === "unauthorized")) {

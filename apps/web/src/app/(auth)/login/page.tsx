@@ -1,11 +1,10 @@
 "use client";
 
 import { GoogleOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Divider, Form, Input, Typography, theme } from "antd";
+import { Alert, Button, Divider, Form, Input, Typography, theme } from "antd";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageLoading } from "@/components/shared/page-loading";
-import { destinationForUser } from "@/lib/access-gate";
 import { isDevDebugEnabled } from "@/lib/dev-debug";
 import { consumeAuthNotice, type AuthNotice, type AuthNoticeKind } from "@/lib/http/auth-notice";
 import { classifyApiError, classifyOAuthError } from "@/lib/http/error-kind";
@@ -16,9 +15,18 @@ import {
   readOAuthHashParams,
   readOAuthRedirectError,
 } from "@/lib/http/oauth-redirect";
+import { emailAddressIssue } from "@/lib/input-validators";
+import {
+  clearReturnPath,
+  pathAfterLogin,
+  peekReturnPath,
+  rememberReturnPath,
+  safeReturnPath,
+} from "@/lib/safe-return-path";
 import { useSession } from "@/lib/session/session-provider";
 import { useT } from "@/lib/use-t";
 import { authApi } from "@/modules/auth/api";
+import type { AuthUser } from "@/modules/auth/api";
 
 function noticeCopyKey(kind: AuthNoticeKind) {
   if (kind === "oauth_denied") return "auth.oauthDenied" as const;
@@ -33,7 +41,6 @@ function noticeCopyKey(kind: AuthNoticeKind) {
 export default function LoginPage() {
   const router = useRouter();
   const { token } = theme.useToken();
-  const { message } = App.useApp();
   const t = useT();
   const { status, applySession, user } = useSession();
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +48,9 @@ export default function LoginPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<AuthNotice | null>(null);
   const [hashReady, setHashReady] = useState(false);
+  const [mode, setMode] = useState<"login" | "forgot">("login");
+  const [forgotStatus, setForgotStatus] = useState<"idle" | "success" | "error">("idle");
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
 
   useEffect(() => {
     const apply = () => {
@@ -74,11 +84,26 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    const next = safeReturnPath(new URLSearchParams(window.location.search).get("next"));
+    if (next) rememberReturnPath(next);
+    else clearReturnPath();
+  }, []);
+
+  const goAfterLogin = useCallback(
+    (account: AuthUser) => {
+      const next = pathAfterLogin(account, peekReturnPath());
+      clearReturnPath();
+      router.replace(next);
+    },
+    [router],
+  );
+
+  useEffect(() => {
     if (!hashReady || notice) return;
     if (status === "authenticated" && user) {
-      router.replace(destinationForUser(user));
+      goAfterLogin(user);
     }
-  }, [hashReady, notice, status, router, user]);
+  }, [goAfterLogin, hashReady, notice, status, user]);
 
   const onGoogle = async () => {
     clearRememberedOAuthError();
@@ -105,7 +130,7 @@ export default function LoginPage() {
       const session = await authApi.login(values.email, values.password);
       clearRememberedOAuthError();
       applySession(session);
-      router.replace(destinationForUser(session.user));
+      goAfterLogin(session.user);
     } catch (err) {
       const kind = classifyApiError(err);
       const msg =
@@ -121,9 +146,22 @@ export default function LoginPage() {
                   ? err.messages.join(" ")
                   : t("auth.loginFailed");
       setFormError(isDevDebugEnabled() && err instanceof ApiError ? `[${err.statusCode}] ${msg}` : msg);
-      message.error(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onForgot = async (values: { email: string }) => {
+    setForgotSubmitting(true);
+    setForgotStatus("idle");
+    setFormError(null);
+    try {
+      await authApi.forgotPassword(values.email.trim());
+      setForgotStatus("success");
+    } catch {
+      setForgotStatus("error");
+    } finally {
+      setForgotSubmitting(false);
     }
   };
 
@@ -165,15 +203,21 @@ export default function LoginPage() {
           <Typography.Text type="secondary">{t("auth.tagline")}</Typography.Text>
         </div>
 
-        {notice || formError ? (
-          <Alert
-            type="error"
-            showIcon
-            title={notice ? t("auth.callbackError") : undefined}
-            description={oauthDescription ?? formError}
-            style={{ marginBottom: 16, whiteSpace: "pre-wrap" }}
-          />
-        ) : null}
+        <div style={{ minHeight: 72, marginBottom: 16 }} aria-live="polite">
+          {notice || formError ? (
+            <Alert
+              type="error"
+              showIcon
+              title={notice ? t("auth.callbackError") : undefined}
+              description={oauthDescription ?? formError}
+              style={{ whiteSpace: "pre-wrap" }}
+            />
+          ) : forgotStatus === "success" ? (
+            <Alert type="success" showIcon description={t("auth.forgotSuccess")} />
+          ) : forgotStatus === "error" ? (
+            <Alert type="error" showIcon description={t("auth.forgotFailed")} />
+          ) : null}
+        </div>
 
         <Button
           size="large"
@@ -195,25 +239,58 @@ export default function LoginPage() {
           {t("auth.orEmail")}
         </Divider>
 
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item name="email" rules={[{ required: true, type: "email", message: t("auth.emailRequired") }]}>
+        <Form layout="vertical" onFinish={mode === "forgot" ? onForgot : onFinish} requiredMark={false}>
+          <Form.Item
+            name="email"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const issue = emailAddressIssue(value);
+                  if (issue === "empty") throw new Error(t("auth.emailRequired"));
+                  if (issue === "invalid") throw new Error(t("auth.emailInvalid"));
+                },
+              },
+            ]}
+          >
             <Input
+              type="email"
               prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}
               placeholder={t("auth.email")}
               size="large"
               autoComplete="email"
             />
           </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: t("auth.passwordRequired") }]}>
-            <Input.Password
-              prefix={<LockOutlined style={{ color: token.colorTextTertiary }} />}
-              placeholder={t("auth.password")}
-              size="large"
-              autoComplete="current-password"
-            />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" size="large" block loading={submitting}>
-            {t("auth.login")}
+          {mode === "login" ? (
+            <Form.Item name="password" rules={[{ required: true, message: t("auth.passwordRequired") }]}>
+              <Input.Password
+                prefix={<LockOutlined style={{ color: token.colorTextTertiary }} />}
+                placeholder={t("auth.password")}
+                size="large"
+                autoComplete="current-password"
+              />
+            </Form.Item>
+          ) : null}
+          <Button
+            type="primary"
+            htmlType="submit"
+            size="large"
+            block
+            loading={mode === "forgot" ? forgotSubmitting : submitting}
+            disabled={mode === "forgot" ? forgotSubmitting : submitting}
+          >
+            {mode === "forgot" ? t("auth.forgotSubmit") : t("auth.login")}
+          </Button>
+          <Button
+            type="link"
+            block
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              setMode((current) => (current === "login" ? "forgot" : "login"));
+              setForgotStatus("idle");
+              setFormError(null);
+            }}
+          >
+            {mode === "login" ? t("auth.forgotPassword") : t("auth.backToLogin")}
           </Button>
         </Form>
       </div>
